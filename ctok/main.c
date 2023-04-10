@@ -58,110 +58,69 @@ static int is_id_char(char ch)
 
 
 
-// work with pChzMic/pChzMac
-
-static char peek(int i, const char * pChzMic, const char * pChzMac)
-{
-	const char * pChz = pChzMic + i;
-
-	if (pChz >= pChzMac)
-		return '\0';
-
-	return *pChz;
-}
-
-
-
 // "after" functions
 
-static const char * after_new_line(const char * pChz)
+static const char * after_char_lit(const char * pChz)
 {
-	while (1)
-	{
-		char ch = pChz[0];
+	assert(pChz);
 
-		if (!pChz[0])
-			break;
+	assert(pChz[0] == '\'');
+	assert(pChz[1]);
+	assert(pChz[1] != '\\');
+	assert(pChz[1] != '\'');
+	assert(pChz[1] != '\n');
+	assert(pChz[2] == '\'');
 
+	return pChz + 3;
+}
+
+static const char * after_hex_lit(const char * pChz)
+{
+	assert(pChz);
+
+	assert(pChz[0] == '0');
+	assert(pChz[1] == 'x' || pChz[1] == 'X');
+	assert(is_hex_digit(pChz[2]));
+	assert(is_hex_digit(pChz[3]));
+
+	return pChz + 4;
+}
+
+static const char * after_decimal_lit(const char * pChz)
+{
+	assert(pChz);
+
+	while (is_digit(pChz[0]))
 		++pChz;
-
-		if (ch == '\n')
-			break;
-	}
 
 	return pChz;
 }
 
-static const char * after_char_lit(const char * pChzMic, const char * pChzMac)
+static const char * after_int_lit(const char * pChz)
 {
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
+	assert(pChz);
 
-	assert(pChzMic[0] == '\'');
-	assert(peek(1, pChzMic, pChzMac));
-	assert(peek(1, pChzMic, pChzMac) != '\\');
-	assert(peek(2, pChzMic, pChzMac) == '\'');
+	assert(is_digit(pChz[0]));
 
-	return pChzMic + 3;
-}
-
-static const char * after_hex_lit(const char * pChzMic, const char * pChzMac)
-{
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
-
-	assert(pChzMic[0] == '0');
-	assert(peek(1, pChzMic, pChzMac) == 'x' || peek(1, pChzMic, pChzMac) == 'X');
-	assert(is_hex_digit(peek(2, pChzMic, pChzMac)));
-	assert(is_hex_digit(peek(3, pChzMic, pChzMac)));
-
-	return pChzMic + 4;
-}
-
-static const char * after_decimal_lit(const char * pChzMic, const char * pChzMac)
-{
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
-
-	while ((pChzMic < pChzMac) && is_digit(*pChzMic))
-		++pChzMic;
-
-	return pChzMic;
-}
-
-static const char * after_int_lit(const char * pChzMic, const char * pChzMac)
-{
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
-
-	assert(is_digit(pChzMic[0]));
-
-	if (pChzMic[0] == '0')
+	if (pChz[0] == '0')
 	{
-		char ch1 = peek(1, pChzMic, pChzMac);
-		if (ch1 == 'x' || ch1 == 'X')
-			return after_hex_lit(pChzMic, pChzMac);
+		if (pChz[1] == 'x' || pChz[1] == 'X')
+			return after_hex_lit(pChz);
 
-		return pChzMic + 1;
+		return pChz + 1;
 	}
 
-	return after_decimal_lit(pChzMic, pChzMac);
+	return after_decimal_lit(pChz);
 }
 
-static const char * after_id(const char * pChzMic, const char * pChzMac)
+static const char * after_id(const char * pChz)
 {
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
+	assert(pChz);
 
-	while ((pChzMic < pChzMac) && is_id_char(pChzMic[0]))
-		++pChzMic;
+	while (is_id_char(pChz[0]))
+		++pChz;
 
-	return pChzMic;
+	return pChz;
 }
 
 
@@ -201,14 +160,9 @@ static const char * g_apChzKw[] =
 	"\0",
 };
 
-static int len_next_kw(const char * pChzMic, const char * pChzMac)
+static int len_next_kw(const char * pChz)
 {
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
-
-	long long len_line = pChzMac - pChzMic;
-	assert(len_line >= 0);
+	assert(pChz);
 
 	const char ** ppChzKw = g_apChzKw;
 	while (**ppChzKw)
@@ -220,10 +174,7 @@ static int len_next_kw(const char * pChzMic, const char * pChzMac)
 
 		++ppChzKw;
 
-		if (len > (size_t)len_line)
-			continue;
-
-		if (strncmp(pChzMic, pChzKw, len) == 0)
+		if (strncmp(pChz, pChzKw, len) == 0)
 			return (int)len;
 	}
 
@@ -232,110 +183,150 @@ static int len_next_kw(const char * pChzMic, const char * pChzMac)
 
 
 
-// 'get next tok' funcs
+// main 'get next tok' func
 
-static const char * after_next_tok(const char * pChzMic, const char * pChzMac)
+static const char * after_next_tok(const char * pChz)
 {
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
+	assert(pChz);
 
-	char ch = pChzMic[0];
-	assert(ch);
+	char ch = pChz[0];
 
 	if (ch == '\'')
-		return after_char_lit(pChzMic, pChzMac);
+		return after_char_lit(pChz);
 
 	if (is_digit(ch))
-		return after_int_lit(pChzMic, pChzMac);
+		return after_int_lit(pChz);
 
-	int kw_len = len_next_kw(pChzMic, pChzMac);
+	int kw_len = len_next_kw(pChz);
 	if (kw_len)
-		return pChzMic + kw_len;
+		return pChz + kw_len;
 
 	if (is_letter_or_underscore(ch))
-		return after_id(pChzMic, pChzMac);
+		return after_id(pChz);
 
 	assert(0);
 	return NULL;
 }
 
-static const char * after_line_comment(const char * pChzMic, const char * pChzMac) // FIXME
-{
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
-	assert(pChzMic[0] == '/');
-	assert(peek(1, pChzMic, pChzMac) == '/');
-	
-	pChzMic += 2;
 
-	while (pChzMic < pChzMac)
+
+// deal with whitespace + comments
+
+static const char * after_line_comment(const char * pChz)
+{
+	assert(pChz);
+	assert(pChz[0] == '/');
+	assert(pChz[1] == '/');
+	
+	pChz += 2;
+
+	while (1)
 	{
-		char ch = pChzMic[0];
+		char ch = pChz[0];
 		if (!ch)
 			break;
 
 		if (ch == '\n')
 			break;
 
-		++pChzMic;
+		++pChz;
 	}
 
-	return pChzMic;
+	return pChz;
 }
 
-static const char * after_block_comment(const char * pChzMic, const char * pChzMac) // FIXME
+// Block comments are special : they can span multiple lines
+//  So, we have a little struct we return from them to encode 
+//  the two values we care about. It fits in 64 bits, so it
+//  can still be passed in a register.
+
+typedef struct {
+	int m_dpChz_;
+	short m_dLine_;
+	short m_iChInLine;
+} SAfterLines;
+
+static SAfterLines after_block_comment(const char * pChz)
 {
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
-	assert(pChzMic[0] == '/');
-	assert(peek(1, pChzMic, pChzMac) == '*');
+	assert(pChz);
+	assert(pChz[0] == '/');
+	assert(pChz[1] == '*');
 
-	pChzMic += 2;
+	const char * pChzOrig = pChz;
 
-	while (pChzMic < pChzMac)
+	pChz += 2;
+
+	SAfterLines afterlines = {0};
+
+	while (1)
 	{
-		char ch = pChzMic[0];
+		char ch = pChz[0];
 		if (!ch)
-			return pChzMic;
+			break;
 
-		if (ch == '*' && peek(1, pChzMic, pChzMac) == '/')
-			return pChzMic + 2;
+		if (ch == '*' && pChz[1] == '/')
+		{
+			pChz += 2;
+			afterlines.m_iChInLine += 2;
+			break;
+		}
 
-		++pChzMic;
+		if (ch == '\n')
+		{
+			++afterlines.m_dLine_;
+			afterlines.m_iChInLine = 0;
+		}
+
+		++pChz;
 	}
 
-	return pChzMic;
+	afterlines.m_dpChz_ = (int)(pChz - pChzOrig);
+	return afterlines;
 }
 
-static const char * next_tok_start(const char * pChzMic, const char * pChzMac) // FIXME
+static SAfterLines after_comments_and_whitespace(const char * pChz)
 {
-	assert(pChzMic);
-	assert(pChzMac);
-	assert(pChzMic < pChzMac);
+	assert(pChz);
 
-	while (pChzMic < pChzMac)
+	const char * pChzOrig = pChz;
+
+	SAfterLines afterlines0 = {0};
+
+	while (1)
 	{
-		char ch0 = pChzMic[0];
+		char ch0 = pChz[0];
 		if (is_white(ch0))
 		{
-			++pChzMic;
+			if (ch0 == '\n')
+			{
+				++afterlines0.m_dLine_;
+				afterlines0.m_iChInLine = 0;
+			}
+			else
+			{
+				++afterlines0.m_iChInLine;
+			}
+
+			++pChz;
 			continue;
 		}
 
 		if (ch0 == '/')
 		{
-			char ch1 = peek(1, pChzMic, pChzMac);
+			char ch1 = pChz[1];
 			if (ch1 == '/')
 			{
-				pChzMic = after_line_comment(pChzMic, pChzMac);
+				pChz = after_line_comment(pChz);
+				++afterlines0.m_dLine_; //??? wrong if line comment was eof
+				afterlines0.m_iChInLine = 0;
 				continue;
 			}
 			else if (ch1 == '*')
 			{
-				pChzMic = after_block_comment(pChzMic, pChzMac);
+				SAfterLines afterlines1 = after_block_comment(pChz);
+				pChz += afterlines1.m_dpChz_;
+				afterlines0.m_dLine_ += afterlines1.m_dLine_;
+				afterlines0.m_iChInLine = afterlines1.m_iChInLine;
 				continue;
 			}
 		}
@@ -343,70 +334,55 @@ static const char * next_tok_start(const char * pChzMic, const char * pChzMac) /
 		break;
 	}
 
-	return pChzMic;
+	afterlines0.m_dpChz_ = (int)(pChz - pChzOrig);
+	return afterlines0;
 }
 
 
-static void print_toks_on_line( // FIXME
-	int line, 
-	const char * pChzLineMic, 
-	const char * pChzLineMac)
+
+// print all of the tokens in a string,
+//  in "clang -dump-tokens" format (roughly)
+
+void print_toks_in_pchz(const char * pChz)
 {
-	const char * pChzCursor = pChzLineMic;
+	int line = 1;
+	const char * pChzLineMic = pChz;
 
-	while (pChzCursor < pChzLineMac)
+	while (1)
 	{
-		pChzCursor = next_tok_start(pChzCursor, pChzLineMac); // FIXME move this up a level, and include comments...
-		assert(pChzCursor);
-		assert(pChzCursor <= pChzLineMac);
-		if (!*pChzCursor)
+		SAfterLines afterlines = after_comments_and_whitespace(pChz);
+		pChz += afterlines.m_dpChz_;
+
+		if (afterlines.m_dLine_)
+		{
+			line += afterlines.m_dLine_;
+			pChzLineMic = pChz - afterlines.m_iChInLine;
+		}
+
+		if (!pChz[0])
 			break;
 
-		if (pChzCursor == pChzLineMac)
-			break;
-
-		const char * pChzCursorNext = after_next_tok(pChzCursor, pChzLineMac);
-		if (!pChzCursorNext) // only happens in error cases...
+		const char * pChzTokMac = after_next_tok(pChz);
+		assert(pChzTokMac);
+		if (!pChzTokMac)
 			break;
 
 		printf(
 			"'%.*s' %d:%lld\n", 
-			(int)(pChzCursorNext - pChzCursor), 
-			pChzCursor,
+			(int)(pChzTokMac - pChz), 
+			pChz,
 			line,
-			pChzCursor - pChzLineMic + 1);
+			pChz - pChzLineMic + 1);
 
-		pChzCursor = pChzCursorNext;
+		pChz = pChzTokMac;
 	}
-}
 
-void print_toks_in_pchz(const char * pChz) // FIXME
-{
-	int line = 1;
-	const char * pChzLineMic = pChz;
-	const char * pChzLineMac = after_new_line(pChz);
-
-	while (1)
-	{
-		// FIXME fuck this does not work
-		//  need to skip past block comments
-		//  that is the only 'token' that
-		//  can span multiple lines
-
-		print_toks_on_line(line, pChzLineMic, pChzLineMac);
-
-		if (!pChzLineMac[0])
-			break;
-
-		++line;
-		pChzLineMic = pChzLineMac;
-		pChzLineMac = after_new_line(pChzLineMac);
-	}
+	//??? FIXME line:col is wrong...
 
 	printf(
 		"eof '' %d:%lld\n",
 		line,
-		pChzLineMac - pChzLineMic);
+		pChz - pChzLineMic);
 }
 
 
