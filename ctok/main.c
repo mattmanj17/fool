@@ -9,12 +9,12 @@
 
 // char classes
 
-static int is_white(char ch)
+static int is_space(char ch)
 {
 	if (!ch)
 		return 0;
 
-	return strchr(" \t\n", ch) != NULL;
+	return strchr(" \t", ch) != NULL;
 }
 
 static int is_digit(char ch)
@@ -210,22 +210,13 @@ static const char * after_next_tok(const char * pChz)
 
 
 
-// deal with whitespace + comments
+// Helper to find the next '\n' (or '\0')
 
-static const char * after_line_comment(const char * pChz)
+static const char * find_end_of_line(const char * pChz)
 {
-	assert(pChz);
-	assert(pChz[0] == '/');
-	assert(pChz[1] == '/');
-	
-	pChz += 2;
-
-	while (1)
+	char ch;
+	while ((ch = pChz[0]) != '\0')
 	{
-		char ch = pChz[0];
-		if (!ch)
-			break;
-
 		if (ch == '\n')
 			break;
 
@@ -235,107 +226,29 @@ static const char * after_line_comment(const char * pChz)
 	return pChz;
 }
 
-// Block comments are special : they can span multiple lines
-//  So, we have a little struct we return from them to encode 
-//  the two values we care about. It fits in 64 bits, so it
-//  can still be passed in a register.
 
-typedef struct {
-	int m_dpChz_;
-	short m_dLine_;
-	short m_iChInLine;
-} SAfterLines;
 
-static SAfterLines after_block_comment(const char * pChz)
+// helper to look for a char on a line
+//  returns a pChz pointing at 1 of 3 things:
+//  1. the first '\n' in pChzLine
+//  2. the '\0' at the end of pChzLine
+//  3. the first occurance of ch in pChzLine, before any '\n'
+
+const char * try_find_char_or_end_of_line(const char * pChzLine, char ch)
 {
-	assert(pChz);
-	assert(pChz[0] == '/');
-	assert(pChz[1] == '*');
-
-	const char * pChzOrig = pChz;
-
-	pChz += 2;
-
-	SAfterLines afterlines = {0};
-
-	while (1)
+	char ch0;
+	while ((ch0 = pChzLine[0]) != '\0')
 	{
-		char ch = pChz[0];
-		if (!ch)
-			break;
+		if (ch0 == ch)
+			return pChzLine;
 
-		if (ch == '*' && pChz[1] == '/')
-		{
-			pChz += 2;
-			afterlines.m_iChInLine += 2;
-			break;
-		}
+		if (ch0 == '\n')
+			return pChzLine;
 
-		if (ch == '\n')
-		{
-			++afterlines.m_dLine_;
-			afterlines.m_iChInLine = 0;
-		}
-
-		++pChz;
+		++pChzLine;
 	}
 
-	afterlines.m_dpChz_ = (int)(pChz - pChzOrig);
-	return afterlines;
-}
-
-static SAfterLines after_comments_and_whitespace(const char * pChz)
-{
-	assert(pChz);
-
-	const char * pChzOrig = pChz;
-
-	SAfterLines afterlines0 = {0};
-
-	while (1)
-	{
-		char ch0 = pChz[0];
-		if (is_white(ch0))
-		{
-			if (ch0 == '\n')
-			{
-				++afterlines0.m_dLine_;
-				afterlines0.m_iChInLine = 0;
-			}
-			else
-			{
-				++afterlines0.m_iChInLine;
-			}
-
-			++pChz;
-			continue;
-		}
-
-		if (ch0 == '/')
-		{
-			char ch1 = pChz[1];
-			if (ch1 == '/')
-			{
-				pChz = after_line_comment(pChz);
-				++afterlines0.m_dLine_; //??? wrong if line comment was eof
-				afterlines0.m_iChInLine = 0;
-				continue;
-			}
-			else if (ch1 == '*')
-			{
-				SAfterLines afterlines1 = after_block_comment(pChz);
-				pChz += afterlines1.m_dpChz_;
-				afterlines0.m_dLine_ += afterlines1.m_dLine_;
-				afterlines0.m_iChInLine = afterlines1.m_iChInLine;
-				continue;
-			}
-		}
-
-		break;
-	}
-
-	afterlines0.m_dpChz_ = (int)(pChz - pChzOrig);
-	return afterlines0;
+	return pChzLine;
 }
 
 
@@ -348,36 +261,83 @@ void print_toks_in_pchz(const char * pChz)
 	int line = 1;
 	const char * pChzLineMic = pChz;
 
-	while (1)
+	int in_block_comment = 0; // :/
+
+	char ch0;
+	while ((ch0 = pChz[0]) != '\0')
 	{
-		SAfterLines afterlines = after_comments_and_whitespace(pChz);
-		pChz += afterlines.m_dpChz_;
+		char ch1 = pChz[1];
 
-		if (afterlines.m_dLine_)
+		if (in_block_comment)
 		{
-			line += afterlines.m_dLine_;
-			pChzLineMic = pChz - afterlines.m_iChInLine;
+			if (ch0 == '\n')
+			{
+				++pChz;
+
+				// Do not advance to the next 'line'
+				//  if there is nothing after this '\n'
+				//??? FIXME 
+
+				if (ch1)
+				{
+					++line;
+					pChzLineMic = pChz;
+				}
+			}
+			else if (ch0 == '*' && ch1 == '/')
+			{
+				in_block_comment = 0;
+				pChz += 2;
+			}
+			else
+			{
+				pChz = try_find_char_or_end_of_line(pChz, '*');
+			}
 		}
+		else if (ch0 == '/' && ch1 == '*')
+		{
+			in_block_comment = 1;
+			pChz += 2;
+		}
+		else if (ch0 == '/' && ch1 == '/')
+		{
+			pChz += 2;
+			pChz = find_end_of_line(pChz);
+		}
+		else if (ch0 == '\n')
+		{
+			++pChz;
 
-		if (!pChz[0])
-			break;
+			// Do not advance to the next 'line'
+			//  if there is nothing after this '\n'
 
-		const char * pChzTokMac = after_next_tok(pChz);
-		assert(pChzTokMac);
-		if (!pChzTokMac)
-			break;
+			if (ch1)
+			{
+				++line;
+				pChzLineMic = pChz;
+			}
+		}
+		else if (is_space(ch0))
+		{
+			++pChz;
+		}
+		else
+		{
+			const char * pChzTokMac = after_next_tok(pChz);
+			assert(pChzTokMac);
+			if (!pChzTokMac)
+				break;
 
-		printf(
-			"'%.*s' %d:%lld\n", 
-			(int)(pChzTokMac - pChz), 
-			pChz,
-			line,
-			pChz - pChzLineMic + 1);
+			printf(
+				"'%.*s' %d:%lld\n", 
+				(int)(pChzTokMac - pChz), 
+				pChz,
+				line,
+				pChz - pChzLineMic + 1);
 
-		pChz = pChzTokMac;
+			pChz = pChzTokMac;
+		}
 	}
-
-	//??? FIXME line:col is wrong...
 
 	printf(
 		"eof '' %d:%lld\n",
