@@ -1,5 +1,7 @@
 
 #include <stdint.h>
+#include <stdbool.h>
+
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -7,127 +9,132 @@
 
 
 
-// char classes
+#define size_of_array(array) (sizeof(array)/sizeof(0[array]))
+#define for_each_index_in_array(index, array) for (int index = 0; index < size_of_array(array); ++index)
 
-static int is_space(char ch)
+
+
+// character helpers
+
+static bool is_character_in_string(char character_to_find, const char * string)
 {
-	if (!ch)
-		return 0;
+	char character; 
+	while ((character = *string) != '\0')
+	{
+		if (character == character_to_find)
+			return true;
 
-	return strchr(" \t", ch) != NULL;
+		++string;
+	}
+
+	return false;
 }
 
-static int is_digit(char ch)
+static bool is_space_or_tab(char character)
 {
-	if (!ch)
-		return 0;
-
-	return strchr("0123456789", ch) != NULL;
+	return character == ' ' || character == '\t';
 }
 
-static int is_hex_digit(char ch)
+static bool is_decimal_digit(char character)
 {
-	if (!ch)
-		return 0;
-
-	const char * pChz = 
-		"0123456789"
-		"abcdef"
-		"ABCDEF";
-
-	return strchr(pChz, ch) != NULL;
+	return is_character_in_string(character, "0123456789");
 }
 
-static int is_letter_or_underscore(char ch)
+static bool is_hexadecimal_digit(char character)
 {
-	if (!ch)
-		return 0;
-
-	const char * pChz = 
-		"_"
-		"abcdefghijklmnopqrstuvwxyz"
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-	return strchr(pChz, ch) != NULL;
+	return is_character_in_string(
+			character, 
+			"0123456789"
+			"abcdef"
+			"ABCDEF");
 }
 
-static int is_id_char(char ch)
+static bool is_letter_or_underscore(char character)
 {
-	return is_digit(ch) || is_letter_or_underscore(ch);
+	return is_character_in_string(
+			character, 
+			"_"
+			"abcdefghijklmnopqrstuvwxyz"
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+}
+
+static bool is_identifier_character(char character)
+{
+	return is_decimal_digit(character) || is_letter_or_underscore(character);
 }
 
 
 
 // "after" functions
 
-static const char * after_char_lit(const char * pChz)
+static const char * after_character_literal(const char * string)
 {
-	assert(pChz);
+	assert(string);
 
-	assert(pChz[0] == '\'');
-	assert(pChz[1]);
-	assert(pChz[1] != '\\');
-	assert(pChz[1] != '\'');
-	assert(pChz[1] != '\n');
-	assert(pChz[2] == '\'');
+	assert(string[0] == '\'');
+	assert(string[1]);
+	assert(string[1] != '\\');
+	assert(string[1] != '\'');
+	assert(string[1] != '\n');
+	assert(string[2] == '\'');
 
-	return pChz + 3;
+	return string + 3;
 }
 
-static const char * after_hex_lit(const char * pChz)
+static const char * after_hexadecimal_literal(const char * string)
 {
-	assert(pChz);
+	assert(string);
 
-	assert(pChz[0] == '0');
-	assert(pChz[1] == 'x' || pChz[1] == 'X');
-	assert(is_hex_digit(pChz[2]));
-	assert(is_hex_digit(pChz[3]));
+	assert(string[0] == '0');
+	assert(string[1] == 'x' || string[1] == 'X');
+	assert(is_hexadecimal_digit(string[2]));
+	assert(is_hexadecimal_digit(string[3]));
 
-	return pChz + 4;
+	return string + 4;
 }
 
-static const char * after_decimal_lit(const char * pChz)
+static const char * after_decimal_literal(const char * string)
 {
-	assert(pChz);
+	assert(string);
 
-	while (is_digit(pChz[0]))
-		++pChz;
+	while (is_decimal_digit(string[0]))
+		++string;
 
-	return pChz;
+	return string;
 }
 
-static const char * after_int_lit(const char * pChz)
+static const char * after_integer_literal(const char * string)
 {
-	assert(pChz);
+	assert(string);
 
-	assert(is_digit(pChz[0]));
+	assert(is_decimal_digit(string[0]));
 
-	if (pChz[0] == '0')
+	if (string[0] == '0')
 	{
-		if (pChz[1] == 'x' || pChz[1] == 'X')
-			return after_hex_lit(pChz);
+		if (string[1] == 'x' || string[1] == 'X')
+			return after_hexadecimal_literal(string);
 
-		return pChz + 1;
+		return string + 1;
 	}
 
-	return after_decimal_lit(pChz);
+	return after_decimal_literal(string);
 }
 
-static const char * after_id(const char * pChz)
+static const char * after_identifier(const char * string)
 {
-	assert(pChz);
+	assert(string);
 
-	while (is_id_char(pChz[0]))
-		++pChz;
+	while (is_identifier_character(string[0]))
+		++string;
 
-	return pChz;
+	return string;
 }
 
 
 
 // keywords
 
-static const char * g_apChzKw[] =
+static const char * keywords[] =
 {
 	"_Static_assert",
 	
@@ -156,26 +163,21 @@ static const char * g_apChzKw[] =
 
 	"[", "]", "(", ")", "{", "}", ".", "&", "*", "+", "-", "~", "!", 
 	"/", "%", "<", ">", "^", "|", "?", ":", ";", "=", ",",
-
-	"\0",
 };
 
-static int len_next_kw(const char * pChz)
+static int length_of_keyword_at_start(const char * string)
 {
-	assert(pChz);
+	assert(string);
 
-	const char ** ppChzKw = g_apChzKw;
-	while (**ppChzKw)
+	for_each_index_in_array(keyword_index, keywords)
 	{
-		const char * pChzKw = *ppChzKw;
-		size_t len = strlen(pChzKw);
+		const char * keyword = keywords[keyword_index];
+		size_t length_of_keyword = strlen(keyword);
 
-		assert(len < INT_MAX);
+		assert(length_of_keyword < INT_MAX);
 
-		++ppChzKw;
-
-		if (strncmp(pChz, pChzKw, len) == 0)
-			return (int)len;
+		if (strncmp(string, keyword, length_of_keyword) == 0)
+			return (int)length_of_keyword;
 	}
 
 	return 0;
@@ -185,26 +187,26 @@ static int len_next_kw(const char * pChz)
 
 // main 'get next tok' func
 
-static const char * after_next_tok(const char * pChz)
+static const char * after_next_token(const char * string)
 {
-	assert(pChz);
+	assert(string);
 
-	char ch = pChz[0];
+	char character_0 = string[0];
 
-	if (ch == '\'')
-		return after_char_lit(pChz);
+	if (character_0 == '\'')
+		return after_character_literal(string);
 
-	if (is_digit(ch))
-		return after_int_lit(pChz);
+	if (is_decimal_digit(character_0))
+		return after_integer_literal(string);
 
-	int kw_len = len_next_kw(pChz);
-	if (kw_len)
-		return pChz + kw_len;
+	int keyword_length = length_of_keyword_at_start(string);
+	if (keyword_length > 0)
+		return string + keyword_length;
 
-	if (is_letter_or_underscore(ch))
-		return after_id(pChz);
+	if (is_letter_or_underscore(character_0))
+		return after_identifier(string);
 
-	assert(0);
+	assert(false);
 	return NULL;
 }
 
@@ -212,18 +214,18 @@ static const char * after_next_tok(const char * pChz)
 
 // Helper to find the next '\n' (or '\0')
 
-static const char * find_end_of_line(const char * pChz)
+static const char * find_end_of_line(const char * string)
 {
-	char ch;
-	while ((ch = pChz[0]) != '\0')
+	char character;
+	while ((character = string[0]) != '\0')
 	{
-		if (ch == '\n')
+		if (character == '\n')
 			break;
 
-		++pChz;
+		++string;
 	}
 
-	return pChz;
+	return string;
 }
 
 
@@ -234,21 +236,21 @@ static const char * find_end_of_line(const char * pChz)
 //  2. the '\0' at the end of pChzLine
 //  3. the first occurance of ch in pChzLine, before any '\n'
 
-const char * try_find_char_or_end_of_line(const char * pChzLine, char ch)
+const char * find_character_or_end_of_line(char character_to_find, const char * string)
 {
-	char ch0;
-	while ((ch0 = pChzLine[0]) != '\0')
+	char character;
+	while ((character = string[0]) != '\0')
 	{
-		if (ch0 == ch)
-			return pChzLine;
+		if (character == character_to_find)
+			return string;
 
-		if (ch0 == '\n')
-			return pChzLine;
+		if (character == '\n')
+			return string;
 
-		++pChzLine;
+		++string;
 	}
 
-	return pChzLine;
+	return string;
 }
 
 
@@ -256,100 +258,117 @@ const char * try_find_char_or_end_of_line(const char * pChzLine, char ch)
 // print all of the tokens in a string,
 //  in "clang -dump-tokens" format (roughly)
 
-void print_toks_in_pchz(const char * pChz)
+void print_tokens_in_string(const char * string)
 {
-	int line = 1;
-	const char * pChzLineMic = pChz;
+	int current_line_number = 1;
+	const char * beginning_of_current_line = string;
 
-	int in_block_comment = 0; // :/
+	bool in_block_comment = false; // :/
 
-	char ch0;
-	while ((ch0 = pChz[0]) != '\0')
+	char character_0;
+	while ((character_0 = string[0]) != '\0')
 	{
-		char ch1 = pChz[1];
+		char character_1 = string[1];
 
 		if (in_block_comment)
 		{
-			if (ch0 == '\n')
+			if (character_0 == '\n')
 			{
-				++pChz;
+				++string;
 
 				// Do not advance to the next 'line'
 				//  if there is nothing after this '\n'
 				//??? FIXME 
 
-				if (ch1)
+				if (character_1 != '\0')
 				{
-					++line;
-					pChzLineMic = pChz;
+					++current_line_number;
+					beginning_of_current_line = string;
 				}
 			}
-			else if (ch0 == '*' && ch1 == '/')
+			else if (character_0 == '*' && character_1 == '/')
 			{
-				in_block_comment = 0;
-				pChz += 2;
+				in_block_comment = false;
+				string += 2;
 			}
 			else
 			{
-				pChz = try_find_char_or_end_of_line(pChz, '*');
+				string = find_character_or_end_of_line('*', string);
 			}
 		}
-		else if (ch0 == '/' && ch1 == '*')
+		else if (character_0 == '/' && character_1 == '*')
 		{
-			in_block_comment = 1;
-			pChz += 2;
+			in_block_comment = true;
+			string += 2;
 		}
-		else if (ch0 == '/' && ch1 == '/')
+		else if (character_0 == '/' && character_1 == '/')
 		{
-			pChz += 2;
-			pChz = find_end_of_line(pChz);
+			string += 2;
+			string = find_end_of_line(string);
 		}
-		else if (ch0 == '\n')
+		else if (character_0 == '\n')
 		{
-			++pChz;
+			++string;
 
 			// Do not advance to the next 'line'
 			//  if there is nothing after this '\n'
 
-			if (ch1)
+			if (character_1 != '\0')
 			{
-				++line;
-				pChzLineMic = pChz;
+				++current_line_number;
+				beginning_of_current_line = string;
 			}
 		}
-		else if (is_space(ch0))
+		else if (is_space_or_tab(character_0))
 		{
-			++pChz;
+			++string;
 		}
 		else
 		{
-			const char * pChzTokMac = after_next_tok(pChz);
-			assert(pChzTokMac);
-			if (!pChzTokMac)
+			const char * after_token = after_next_token(string);
+			assert(after_token);
+			if (!after_token)
 				break;
+
+			long long length_of_token = after_token - string;
+			assert(length_of_token > 0);
+			assert(length_of_token < INT_MAX);
+
+			// NOTE (matthewd) +1 here is because we want to display character 
+			//  indicies with '1' being the left most character on the line
+
+			long long index_of_start_of_token_on_line = string - beginning_of_current_line + 1;
+
+			// NOTE (matthewd) "%.*s" is printf magic.
+			//  printf("%.*s", number_of_characters_to_print, string) 
+			//  will only print the first 'number_of_characters_to_print' 
+			//  characters from the beginning of 'string'
 
 			printf(
 				"'%.*s' %d:%lld\n", 
-				(int)(pChzTokMac - pChz), 
-				pChz,
-				line,
-				pChz - pChzLineMic + 1);
+				(int)length_of_token, 
+				string,
+				current_line_number,
+				index_of_start_of_token_on_line);
 
-			pChz = pChzTokMac;
+			string = after_token;
 		}
 	}
 
+	// NOTE (matthewd) not adding +1 to the character index here,
+	//  to match how clang reports eofs...
+
 	printf(
 		"eof '' %d:%lld\n",
-		line,
-		pChz - pChzLineMic);
+		current_line_number,
+		string - beginning_of_current_line);
 }
 
 
 
 // test file names...
 
-static const char * g_apChzFileName[] =
+static const char * file_names[] =
 {
 	"00001.c", "00002.c", "00003.c", "00004.c", "00005.c", "00006.c", 
 	"00007.c", "00008.c", "00009.c", "00010.c", "00011.c", "00012.c", 
@@ -370,56 +389,64 @@ static const char * g_apChzFileName[] =
 	"00130.c", "00133.c", "00134.c", "00135.c", "00140.c", "00144.c", 
 	"00146.c", "00147.c", "00148.c", "00149.c", "00150.c","00151.c",
 	"00155.c", "00209.c",
-
-	"\0",
 };
 
 
 
 // main
 
+#define length_of_file_path_buffer 64
+#define length_of_file_buffer 2048
+
 int main (void)
 {
-	char aChPathBuffer[64];
-	memset(aChPathBuffer, 0, 64);
+	char file_path_buffer[length_of_file_path_buffer];
+	memset(file_path_buffer, 0, length_of_file_path_buffer);
 
-	const char * pChzRootDir = "C:\\Users\\drape\\Desktop\\good_c\\";
-	strcpy(aChPathBuffer, pChzRootDir);
+	const char * root_directory_path = "C:\\Users\\drape\\Desktop\\good_c\\";
+	size_t length_of_root_directory_path = strlen(root_directory_path);
 
-	char * pChPathBufferEnd = aChPathBuffer + strlen(pChzRootDir);
+	assert(length_of_root_directory_path < length_of_file_path_buffer);
+	strcpy(file_path_buffer, root_directory_path);
 
-	char aChFileBufer[2048];
+	char * file_name_buffer = file_path_buffer + length_of_root_directory_path;
+	size_t length_of_file_name_buffer = length_of_file_path_buffer - length_of_root_directory_path;
 
-	const char ** ppChzFileName = g_apChzFileName;
-	while (**ppChzFileName)
+	for_each_index_in_array(filename_index, file_names)
 	{
-		memset(aChFileBufer, 0, 2048);
+		char file_buffer[length_of_file_buffer];
+		memset(file_buffer, 0, length_of_file_buffer);
 
 		{
-			const char * pChzFileName = *ppChzFileName;
-			strcpy(pChPathBufferEnd, pChzFileName);
+			memset(file_name_buffer, 0, length_of_file_name_buffer);
 
-			FILE * f = fopen(aChPathBuffer, "rb");
-			assert(f);
+			const char * file_name = file_names[filename_index];
+			size_t length_of_file_name = strlen(file_name);
 
-			int err = fseek(f, 0, SEEK_END);
-			assert(!err);
-			long size = ftell(f);
-			assert(size > 0);
-			assert(size < 2048);
-			err = fseek(f, 0, SEEK_SET);
-			assert(!err);
+			assert(length_of_file_name < length_of_file_name_buffer);
+			strcpy(file_name_buffer, file_name);
+
+			FILE * file = fopen(file_path_buffer, "rb");
+			assert(file);
+
+			int seek_error = fseek(file, 0, SEEK_END);
+			assert(!seek_error);
+
+			long size_of_file = ftell(file);
+			assert(size_of_file > 0);
+			assert(size_of_file < length_of_file_buffer);
+
+			seek_error = fseek(file, 0, SEEK_SET);
+			assert(!seek_error);
 			
-			size_t read = fread(aChFileBufer, 1, (size_t)size, f);
-			assert(read == (size_t)size);
+			size_t bytes_read = fread(file_buffer, 1, (size_t)size_of_file, file);
+			assert(bytes_read == (size_t)size_of_file);
 			
-			err = fclose(f);
-			assert(!err);
+			int close_error = fclose(file);
+			assert(!close_error);
 		}
-		
-		print_toks_in_pchz(aChFileBufer);
 
-		++ppChzFileName;
+		print_tokens_in_string(file_buffer);
 	}
 
 	return 0;
