@@ -13,7 +13,7 @@
 
 
 
-const char * Find_in_str(char ch, const char * str)
+static const char * Find_in_str(char ch, const char * str)
 {
 	while (*str)
 	{
@@ -351,7 +351,7 @@ static token_t Try_lex_token(const char * str)
 
 
 
-int Count_newlines(const char * begin, const char * end)
+static int Count_newlines(const char * begin, const char * end)
 {
 	int newlines = 0;
 
@@ -374,7 +374,7 @@ int Count_newlines(const char * begin, const char * end)
 	return newlines;
 }
 
-const char * Find_start_of_last_line(const char * begin, const char * end)
+static const char * Find_start_of_last_line(const char * begin, const char * end)
 {
 	const char * start_of_last_line = begin;
 
@@ -397,7 +397,7 @@ const char * Find_start_of_last_line(const char * begin, const char * end)
 	return start_of_last_line;
 }
 
-void Skip_whitespace_and_comments(
+static void Skip_whitespace_and_comments(
 	const char ** p_str,
 	const char ** p_line_start,
 	int * p_i_line)
@@ -426,7 +426,7 @@ void Skip_whitespace_and_comments(
 	}
 }
 
-void Print_token(
+static void Print_token(
 	const char * str, 
 	int len, 
 	const char * line_start, 
@@ -445,7 +445,7 @@ void Print_token(
 		(int)(str - line_start + 1));
 }
 
-void Print_eof(
+static void Print_eof(
 	const char * str, 
 	const char * line_start, 
 	int i_line,
@@ -472,7 +472,7 @@ void Print_eof(
 	}
 }
 
-void Print_toks_in_str(const char * str)
+static void Print_toks_in_str(const char * str)
 {
 	const char * line_start_prev = NULL;
 	const char * line_start = str;
@@ -503,7 +503,7 @@ void Print_toks_in_str(const char * str)
 
 
 
-bool Try_read_file_to_buffer(FILE * file, char * buf, int len_buf)
+static bool Try_read_file_to_buffer(FILE * file, char * buf, int len_buf)
 {
 	int err = fseek(file, 0, SEEK_END);
 	if (err)
@@ -524,7 +524,7 @@ bool Try_read_file_to_buffer(FILE * file, char * buf, int len_buf)
 	return true;
 }
 
-bool Try_read_file_at_path_to_buffer(const char * fpath, char * buf, int len_buf)
+static bool Try_read_file_at_path_to_buffer(const char * fpath, char * buf, int len_buf)
 {
 	FILE * file = fopen(fpath, "rb");
 	if (!file)
@@ -565,7 +565,7 @@ static const char * fnames[] =
 	"00155.c", "00209.c",
 };
 
-void Init_path_buf(
+static void Init_path_buf(
 	char * path_buf, 
 	char ** p_fname_buf,
 	size_t * p_len_fname_buf)
@@ -586,7 +586,7 @@ void Init_path_buf(
 	*p_len_fname_buf = len_path_buf - len_root;
 }
 
-void Init_fname_buf(
+static void Init_fname_buf(
 	char * fname_buf, 
 	size_t len_fname_buf,
 	int i_fname)
