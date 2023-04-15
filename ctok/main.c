@@ -16,11 +16,11 @@
 
 // character helpers
 
-static bool is_character_in_string(char character_to_find, const char * string)
+static bool is_character_in_string(char character, const char * string)
 { 
 	while (*string != '\0')
 	{
-		if (*string == character_to_find)
+		if (*string == character)
 			return true;
 
 		++string;
@@ -57,7 +57,7 @@ static bool is_letter_or_underscore(char character)
 			"ABCDEFGHIJKLMNOPQRSTUVWXYZ");
 }
 
-static bool is_identifier_character(char character)
+static bool can_be_part_of_identifier(char character)
 {
 	return is_decimal_digit(character) || is_letter_or_underscore(character);
 }
@@ -69,6 +69,8 @@ static bool is_identifier_character(char character)
 //  1. the first '\n' in pChzLine
 //  2. the '\0' at the end of pChzLine
 //  3. the first occurance of ch in pChzLine, before any '\n'
+
+//??? this function does too much. think of a way to refactor it away
 
 const char * find_character_or_end_of_line(char character_to_find, const char * string)
 {
@@ -100,12 +102,12 @@ typedef struct
 	int _padding;
 } Lexer_state;
 
-void initilize_lexer_state_to_start_of_string(Lexer_state * pointer_to_lexer_state, const char * string)
+void initilize_lexer_state_to_start_of_string(Lexer_state * _this, const char * string)
 {
-	pointer_to_lexer_state->cursor = string;
-	pointer_to_lexer_state->beginning_of_current_line = string;
-	pointer_to_lexer_state->beginning_of_current_token = NULL;
-	pointer_to_lexer_state->current_line_number = 1;
+	_this->cursor = string;
+	_this->beginning_of_current_line = string;
+	_this->beginning_of_current_token = NULL;
+	_this->current_line_number = 1;
 }
 
 
@@ -113,9 +115,9 @@ void initilize_lexer_state_to_start_of_string(Lexer_state * pointer_to_lexer_sta
 // "advance past" functions : once we know what the next token is,
 //   we use these to move to the end of the token + verify it
 
-static void advance_past_character_literal(Lexer_state * pointer_to_lexer_state)
+static void advance_past_character_literal(Lexer_state * _this)
 {
-	const char * cursor = pointer_to_lexer_state->cursor;
+	const char * cursor = _this->cursor;
 
 	assert(cursor[0] == '\'');
 
@@ -128,12 +130,12 @@ static void advance_past_character_literal(Lexer_state * pointer_to_lexer_state)
 
 	assert(cursor[2] == '\'');
 
-	pointer_to_lexer_state->cursor += 3;
+	_this->cursor += 3;
 }
 
-static void advance_past_hexadecimal_literal(Lexer_state * pointer_to_lexer_state)
+static void advance_past_hexadecimal_literal(Lexer_state * _this)
 {
-	const char * cursor = pointer_to_lexer_state->cursor;
+	const char * cursor = _this->cursor;
 
 	assert(cursor[0] == '0');
 
@@ -143,22 +145,22 @@ static void advance_past_hexadecimal_literal(Lexer_state * pointer_to_lexer_stat
 	assert(is_hexadecimal_digit(cursor[2]));
 	assert(is_hexadecimal_digit(cursor[3]));
 
-	pointer_to_lexer_state->cursor += 4;
+	_this->cursor += 4;
 }
 
-static void advance_past_decimal_literal(Lexer_state * pointer_to_lexer_state)
+static void advance_past_decimal_literal(Lexer_state * _this)
 {
-	const char * cursor = pointer_to_lexer_state->cursor;
+	const char * cursor = _this->cursor;
 
 	while (is_decimal_digit(cursor[0]))
 		++cursor;
 
-	pointer_to_lexer_state->cursor = cursor;
+	_this->cursor = cursor;
 }
 
-static void advance_past_integer_literal(Lexer_state * pointer_to_lexer_state)
+static void advance_past_integer_literal(Lexer_state * _this)
 {
-	const char * cursor = pointer_to_lexer_state->cursor;
+	const char * cursor = _this->cursor;
 
 	char character_0 = cursor[0];
 
@@ -170,29 +172,29 @@ static void advance_past_integer_literal(Lexer_state * pointer_to_lexer_state)
 
 		if (character_1 == 'x' || character_1 == 'X')
 		{
-			advance_past_hexadecimal_literal(pointer_to_lexer_state);
+			advance_past_hexadecimal_literal(_this);
 		}
 		else
 		{
 			// advance past 0
 
-			++pointer_to_lexer_state->cursor;
+			++_this->cursor;
 		}
 	}
 	else
 	{
-		advance_past_decimal_literal(pointer_to_lexer_state);
+		advance_past_decimal_literal(_this);
 	}
 }
 
-static void advance_past_identifier(Lexer_state * pointer_to_lexer_state)
+static void advance_past_identifier(Lexer_state * _this)
 {
-	const char * cursor = pointer_to_lexer_state->cursor;
+	const char * cursor = _this->cursor;
 
-	while (is_identifier_character(cursor[0]))
+	while (can_be_part_of_identifier(cursor[0]))
 		++cursor;
 
-	pointer_to_lexer_state->cursor = cursor;
+	_this->cursor = cursor;
 }
 
 
@@ -230,7 +232,7 @@ static const char * keywords[] =
 	"/", "%", "<", ">", "^", "|", "?", ":", ";", "=", ",",
 };
 
-static int length_of_keyword_at_start(const char * string)
+static int length_of_keyword_at_start(const char * string) //??? do not love this function...
 {
 	assert(string);
 
@@ -248,9 +250,9 @@ static int length_of_keyword_at_start(const char * string)
 	return 0;
 }
 
-static bool try_advance_past_keyword(Lexer_state * pointer_to_lexer_state)
+static bool try_advance_past_keyword(Lexer_state * _this) //??? do not love this function
 {
-	const char * cursor = pointer_to_lexer_state->cursor;
+	const char * cursor = _this->cursor;
 
 	int keyword_length = length_of_keyword_at_start(cursor);
 	assert(keyword_length >= 0);
@@ -258,7 +260,7 @@ static bool try_advance_past_keyword(Lexer_state * pointer_to_lexer_state)
 	if (keyword_length == 0)
 		return false;
 
-	pointer_to_lexer_state->cursor += keyword_length;
+	_this->cursor += keyword_length;
 
 	return true;
 }
@@ -275,11 +277,11 @@ typedef enum
 
 typedef Control_flow (*Lexer_loop_body)(char, char, Lexer_state *);
 
-void run_lexer_loop(Lexer_loop_body lexer_loop_body, Lexer_state * pointer_to_lexer_state)
+void run_lexer_loop(Lexer_loop_body lexer_loop_body, Lexer_state * _this) //??? this de duplicates a bit, but i do not love it...
 {
 	while (true)
 	{
-		const char * cursor = pointer_to_lexer_state->cursor;
+		const char * cursor = _this->cursor;
 		char character_0 = cursor[0];
 
 		if (character_0 == '\0')
@@ -289,7 +291,7 @@ void run_lexer_loop(Lexer_loop_body lexer_loop_body, Lexer_state * pointer_to_le
 		control_flow = lexer_loop_body(
 							character_0, 
 							cursor[1], 
-							pointer_to_lexer_state);
+							_this);
 
 		if (control_flow == control_flow_break)
 			break;
@@ -300,15 +302,15 @@ void run_lexer_loop(Lexer_loop_body lexer_loop_body, Lexer_state * pointer_to_le
 
 // Skip over white space + comments
 
-static void advance_past_backslash_n(Lexer_state * pointer_to_lexer_state)
+static void advance_past_backslash_n(Lexer_state * _this)
 {
-	const char * cursor = pointer_to_lexer_state->cursor;
+	const char * cursor = _this->cursor;
 
 	assert(cursor[0] == '\n');
 	char character_1 = cursor[1];
 
 	++cursor;
-	pointer_to_lexer_state->cursor = cursor;
+	_this->cursor = cursor;
 
 	// we do not 'move to next line' if we 
 	//  are at the end of the string.
@@ -316,25 +318,25 @@ static void advance_past_backslash_n(Lexer_state * pointer_to_lexer_state)
 
 	if (character_1 != '\0')
 	{
-		++pointer_to_lexer_state->current_line_number;
-		pointer_to_lexer_state->beginning_of_current_line = cursor;
+		++_this->current_line_number;
+		_this->beginning_of_current_line = cursor;
 	}
 }
 
 static Control_flow whitespace_loop_body(
 	char character_0, 
 	char character_1, 
-	Lexer_state * pointer_to_lexer_state)
+	Lexer_state * _this)
 {
 	(void) character_1;
 
 	if (character_0 == '\n')
 	{
-		advance_past_backslash_n(pointer_to_lexer_state);
+		advance_past_backslash_n(_this);
 	}
 	else if (character_0 == ' ' || character_0 == '\t')
 	{
-		++pointer_to_lexer_state->cursor;
+		++_this->cursor;
 	}
 	else
 	{
@@ -344,14 +346,14 @@ static Control_flow whitespace_loop_body(
 	return control_flow_continue;
 }
 
-static void advance_past_whitespace(Lexer_state * pointer_to_lexer_state)
+static void advance_past_whitespace(Lexer_state * _this)
 {
-	run_lexer_loop(whitespace_loop_body, pointer_to_lexer_state);
+	run_lexer_loop(whitespace_loop_body, _this);
 }
 
-static void advance_to_end_of_line(Lexer_state * pointer_to_lexer_state)
+static void advance_to_end_of_line(Lexer_state * _this)
 {
-	const char * cursor = pointer_to_lexer_state->cursor;
+	const char * cursor = _this->cursor;
 
 	while (*cursor != '\0')
 	{
@@ -361,57 +363,57 @@ static void advance_to_end_of_line(Lexer_state * pointer_to_lexer_state)
 		++cursor;
 	}
 
-	pointer_to_lexer_state->cursor = cursor;
+	_this->cursor = cursor;
 }
 
 static Control_flow block_comment_loop_body(
 	char character_0, 
 	char character_1, 
-	Lexer_state * pointer_to_lexer_state)
+	Lexer_state * _this)
 {
 	if (character_0 == '\n')
 	{
-		advance_past_backslash_n(pointer_to_lexer_state);
+		advance_past_backslash_n(_this);
 	}
 	else if (character_0 == '*' && character_1 == '/')
 	{
-		pointer_to_lexer_state->cursor += 2;
+		_this->cursor += 2;
 		return control_flow_break;
 	}
 	else if (character_0 == '*')
 	{
-		++pointer_to_lexer_state->cursor;
+		++_this->cursor;
 	}
 	else
 	{
-		const char * cursor = pointer_to_lexer_state->cursor;
-		pointer_to_lexer_state->cursor = find_character_or_end_of_line('*', cursor);
+		const char * cursor = _this->cursor;
+		_this->cursor = find_character_or_end_of_line('*', cursor);
 	}
 
 	return control_flow_continue;
 }
 
-static void advance_past_block_comment(Lexer_state * pointer_to_lexer_state)
+static void advance_past_block_comment(Lexer_state * _this)
 {
-	run_lexer_loop(block_comment_loop_body, pointer_to_lexer_state);
+	run_lexer_loop(block_comment_loop_body, _this);
 }
 
 static Control_flow comments_and_whitespace_loop_body(
 	char character_0, 
 	char character_1, 
-	Lexer_state * pointer_to_lexer_state)
+	Lexer_state * _this)
 {
 	if (character_0 == '/' && character_1 == '*')
 	{
-		advance_past_block_comment(pointer_to_lexer_state);
+		advance_past_block_comment(_this);
 	}
 	else if (character_0 == '/' && character_1 == '/')
 	{
-		advance_to_end_of_line(pointer_to_lexer_state);
+		advance_to_end_of_line(_this);
 	}
 	else if (is_whitespace(character_0))
 	{
-		advance_past_whitespace(pointer_to_lexer_state);
+		advance_past_whitespace(_this);
 	}
 	else
 	{
@@ -421,36 +423,36 @@ static Control_flow comments_and_whitespace_loop_body(
 	return control_flow_continue;
 }
 
-static void advance_past_comments_and_whitespace(Lexer_state * pointer_to_lexer_state)
+static void advance_past_comments_and_whitespace(Lexer_state * _this)
 {
-	run_lexer_loop(comments_and_whitespace_loop_body, pointer_to_lexer_state);
+	run_lexer_loop(comments_and_whitespace_loop_body, _this);
 }
 
 
 
 // main 'get next token' func
 
-static void advance_past_token(Lexer_state * pointer_to_lexer_state)
+static void advance_past_token(Lexer_state * _this)
 {
-	const char * cursor = pointer_to_lexer_state->cursor;
-	pointer_to_lexer_state->beginning_of_current_token = cursor;
+	const char * cursor = _this->cursor;
+	_this->beginning_of_current_token = cursor;
 	char character_0 = cursor[0];
 
 	if (character_0 == '\'')
 	{
-		advance_past_character_literal(pointer_to_lexer_state);
+		advance_past_character_literal(_this);
 	}
 	else if (is_decimal_digit(character_0))
 	{
-		advance_past_integer_literal(pointer_to_lexer_state);
+		advance_past_integer_literal(_this);
 	}
-	else if (try_advance_past_keyword(pointer_to_lexer_state))
+	else if (try_advance_past_keyword(_this))
 	{
 		// lexer state is updated in try_advance_past_keyword
 	}
 	else if (is_letter_or_underscore(character_0))
 	{
-		advance_past_identifier(pointer_to_lexer_state);
+		advance_past_identifier(_this);
 	}
 	else
 	{
@@ -458,19 +460,21 @@ static void advance_past_token(Lexer_state * pointer_to_lexer_state)
 	}
 }
 
-static void lex_next_token(Lexer_state * pointer_to_lexer_state)
+static void lex_next_token(Lexer_state * _this)
 {
-	advance_past_comments_and_whitespace(pointer_to_lexer_state);
+	advance_past_comments_and_whitespace(_this);
 
-	const char * cursor = pointer_to_lexer_state->cursor;
+	const char * cursor = _this->cursor;
 
 	if (cursor[0] == '\0')
 	{
-		pointer_to_lexer_state->beginning_of_current_token = cursor;
+		// NOTE (matthewd) we want eof to be a 'zero width' token
+
+		_this->beginning_of_current_token = cursor;
 		return;
 	}
 
-	advance_past_token(pointer_to_lexer_state);
+	advance_past_token(_this);
 }
 
 
