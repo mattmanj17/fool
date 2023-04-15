@@ -4,202 +4,265 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <assert.h>
-#include <limits.h>
+#include <stdlib.h>
 
 
 
-#define size_of_array(array) (sizeof(array)/sizeof(0[array]))
-#define for_each_index_in_array(index, array) for (int index = 0; index < size_of_array(array); ++index)
+#define len_ary(array) (sizeof(array)/sizeof(0[array]))
+#define for_i_in_ary(i, ary) for (int i = 0; i < len_ary(ary); ++i)
 
 
 
-// character helpers
-
-static bool is_character_in_string(char character, const char * string)
-{ 
-	while (*string != '\0')
+const char * Find_in_str(char ch, const char * str)
+{
+	while (*str)
 	{
-		if (*string == character)
-			return true;
+		if (*str == ch)
+			return str;
 
-		++string;
+		++str;
 	}
 
-	return false;
+	return NULL;
 }
 
-static bool is_whitespace(char character)
+static bool Is_space(char ch)
 {
-	return character == ' ' || character == '\t' || character == '\n';
+	return ch == ' ' || ch == '\t' || ch == '\n';
 }
 
-static bool is_decimal_digit(char character)
+static bool Is_digit(char ch)
 {
-	return is_character_in_string(character, "0123456789");
+	return Find_in_str(ch, "0123456789") != NULL;
 }
 
-static bool is_hexadecimal_digit(char character)
+static bool Is_hex(char ch)
 {
-	return is_character_in_string(
-			character, 
+	return Find_in_str(
+			ch, 
 			"0123456789"
 			"abcdef"
-			"ABCDEF");
+			"ABCDEF") != NULL;
 }
 
-static bool is_letter_or_underscore(char character)
+static bool Can_start_id(char ch)
 {
-	return is_character_in_string(
-			character, 
+	return Find_in_str(
+			ch, 
 			"_"
 			"abcdefghijklmnopqrstuvwxyz"
-			"ABCDEFGHIJKLMNOPQRSTUVWXYZ");
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ") != NULL;
 }
 
-static bool can_be_part_of_identifier(char character)
+static bool Extends_id(char ch)
 {
-	return is_decimal_digit(character) || is_letter_or_underscore(character);
+	return Is_digit(ch) || Can_start_id(ch);
 }
 
 
 
-// helper to look for a char on a line
-//  returns a pChz pointing at 1 of 3 things:
-//  1. the first '\n' in pChzLine
-//  2. the '\0' at the end of pChzLine
-//  3. the first occurance of ch in pChzLine, before any '\n'
+typedef bool (*predicate_t)(char);
 
-//??? this function does too much. think of a way to refactor it away
-
-const char * find_character_or_end_of_line(char character_to_find, const char * string)
+static int Count_chars(
+	predicate_t predicate, 
+	const char * str)
 {
-	char character;
-	while ((character = string[0]) != '\0')
+	int len = 0;
+
+	while (str[0])
 	{
-		if (character == character_to_find)
-			return string;
+		if (!predicate(str[0]))
+			break;
 
-		if (character == '\n')
-			return string;
-
-		++string;
+		++str;
+		++len;
 	}
 
-	return string;
+	return len;
 }
 
-
-
-// "lexer state" : all the state of an in-flight lexical analysis
-
-typedef struct
+static int Count_digits(const char * str)
 {
-	const char * cursor;
-	const char * beginning_of_current_line;
-	const char * beginning_of_current_token;
-	int current_line_number;
-	int _padding;
-} Lexer_state;
-
-void initilize_lexer_state_to_start_of_string(Lexer_state * _this, const char * string)
-{
-	_this->cursor = string;
-	_this->beginning_of_current_line = string;
-	_this->beginning_of_current_token = NULL;
-	_this->current_line_number = 1;
+	return Count_chars(Is_digit, str);
 }
 
-
-
-// "advance past" functions : once we know what the next token is,
-//   we use these to move to the end of the token + verify it
-
-static void advance_past_character_literal(Lexer_state * _this)
+static int Count_hex(const char * str)
 {
-	const char * cursor = _this->cursor;
-
-	assert(cursor[0] == '\'');
-
-	char character_1 = cursor[1];
-
-	assert(character_1 != '\0');
-	assert(character_1 != '\\');
-	assert(character_1 != '\'');
-	assert(character_1 != '\n');
-
-	assert(cursor[2] == '\'');
-
-	_this->cursor += 3;
+	return Count_chars(Is_hex, str);
 }
 
-static void advance_past_hexadecimal_literal(Lexer_state * _this)
+static int Count_whitespace(const char * str)
 {
-	const char * cursor = _this->cursor;
-
-	assert(cursor[0] == '0');
-
-	char character_1 = cursor[1];
-	assert(character_1 == 'x' || character_1 == 'X');
-
-	assert(is_hexadecimal_digit(cursor[2]));
-	assert(is_hexadecimal_digit(cursor[3]));
-
-	_this->cursor += 4;
+	return Count_chars(Is_space, str);
 }
 
-static void advance_past_decimal_literal(Lexer_state * _this)
+static int Count_chars_in_block_comment(const char * str)
 {
-	const char * cursor = _this->cursor;
+	if (str[0] != '/' || str[1] != '*')
+		return 0;
 
-	while (is_decimal_digit(cursor[0]))
-		++cursor;
+	const char * begin = str;
+	str += 2;
 
-	_this->cursor = cursor;
-}
-
-static void advance_past_integer_literal(Lexer_state * _this)
-{
-	const char * cursor = _this->cursor;
-
-	char character_0 = cursor[0];
-
-	assert(is_decimal_digit(character_0));
-
-	if (character_0 == '0')
+	while (true)
 	{
-		char character_1 = cursor[1];
-
-		if (character_1 == 'x' || character_1 == 'X')
+		const char * star = Find_in_str('*', str);
+		if (!star)
 		{
-			advance_past_hexadecimal_literal(_this);
+			str += (int)strlen(str);
+			break;
 		}
-		else
-		{
-			// advance past 0
 
-			++_this->cursor;
+		str = star;
+		++str;
+
+		if (*str == '/')
+		{
+			++str;
+			break;
 		}
 	}
-	else
-	{
-		advance_past_decimal_literal(_this);
-	}
+
+	return (int)(str - begin);
 }
 
-static void advance_past_identifier(Lexer_state * _this)
+static int Count_chars_in_comment(const char * str)
 {
-	const char * cursor = _this->cursor;
+	if (str[0] != '/')
+		return 0;
+	
+	if (str[1] == '*')
+		return Count_chars_in_block_comment(str);
 
-	while (can_be_part_of_identifier(cursor[0]))
-		++cursor;
+	if (str[1] == '/')
+	{
+		const char * newline = Find_in_str('\n', str);
+		if (!newline)
+			return (int)strlen(str);
 
-	_this->cursor = cursor;
+		return (int)(newline - str);
+	}
+	
+	// '/' by itself, not a comment
+
+	return 0;
+}
+
+static int Count_chars_to_skip(const char * str)
+{
+	const char * begin = str;
+
+	while (true)
+	{
+		if (Is_space(str[0]))
+		{
+			str += Count_whitespace(str);
+			continue;
+		}
+
+		int len_comment = Count_chars_in_comment(str);
+		if (len_comment == 0)
+			break;
+
+		str += len_comment;
+	}
+
+	return (int)(str - begin);
 }
 
 
 
-// keywords
+typedef enum 
+{
+	tok_error,   // BUG (matthewd) create a 'tok_skip' kind, and have tok_error always stop lexing?
+	tok_char_lit,
+	tok_int_lit,
+	tok_keyword,
+	tok_id,
+
+	tok_max,
+} token_kind_t;
+
+typedef struct 
+{
+	token_kind_t kind;
+	int len;
+} token_t;
+
+static token_t Make_error_token()
+{
+	token_t token;
+	token.kind = tok_error;
+	token.len = 0;
+	return token;
+}
+
+static bool Is_valid_token(token_t token)
+{
+	if (token.kind == tok_error)
+		return false;
+
+	if (token.kind < 0)
+		return false;
+
+	if (token.kind >= tok_max)
+		return false;
+
+	if (token.len <= 0)
+		return false;
+
+	return true;
+}
+
+static token_t Try_lex_char_lit(const char * str)
+{
+	if (str[0] != '\'')
+		return Make_error_token();
+
+	if (str[1] == '\0')
+		return Make_error_token();
+
+	if (Find_in_str(str[1], "\\\'\n"))
+		return Make_error_token();
+
+	if (str[2] != '\'')
+		return Make_error_token();
+
+	token_t token;
+	token.kind = tok_char_lit;
+	token.len = 3;
+
+	return token;
+}
+
+static token_t Try_lex_int_lit(const char * str)
+{
+	if (!Is_digit(str[0]))
+		return Make_error_token();
+
+	token_t token;
+	token.kind = tok_int_lit;
+
+	if (str[0] != '0')
+	{
+		token.len = Count_digits(str);
+		return token;
+	}
+
+	if (str[1] == 'x' || str[1] == 'X')
+	{
+		if (Count_hex(str + 2) != 2)
+			return Make_error_token();
+
+		token.len = 4;
+		return token;
+	}
+
+	// literal 0
+
+	token.len = 1;
+	return token;
+}
 
 static const char * keywords[] =
 {
@@ -232,298 +295,254 @@ static const char * keywords[] =
 	"/", "%", "<", ">", "^", "|", "?", ":", ";", "=", ",",
 };
 
-static int length_of_keyword_at_start(const char * string) //??? do not love this function...
+static token_t Try_lex_keyword(const char * str)
 {
-	assert(string);
-
-	for_each_index_in_array(keyword_index, keywords)
+	for_i_in_ary(i, keywords)
 	{
-		const char * keyword = keywords[keyword_index];
-		size_t length_of_keyword = strlen(keyword);
+		const char * keyword = keywords[i];
+		size_t len = strlen(keyword);
 
-		assert(length_of_keyword < INT_MAX);
-
-		if (strncmp(string, keyword, length_of_keyword) == 0)
-			return (int)length_of_keyword;
+		if (strncmp(str, keyword, len) == 0)
+		{
+			token_t token;
+			token.kind = tok_keyword;
+			token.len = (int)len;
+			return token;
+		}
 	}
 
-	return 0;
+	return Make_error_token();
 }
 
-static bool try_advance_past_keyword(Lexer_state * _this) //??? do not love this function
+static token_t Try_lex_id(const char * str)
 {
-	const char * cursor = _this->cursor;
+	if (!Can_start_id(str[0]))
+		return Make_error_token();
 
-	int keyword_length = length_of_keyword_at_start(cursor);
-	assert(keyword_length >= 0);
+	token_t token;
+	token.kind = tok_id;
+	token.len = Count_chars(Extends_id, str);
+	return token;
+}
 
-	if (keyword_length == 0)
+typedef token_t (*lex_fn_t)(const char *);
+
+static token_t Try_lex_token(const char * str)
+{
+	lex_fn_t lex_fns[] =
+	{
+		Try_lex_char_lit,
+		Try_lex_int_lit,
+		Try_lex_keyword,
+		Try_lex_id,
+	};
+
+	for_i_in_ary(i, lex_fns)
+	{
+		token_t token = lex_fns[i](str);
+		if (!Is_valid_token(token))
+			continue;
+
+		return token;
+	}
+
+	return Make_error_token();
+}
+
+
+
+int Count_newlines(const char * begin, const char * end)
+{
+	int newlines = 0;
+
+	while (true)
+	{
+		if (begin == end)
+			break;
+		
+		if (!begin[0])
+			break;
+
+		if (begin[0] == '\n')
+		{
+			++newlines;
+		}
+
+		++begin;
+	}
+
+	return newlines;
+}
+
+const char * Find_start_of_last_line(const char * begin, const char * end)
+{
+	const char * start_of_last_line = begin;
+
+	while (true)
+	{
+		if (begin == end)
+			break;
+		
+		if (!begin[0])
+			break;
+
+		if (begin[0] == '\n')
+		{
+			start_of_last_line = begin + 1;
+		}
+
+		++begin;
+	}
+
+	return start_of_last_line;
+}
+
+void Skip_whitespace_and_comments(
+	const char ** p_str,
+	const char ** p_line_start,
+	int * p_i_line)
+{
+	// NOTE (matthewd) this function may be a bit opaque.
+	//  We want to keep track of what line we are on
+	//  as we are lexing, so we need to deal with '\n's
+	//  carfeully. This does that, factored into
+	//  its own function to avoid bloating Print_toks_in_str
+
+	// BUG (matthewd) it would better perf to pass 
+	//  p_line_start/p_i_line down into Count_chars_to_skip
+	//  and just do all this in one pass, but I choose
+	//  not to for clarity
+
+	int len_skip = Count_chars_to_skip(*p_str);
+
+	const char * begin_skip = *p_str;
+	*p_str += len_skip;
+
+	int newlines_count = Count_newlines(begin_skip, *p_str);
+	if (newlines_count)
+	{
+		*p_line_start = Find_start_of_last_line(begin_skip, *p_str);
+		*p_i_line += newlines_count;
+	}
+}
+
+void Print_token(
+	const char * str, 
+	int len, 
+	const char * line_start, 
+	int i_line)
+{
+	// NOTE (matthewd) "%.*s" is printf magic.
+	//  printf("%.*s", len, str) 
+	//  will only print the first 'len' 
+	//  characters from the beginning of 'str'
+
+	printf(
+		"'%.*s' %d:%d\n",
+		len,
+		str,
+		i_line + 1,
+		(int)(str - line_start + 1));
+}
+
+void Print_eof(
+	const char * str, 
+	const char * line_start, 
+	int i_line,
+	const char * line_start_prev)
+{
+	// We want to match the line/col numbers output by clang,
+	//  so we have to do some munging. Specifically,
+	//  we need to do a handwave when the last char
+	//  in a file is '\n'
+
+	if (str == line_start)
+	{
+		printf(
+			"eof '' %d:%lld\n",
+			i_line,
+			line_start - line_start_prev);
+	}
+	else
+	{
+		printf(
+			"eof '' %d:%lld\n",
+			i_line + 1,
+			str - line_start + 1);
+	}
+}
+
+void Print_toks_in_str(const char * str)
+{
+	const char * line_start_prev = NULL;
+	const char * line_start = str;
+	int i_line = 0;
+
+	while (str[0])
+	{
+		line_start_prev = line_start;
+		Skip_whitespace_and_comments(&str, &line_start, &i_line);
+
+		if (!str[0])
+			break;
+
+		token_t token = Try_lex_token(str);
+		if (!Is_valid_token(token))
+		{
+			printf("Lex error\n");
+			return;
+		}
+
+		Print_token(str, token.len, line_start, i_line);
+
+		str += token.len;
+	}
+
+	Print_eof(str, line_start, i_line, line_start_prev);
+}
+
+
+
+bool Try_read_file_to_buffer(FILE * file, char * buf, int len_buf)
+{
+	int err = fseek(file, 0, SEEK_END);
+	if (err)
 		return false;
 
-	_this->cursor += keyword_length;
+	long len_file = ftell(file);
+	if (len_file < 0 || len_file >= len_buf)
+		return false;
+
+	err = fseek(file, 0, SEEK_SET);
+	if (err)
+		return false;
+
+	size_t bytes_read = fread(buf, 1, (size_t)len_file, file);
+	if (bytes_read != (size_t)len_file)
+		return false;
 
 	return true;
 }
 
-
-
-// helper to run more complicated lexer loops
-
-typedef enum
+bool Try_read_file_at_path_to_buffer(const char * fpath, char * buf, int len_buf)
 {
-	control_flow_break,
-	control_flow_continue,
-} Control_flow;
+	FILE * file = fopen(fpath, "rb");
+	if (!file)
+		return false;
 
-typedef Control_flow (*Lexer_loop_body)(char, char, Lexer_state *);
+	bool read_file = Try_read_file_to_buffer(file, buf, len_buf);
 
-void run_lexer_loop(Lexer_loop_body lexer_loop_body, Lexer_state * _this) //??? this de duplicates a bit, but i do not love it...
-{
-	while (true)
-	{
-		const char * cursor = _this->cursor;
-		char character_0 = cursor[0];
+	fclose(file); // BUG (matthewd) ignoring return value?
 
-		if (character_0 == '\0')
-			break;
-
-		Control_flow control_flow;
-		control_flow = lexer_loop_body(
-							character_0, 
-							cursor[1], 
-							_this);
-
-		if (control_flow == control_flow_break)
-			break;
-	}
+	return read_file;
 }
 
 
 
-// Skip over white space + comments
+#define len_path_buf 64
+#define len_file_buf 2048
 
-static void advance_past_backslash_n(Lexer_state * _this)
-{
-	const char * cursor = _this->cursor;
-
-	assert(cursor[0] == '\n');
-	char character_1 = cursor[1];
-
-	++cursor;
-	_this->cursor = cursor;
-
-	// we do not 'move to next line' if we 
-	//  are at the end of the string.
-	//  This is needed to get correct line numbers on eof.
-
-	if (character_1 != '\0')
-	{
-		++_this->current_line_number;
-		_this->beginning_of_current_line = cursor;
-	}
-}
-
-static Control_flow whitespace_loop_body(
-	char character_0, 
-	char character_1, 
-	Lexer_state * _this)
-{
-	(void) character_1;
-
-	if (character_0 == '\n')
-	{
-		advance_past_backslash_n(_this);
-	}
-	else if (character_0 == ' ' || character_0 == '\t')
-	{
-		++_this->cursor;
-	}
-	else
-	{
-		return control_flow_break;
-	}
-
-	return control_flow_continue;
-}
-
-static void advance_past_whitespace(Lexer_state * _this)
-{
-	run_lexer_loop(whitespace_loop_body, _this);
-}
-
-static void advance_to_end_of_line(Lexer_state * _this)
-{
-	const char * cursor = _this->cursor;
-
-	while (*cursor != '\0')
-	{
-		if (*cursor == '\n')
-			break;
-
-		++cursor;
-	}
-
-	_this->cursor = cursor;
-}
-
-static Control_flow block_comment_loop_body(
-	char character_0, 
-	char character_1, 
-	Lexer_state * _this)
-{
-	if (character_0 == '\n')
-	{
-		advance_past_backslash_n(_this);
-	}
-	else if (character_0 == '*' && character_1 == '/')
-	{
-		_this->cursor += 2;
-		return control_flow_break;
-	}
-	else if (character_0 == '*')
-	{
-		++_this->cursor;
-	}
-	else
-	{
-		const char * cursor = _this->cursor;
-		_this->cursor = find_character_or_end_of_line('*', cursor);
-	}
-
-	return control_flow_continue;
-}
-
-static void advance_past_block_comment(Lexer_state * _this)
-{
-	run_lexer_loop(block_comment_loop_body, _this);
-}
-
-static Control_flow comments_and_whitespace_loop_body(
-	char character_0, 
-	char character_1, 
-	Lexer_state * _this)
-{
-	if (character_0 == '/' && character_1 == '*')
-	{
-		advance_past_block_comment(_this);
-	}
-	else if (character_0 == '/' && character_1 == '/')
-	{
-		advance_to_end_of_line(_this);
-	}
-	else if (is_whitespace(character_0))
-	{
-		advance_past_whitespace(_this);
-	}
-	else
-	{
-		return control_flow_break;
-	}
-
-	return control_flow_continue;
-}
-
-static void advance_past_comments_and_whitespace(Lexer_state * _this)
-{
-	run_lexer_loop(comments_and_whitespace_loop_body, _this);
-}
-
-
-
-// main 'get next token' func
-
-static void advance_past_token(Lexer_state * _this)
-{
-	const char * cursor = _this->cursor;
-	_this->beginning_of_current_token = cursor;
-	char character_0 = cursor[0];
-
-	if (character_0 == '\'')
-	{
-		advance_past_character_literal(_this);
-	}
-	else if (is_decimal_digit(character_0))
-	{
-		advance_past_integer_literal(_this);
-	}
-	else if (try_advance_past_keyword(_this))
-	{
-		// lexer state is updated in try_advance_past_keyword
-	}
-	else if (is_letter_or_underscore(character_0))
-	{
-		advance_past_identifier(_this);
-	}
-	else
-	{
-		assert(false);
-	}
-}
-
-static void lex_next_token(Lexer_state * _this)
-{
-	advance_past_comments_and_whitespace(_this);
-
-	const char * cursor = _this->cursor;
-
-	if (cursor[0] == '\0')
-	{
-		// NOTE (matthewd) we want eof to be a 'zero width' token
-
-		_this->beginning_of_current_token = cursor;
-		return;
-	}
-
-	advance_past_token(_this);
-}
-
-
-
-// print all of the tokens in a string,
-//  in "clang -dump-tokens" format (roughly)
-
-void print_tokens_in_string(const char * string)
-{
-	Lexer_state lexer_state;
-	initilize_lexer_state_to_start_of_string(&lexer_state, string);
-
-	while (lexer_state.cursor[0] != '\0')
-	{
-		lex_next_token(&lexer_state);
-
-		const char * after_token = lexer_state.cursor;
-		long long length_of_token = after_token - lexer_state.beginning_of_current_token;
-		
-		assert(length_of_token >= 0);
-		assert(length_of_token < INT_MAX);
-
-		// NOTE (matthewd) +1 here is because we want to display character 
-		//  indicies with '1' being the left most character on the line
-
-		long long index_of_start_of_token_on_line = 
-			lexer_state.beginning_of_current_token 
-			- lexer_state.beginning_of_current_line 
-			+ 1; //??? eof col number busted again...
-
-		// NOTE (matthewd) "%.*s" is printf magic.
-		//  printf("%.*s", number_of_characters_to_print, string) 
-		//  will only print the first 'number_of_characters_to_print' 
-		//  characters from the beginning of 'string'
-
-		printf(
-			"'%.*s' %d:%lld\n", 
-			(int)length_of_token, 
-			lexer_state.beginning_of_current_token,
-			lexer_state.current_line_number,
-			index_of_start_of_token_on_line);
-	}
-}
-
-
-
-// test file names...
-
-static const char * file_names[] =
+static const char * fnames[] =
 {
 	"00001.c", "00002.c", "00003.c", "00004.c", "00005.c", "00006.c", 
 	"00007.c", "00008.c", "00009.c", "00010.c", "00011.c", "00012.c", 
@@ -546,62 +565,68 @@ static const char * file_names[] =
 	"00155.c", "00209.c",
 };
 
-
-
-// main
-
-#define length_of_file_path_buffer 64
-#define length_of_file_buffer 2048
-
-int main (void)
+void Init_path_buf(
+	char * path_buf, 
+	char ** p_fname_buf,
+	size_t * p_len_fname_buf)
 {
-	char file_path_buffer[length_of_file_path_buffer];
-	memset(file_path_buffer, 0, length_of_file_path_buffer);
+	memset(path_buf, 0, len_path_buf);
+	const char * root = "C:\\Users\\drape\\Desktop\\good_c\\";
+	size_t len_root = strlen(root);
 
-	const char * root_directory_path = "C:\\Users\\drape\\Desktop\\good_c\\";
-	size_t length_of_root_directory_path = strlen(root_directory_path);
-
-	assert(length_of_root_directory_path < length_of_file_path_buffer);
-	strcpy(file_path_buffer, root_directory_path);
-
-	char * file_name_buffer = file_path_buffer + length_of_root_directory_path;
-	size_t length_of_file_name_buffer = length_of_file_path_buffer - length_of_root_directory_path;
-
-	for_each_index_in_array(filename_index, file_names)
+	if (len_root >= len_path_buf)
 	{
-		char file_buffer[length_of_file_buffer];
-		memset(file_buffer, 0, length_of_file_buffer);
+		printf("len_root >= len_path_buf!!!\n");
+		exit(1);
+	}
 
+	strcpy(path_buf, root);
+
+	*p_fname_buf = path_buf + len_root;
+	*p_len_fname_buf = len_path_buf - len_root;
+}
+
+void Init_fname_buf(
+	char * fname_buf, 
+	size_t len_fname_buf,
+	int i_fname)
+{
+	memset(fname_buf, 0, len_fname_buf);
+
+	const char * fname = fnames[i_fname];
+	size_t len_fname = strlen(fname);
+
+	if (len_fname >= len_fname_buf)
+	{
+		printf("full path to %s is too long.\n", fname);
+		exit(1);
+	}
+
+	strcpy(fname_buf, fname);
+}
+
+int main(void)
+{
+	char path_buf[len_path_buf];
+	char * fname_buf;
+	size_t len_fname_buf;
+	Init_path_buf(path_buf, &fname_buf, &len_fname_buf);
+
+	for_i_in_ary(i_fname, fnames)
+	{
+		Init_fname_buf(fname_buf, len_fname_buf, i_fname);
+
+		char file_buf[len_file_buf];
+		memset(file_buf, 0, len_file_buf);
+
+		bool read_file = Try_read_file_at_path_to_buffer(path_buf, file_buf, len_file_buf);
+		if (!read_file)
 		{
-			memset(file_name_buffer, 0, length_of_file_name_buffer);
-
-			const char * file_name = file_names[filename_index];
-			size_t length_of_file_name = strlen(file_name);
-
-			assert(length_of_file_name < length_of_file_name_buffer);
-			strcpy(file_name_buffer, file_name);
-
-			FILE * file = fopen(file_path_buffer, "rb");
-			assert(file);
-
-			int seek_error = fseek(file, 0, SEEK_END);
-			assert(!seek_error);
-
-			long size_of_file = ftell(file);
-			assert(size_of_file > 0);
-			assert(size_of_file < length_of_file_buffer);
-
-			seek_error = fseek(file, 0, SEEK_SET);
-			assert(!seek_error);
-			
-			size_t bytes_read = fread(file_buffer, 1, (size_t)size_of_file, file);
-			assert(bytes_read == (size_t)size_of_file);
-			
-			int close_error = fclose(file);
-			assert(!close_error);
+			printf("Failed to read file '%s'.\n", path_buf);
+			return 1;
 		}
 
-		print_tokens_in_string(file_buffer);
+		Print_toks_in_str(file_buf);
 	}
 
 	return 0;
