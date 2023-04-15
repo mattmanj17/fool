@@ -499,7 +499,7 @@ void print_tokens_in_string(const char * string)
 		long long index_of_start_of_token_on_line = 
 			lexer_state.beginning_of_current_token 
 			- lexer_state.beginning_of_current_line 
-			+ 1;
+			+ 1; //??? eof col number busted again...
 
 		// NOTE (matthewd) "%.*s" is printf magic.
 		//  printf("%.*s", number_of_characters_to_print, string) 
