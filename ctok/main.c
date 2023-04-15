@@ -189,7 +189,7 @@ typedef struct
 	int len;
 } token_t;
 
-static token_t Make_error_token()
+static token_t Make_error_token(void)
 {
 	token_t token;
 	token.kind = tok_error;
