@@ -17,11 +17,10 @@
 // character helpers
 
 static bool is_character_in_string(char character_to_find, const char * string)
-{
-	char character; 
-	while ((character = *string) != '\0')
+{ 
+	while (*string != '\0')
 	{
-		if (character == character_to_find)
+		if (*string == character_to_find)
 			return true;
 
 		++string;
@@ -30,9 +29,9 @@ static bool is_character_in_string(char character_to_find, const char * string)
 	return false;
 }
 
-static bool is_space_or_tab(char character)
+static bool is_whitespace(char character)
 {
-	return character == ' ' || character == '\t';
+	return character == ' ' || character == '\t' || character == '\n';
 }
 
 static bool is_decimal_digit(char character)
@@ -65,69 +64,135 @@ static bool is_identifier_character(char character)
 
 
 
-// "after" functions
+// helper to look for a char on a line
+//  returns a pChz pointing at 1 of 3 things:
+//  1. the first '\n' in pChzLine
+//  2. the '\0' at the end of pChzLine
+//  3. the first occurance of ch in pChzLine, before any '\n'
 
-static const char * after_character_literal(const char * string)
+const char * find_character_or_end_of_line(char character_to_find, const char * string)
 {
-	assert(string);
-
-	assert(string[0] == '\'');
-	assert(string[1]);
-	assert(string[1] != '\\');
-	assert(string[1] != '\'');
-	assert(string[1] != '\n');
-	assert(string[2] == '\'');
-
-	return string + 3;
-}
-
-static const char * after_hexadecimal_literal(const char * string)
-{
-	assert(string);
-
-	assert(string[0] == '0');
-	assert(string[1] == 'x' || string[1] == 'X');
-	assert(is_hexadecimal_digit(string[2]));
-	assert(is_hexadecimal_digit(string[3]));
-
-	return string + 4;
-}
-
-static const char * after_decimal_literal(const char * string)
-{
-	assert(string);
-
-	while (is_decimal_digit(string[0]))
-		++string;
-
-	return string;
-}
-
-static const char * after_integer_literal(const char * string)
-{
-	assert(string);
-
-	assert(is_decimal_digit(string[0]));
-
-	if (string[0] == '0')
+	char character;
+	while ((character = string[0]) != '\0')
 	{
-		if (string[1] == 'x' || string[1] == 'X')
-			return after_hexadecimal_literal(string);
+		if (character == character_to_find)
+			return string;
 
-		return string + 1;
+		if (character == '\n')
+			return string;
+
+		++string;
 	}
 
-	return after_decimal_literal(string);
+	return string;
 }
 
-static const char * after_identifier(const char * string)
+
+
+// "lexer state" : all the state of an in-flight lexical analysis
+
+typedef struct
 {
-	assert(string);
+	const char * cursor;
+	const char * beginning_of_current_line;
+	const char * beginning_of_current_token;
+	int current_line_number;
+	int _padding;
+} Lexer_state;
 
-	while (is_identifier_character(string[0]))
-		++string;
+void initilize_lexer_state_to_start_of_string(Lexer_state * pointer_to_lexer_state, const char * string)
+{
+	pointer_to_lexer_state->cursor = string;
+	pointer_to_lexer_state->beginning_of_current_line = string;
+	pointer_to_lexer_state->beginning_of_current_token = NULL;
+	pointer_to_lexer_state->current_line_number = 1;
+}
 
-	return string;
+
+
+// "advance past" functions : once we know what the next token is,
+//   we use these to move to the end of the token + verify it
+
+static void advance_past_character_literal(Lexer_state * pointer_to_lexer_state)
+{
+	const char * cursor = pointer_to_lexer_state->cursor;
+
+	assert(cursor[0] == '\'');
+
+	char character_1 = cursor[1];
+
+	assert(character_1 != '\0');
+	assert(character_1 != '\\');
+	assert(character_1 != '\'');
+	assert(character_1 != '\n');
+
+	assert(cursor[2] == '\'');
+
+	pointer_to_lexer_state->cursor += 3;
+}
+
+static void advance_past_hexadecimal_literal(Lexer_state * pointer_to_lexer_state)
+{
+	const char * cursor = pointer_to_lexer_state->cursor;
+
+	assert(cursor[0] == '0');
+
+	char character_1 = cursor[1];
+	assert(character_1 == 'x' || character_1 == 'X');
+
+	assert(is_hexadecimal_digit(cursor[2]));
+	assert(is_hexadecimal_digit(cursor[3]));
+
+	pointer_to_lexer_state->cursor += 4;
+}
+
+static void advance_past_decimal_literal(Lexer_state * pointer_to_lexer_state)
+{
+	const char * cursor = pointer_to_lexer_state->cursor;
+
+	while (is_decimal_digit(cursor[0]))
+		++cursor;
+
+	pointer_to_lexer_state->cursor = cursor;
+}
+
+static void advance_past_integer_literal(Lexer_state * pointer_to_lexer_state)
+{
+	const char * cursor = pointer_to_lexer_state->cursor;
+
+	char character_0 = cursor[0];
+
+	assert(is_decimal_digit(character_0));
+
+	if (character_0 == '0')
+	{
+		char character_1 = cursor[1];
+
+		if (character_1 == 'x' || character_1 == 'X')
+		{
+			advance_past_hexadecimal_literal(pointer_to_lexer_state);
+		}
+		else
+		{
+			// advance past 0
+
+			++pointer_to_lexer_state->cursor;
+		}
+	}
+	else
+	{
+		advance_past_decimal_literal(pointer_to_lexer_state);
+	}
+}
+
+static void advance_past_identifier(Lexer_state * pointer_to_lexer_state)
+{
+	const char * cursor = pointer_to_lexer_state->cursor;
+
+	while (is_identifier_character(cursor[0]))
+		++cursor;
+
+	pointer_to_lexer_state->cursor = cursor;
 }
 
 
@@ -183,74 +248,229 @@ static int length_of_keyword_at_start(const char * string)
 	return 0;
 }
 
-
-
-// main 'get next tok' func
-
-static const char * after_next_token(const char * string)
+static bool try_advance_past_keyword(Lexer_state * pointer_to_lexer_state)
 {
-	assert(string);
+	const char * cursor = pointer_to_lexer_state->cursor;
 
-	char character_0 = string[0];
+	int keyword_length = length_of_keyword_at_start(cursor);
+	assert(keyword_length >= 0);
 
-	if (character_0 == '\'')
-		return after_character_literal(string);
+	if (keyword_length == 0)
+		return false;
 
-	if (is_decimal_digit(character_0))
-		return after_integer_literal(string);
+	pointer_to_lexer_state->cursor += keyword_length;
 
-	int keyword_length = length_of_keyword_at_start(string);
-	if (keyword_length > 0)
-		return string + keyword_length;
-
-	if (is_letter_or_underscore(character_0))
-		return after_identifier(string);
-
-	assert(false);
-	return NULL;
+	return true;
 }
 
 
 
-// Helper to find the next '\n' (or '\0')
+// helper to run more complicated lexer loops
 
-static const char * find_end_of_line(const char * string)
+typedef enum
 {
-	char character;
-	while ((character = string[0]) != '\0')
+	control_flow_break,
+	control_flow_continue,
+} Control_flow;
+
+typedef Control_flow (*Lexer_loop_body)(char, char, Lexer_state *);
+
+void run_lexer_loop(Lexer_loop_body lexer_loop_body, Lexer_state * pointer_to_lexer_state)
+{
+	while (true)
 	{
-		if (character == '\n')
+		const char * cursor = pointer_to_lexer_state->cursor;
+		char character_0 = cursor[0];
+
+		if (character_0 == '\0')
 			break;
 
-		++string;
-	}
+		Control_flow control_flow;
+		control_flow = lexer_loop_body(
+							character_0, 
+							cursor[1], 
+							pointer_to_lexer_state);
 
-	return string;
+		if (control_flow == control_flow_break)
+			break;
+	}
 }
 
 
 
-// helper to look for a char on a line
-//  returns a pChz pointing at 1 of 3 things:
-//  1. the first '\n' in pChzLine
-//  2. the '\0' at the end of pChzLine
-//  3. the first occurance of ch in pChzLine, before any '\n'
+// Skip over white space + comments
 
-const char * find_character_or_end_of_line(char character_to_find, const char * string)
+static void advance_past_backslash_n(Lexer_state * pointer_to_lexer_state)
 {
-	char character;
-	while ((character = string[0]) != '\0')
+	const char * cursor = pointer_to_lexer_state->cursor;
+
+	assert(cursor[0] == '\n');
+	char character_1 = cursor[1];
+
+	++cursor;
+	pointer_to_lexer_state->cursor = cursor;
+
+	// we do not 'move to next line' if we 
+	//  are at the end of the string.
+	//  This is needed to get correct line numbers on eof.
+
+	if (character_1 != '\0')
 	{
-		if (character == character_to_find)
-			return string;
+		++pointer_to_lexer_state->current_line_number;
+		pointer_to_lexer_state->beginning_of_current_line = cursor;
+	}
+}
 
-		if (character == '\n')
-			return string;
+static Control_flow whitespace_loop_body(
+	char character_0, 
+	char character_1, 
+	Lexer_state * pointer_to_lexer_state)
+{
+	(void) character_1;
 
-		++string;
+	if (character_0 == '\n')
+	{
+		advance_past_backslash_n(pointer_to_lexer_state);
+	}
+	else if (character_0 == ' ' || character_0 == '\t')
+	{
+		++pointer_to_lexer_state->cursor;
+	}
+	else
+	{
+		return control_flow_break;
 	}
 
-	return string;
+	return control_flow_continue;
+}
+
+static void advance_past_whitespace(Lexer_state * pointer_to_lexer_state)
+{
+	run_lexer_loop(whitespace_loop_body, pointer_to_lexer_state);
+}
+
+static void advance_to_end_of_line(Lexer_state * pointer_to_lexer_state)
+{
+	const char * cursor = pointer_to_lexer_state->cursor;
+
+	while (*cursor != '\0')
+	{
+		if (*cursor == '\n')
+			break;
+
+		++cursor;
+	}
+
+	pointer_to_lexer_state->cursor = cursor;
+}
+
+static Control_flow block_comment_loop_body(
+	char character_0, 
+	char character_1, 
+	Lexer_state * pointer_to_lexer_state)
+{
+	if (character_0 == '\n')
+	{
+		advance_past_backslash_n(pointer_to_lexer_state);
+	}
+	else if (character_0 == '*' && character_1 == '/')
+	{
+		pointer_to_lexer_state->cursor += 2;
+		return control_flow_break;
+	}
+	else if (character_0 == '*')
+	{
+		++pointer_to_lexer_state->cursor;
+	}
+	else
+	{
+		const char * cursor = pointer_to_lexer_state->cursor;
+		pointer_to_lexer_state->cursor = find_character_or_end_of_line('*', cursor);
+	}
+
+	return control_flow_continue;
+}
+
+static void advance_past_block_comment(Lexer_state * pointer_to_lexer_state)
+{
+	run_lexer_loop(block_comment_loop_body, pointer_to_lexer_state);
+}
+
+static Control_flow comments_and_whitespace_loop_body(
+	char character_0, 
+	char character_1, 
+	Lexer_state * pointer_to_lexer_state)
+{
+	if (character_0 == '/' && character_1 == '*')
+	{
+		advance_past_block_comment(pointer_to_lexer_state);
+	}
+	else if (character_0 == '/' && character_1 == '/')
+	{
+		advance_to_end_of_line(pointer_to_lexer_state);
+	}
+	else if (is_whitespace(character_0))
+	{
+		advance_past_whitespace(pointer_to_lexer_state);
+	}
+	else
+	{
+		return control_flow_break;
+	}
+
+	return control_flow_continue;
+}
+
+static void advance_past_comments_and_whitespace(Lexer_state * pointer_to_lexer_state)
+{
+	run_lexer_loop(comments_and_whitespace_loop_body, pointer_to_lexer_state);
+}
+
+
+
+// main 'get next token' func
+
+static void advance_past_token(Lexer_state * pointer_to_lexer_state)
+{
+	const char * cursor = pointer_to_lexer_state->cursor;
+	pointer_to_lexer_state->beginning_of_current_token = cursor;
+	char character_0 = cursor[0];
+
+	if (character_0 == '\'')
+	{
+		advance_past_character_literal(pointer_to_lexer_state);
+	}
+	else if (is_decimal_digit(character_0))
+	{
+		advance_past_integer_literal(pointer_to_lexer_state);
+	}
+	else if (try_advance_past_keyword(pointer_to_lexer_state))
+	{
+		// lexer state is updated in try_advance_past_keyword
+	}
+	else if (is_letter_or_underscore(character_0))
+	{
+		advance_past_identifier(pointer_to_lexer_state);
+	}
+	else
+	{
+		assert(false);
+	}
+}
+
+static void lex_next_token(Lexer_state * pointer_to_lexer_state)
+{
+	advance_past_comments_and_whitespace(pointer_to_lexer_state);
+
+	const char * cursor = pointer_to_lexer_state->cursor;
+
+	if (cursor[0] == '\0')
+	{
+		pointer_to_lexer_state->beginning_of_current_token = cursor;
+		return;
+	}
+
+	advance_past_token(pointer_to_lexer_state);
 }
 
 
@@ -260,108 +480,39 @@ const char * find_character_or_end_of_line(char character_to_find, const char * 
 
 void print_tokens_in_string(const char * string)
 {
-	int current_line_number = 1;
-	const char * beginning_of_current_line = string;
+	Lexer_state lexer_state;
+	initilize_lexer_state_to_start_of_string(&lexer_state, string);
 
-	bool in_block_comment = false; // :/
-
-	char character_0;
-	while ((character_0 = string[0]) != '\0')
+	while (lexer_state.cursor[0] != '\0')
 	{
-		char character_1 = string[1];
+		lex_next_token(&lexer_state);
 
-		if (in_block_comment)
-		{
-			if (character_0 == '\n')
-			{
-				++string;
+		const char * after_token = lexer_state.cursor;
+		long long length_of_token = after_token - lexer_state.beginning_of_current_token;
+		
+		assert(length_of_token >= 0);
+		assert(length_of_token < INT_MAX);
 
-				// Do not advance to the next 'line'
-				//  if there is nothing after this '\n'
-				//??? FIXME 
+		// NOTE (matthewd) +1 here is because we want to display character 
+		//  indicies with '1' being the left most character on the line
 
-				if (character_1 != '\0')
-				{
-					++current_line_number;
-					beginning_of_current_line = string;
-				}
-			}
-			else if (character_0 == '*' && character_1 == '/')
-			{
-				in_block_comment = false;
-				string += 2;
-			}
-			else
-			{
-				string = find_character_or_end_of_line('*', string);
-			}
-		}
-		else if (character_0 == '/' && character_1 == '*')
-		{
-			in_block_comment = true;
-			string += 2;
-		}
-		else if (character_0 == '/' && character_1 == '/')
-		{
-			string += 2;
-			string = find_end_of_line(string);
-		}
-		else if (character_0 == '\n')
-		{
-			++string;
+		long long index_of_start_of_token_on_line = 
+			lexer_state.beginning_of_current_token 
+			- lexer_state.beginning_of_current_line 
+			+ 1;
 
-			// Do not advance to the next 'line'
-			//  if there is nothing after this '\n'
+		// NOTE (matthewd) "%.*s" is printf magic.
+		//  printf("%.*s", number_of_characters_to_print, string) 
+		//  will only print the first 'number_of_characters_to_print' 
+		//  characters from the beginning of 'string'
 
-			if (character_1 != '\0')
-			{
-				++current_line_number;
-				beginning_of_current_line = string;
-			}
-		}
-		else if (is_space_or_tab(character_0))
-		{
-			++string;
-		}
-		else
-		{
-			const char * after_token = after_next_token(string);
-			assert(after_token);
-			if (!after_token)
-				break;
-
-			long long length_of_token = after_token - string;
-			assert(length_of_token > 0);
-			assert(length_of_token < INT_MAX);
-
-			// NOTE (matthewd) +1 here is because we want to display character 
-			//  indicies with '1' being the left most character on the line
-
-			long long index_of_start_of_token_on_line = string - beginning_of_current_line + 1;
-
-			// NOTE (matthewd) "%.*s" is printf magic.
-			//  printf("%.*s", number_of_characters_to_print, string) 
-			//  will only print the first 'number_of_characters_to_print' 
-			//  characters from the beginning of 'string'
-
-			printf(
-				"'%.*s' %d:%lld\n", 
-				(int)length_of_token, 
-				string,
-				current_line_number,
-				index_of_start_of_token_on_line);
-
-			string = after_token;
-		}
+		printf(
+			"'%.*s' %d:%lld\n", 
+			(int)length_of_token, 
+			lexer_state.beginning_of_current_token,
+			lexer_state.current_line_number,
+			index_of_start_of_token_on_line);
 	}
-
-	// NOTE (matthewd) not adding +1 to the character index here,
-	//  to match how clang reports eofs...
-
-	printf(
-		"eof '' %d:%lld\n",
-		current_line_number,
-		string - beginning_of_current_line);
 }
 
 
