@@ -298,6 +298,8 @@ static token_t Try_lex_char_lit(const char * str)
 	if (str[0] != '\'')
 		return Make_error_token();
 
+	++str;
+
 	token_t token;
 	token.kind = tok_char_lit;
 	token.len = (int)(str - tok_start);
