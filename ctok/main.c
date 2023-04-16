@@ -309,10 +309,10 @@ static token_t Try_lex_token(const char * str)
 }
 
 static void Print_token(
-	const char * tok_start, 
-	int tok_len, 
 	const char * line_start, 
-	int i_line)
+	int i_line,
+	const char * tok_start, 
+	int tok_len)
 {
 	// NOTE (matthewd) "%.*s" is printf magic.
 	//  printf("%.*s", len, str) 
@@ -327,6 +327,33 @@ static void Print_token(
 		(int)(tok_start - line_start + 1));
 }
 
+static int Column_number_for_eof(
+	const char * line_start,
+	const char * line_end)
+{
+	// magic handling of \r\n
+
+	int len_line = (int)(line_end - line_start);
+	if (len_line < 2)
+		return len_line;
+
+	if (line_start[len_line - 2] == '\r' && line_start[len_line - 1] == '\n')
+		return len_line - 1;
+
+	return len_line;
+}
+
+static void Print_eof(
+	int i_line,
+	const char * line_start,
+	const char * tok_start)
+{
+	printf(
+		"'' %d:%d\n",
+		i_line + 1,
+		Column_number_for_eof(line_start, tok_start));
+}
+
 static void Print_toks_in_str(const char * str) //??? I wish this function was shorter...
 {
 	const char * line_start = str;
@@ -336,8 +363,13 @@ static void Print_toks_in_str(const char * str) //??? I wish this function was s
 
 	while (str[0])
 	{
-		if (str[0] == '\n')
+		if (str[0] == '\n' || str[0] == '\r')
 		{
+			if (str[0] == '\r' && str[1] == '\n')
+			{
+				++str;
+			}
+
 			// To match clang's output for eof line+col,
 			//  we leave the cursor on the last newline
 			//  (if the string ends with new line)
@@ -403,13 +435,13 @@ static void Print_toks_in_str(const char * str) //??? I wish this function was s
 				return;
 			}
 
-			Print_token(str, token.len, line_start, i_line);
+			Print_token(line_start, i_line, str, token.len);
 
 			str += token.len;
 		}
 	}
 
-	Print_token(str, 0, line_start, i_line);
+	Print_eof(i_line, line_start, str);
 }
 
 
