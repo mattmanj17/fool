@@ -349,12 +349,8 @@ static token_t Try_lex_token(const char * str)
 	return Make_error_token();
 }
 
-
-
-static int Count_newlines(const char * begin, const char * end)
+static const char * Find_start_of_line(const char * begin, const char * end)
 {
-	int newlines = 0;
-
 	while (true)
 	{
 		if (begin == end)
@@ -365,65 +361,47 @@ static int Count_newlines(const char * begin, const char * end)
 
 		if (begin[0] == '\n')
 		{
-			++newlines;
+			return begin + 1;
 		}
 
 		++begin;
 	}
 
-	return newlines;
-}
-
-static const char * Find_start_of_last_line(const char * begin, const char * end)
-{
-	const char * start_of_last_line = begin;
-
-	while (true)
-	{
-		if (begin == end)
-			break;
-		
-		if (!begin[0])
-			break;
-
-		if (begin[0] == '\n')
-		{
-			start_of_last_line = begin + 1;
-		}
-
-		++begin;
-	}
-
-	return start_of_last_line;
+	return NULL;
 }
 
 static void Skip_whitespace_and_comments(
 	const char ** p_str,
 	const char ** p_line_start,
-	int * p_i_line)
+	int * p_i_line,
+	const char ** p_line_start_prev)
 {
-	// NOTE (matthewd) this function may be a bit opaque.
-	//  We want to keep track of what line we are on
-	//  as we are lexing, so we need to deal with '\n's
-	//  carfeully. This does that, factored into
-	//  its own function to avoid bloating Print_toks_in_str
-
-	// BUG (matthewd) it would better perf to pass 
-	//  p_line_start/p_i_line down into Count_chars_to_skip
-	//  and just do all this in one pass, but I choose
-	//  not to for clarity
+	const char * str = *p_str;
+	const char * line_start = *p_line_start;
+	int i_line = *p_i_line;
+	const char * line_start_prev = *p_line_start_prev;
 
 	int len_skip = Count_chars_to_skip(*p_str);
 
-	const char * begin_skip = *p_str;
-	*p_str += len_skip;
+	const char * cursor = str;
+	str += len_skip;
 
-	int newlines_count = Count_newlines(begin_skip, *p_str);
-	if (newlines_count)
+	while (true)
 	{
-		*p_line_start = Find_start_of_last_line(begin_skip, *p_str);
-		*p_i_line += newlines_count;
+		const char * line_start_next = Find_start_of_line(cursor, str);
+		if (!line_start_next)
+			break;
+
+		++i_line;
+		line_start_prev = line_start;
+		line_start = line_start_next;
+		cursor = line_start_next;
 	}
+
+	*p_str = str;
+	*p_line_start = line_start;
+	*p_i_line = i_line;
+	*p_line_start_prev = line_start_prev;
 }
 
 static void Print_token(
@@ -459,14 +437,14 @@ static void Print_eof(
 	if (str == line_start)
 	{
 		printf(
-			"eof '' %d:%lld\n",
+			"'' %d:%lld\n",
 			i_line,
 			line_start - line_start_prev);
 	}
 	else
 	{
 		printf(
-			"eof '' %d:%lld\n",
+			"'' %d:%lld\n",
 			i_line + 1,
 			str - line_start + 1);
 	}
@@ -480,8 +458,11 @@ static void Print_toks_in_str(const char * str)
 
 	while (str[0])
 	{
-		line_start_prev = line_start;
-		Skip_whitespace_and_comments(&str, &line_start, &i_line);
+		Skip_whitespace_and_comments(
+			&str, 
+			&line_start, 
+			&i_line,
+			&line_start_prev);
 
 		if (!str[0])
 			break;
@@ -539,95 +520,27 @@ static bool Try_read_file_at_path_to_buffer(const char * fpath, char * buf, int 
 
 
 
-#define len_path_buf 64
 #define len_file_buf 2048
 
-static const char * fnames[] =
+int main(int argc, char *argv[])
 {
-	"00001.c", "00002.c", "00003.c", "00004.c", "00005.c", "00006.c", 
-	"00007.c", "00008.c", "00009.c", "00010.c", "00011.c", "00012.c", 
-	"00013.c", "00014.c", "00015.c", "00016.c", "00017.c", "00018.c", 
-	"00019.c", "00020.c", "00021.c", "00022.c", "00023.c", "00024.c", 
-	"00026.c", "00027.c", "00028.c", "00029.c", "00030.c", "00031.c", 
-	"00032.c", "00033.c", "00034.c", "00035.c", "00036.c", "00037.c", 
-	"00038.c", "00039.c", "00041.c", "00042.c", "00043.c", "00044.c", 
-	"00045.c", "00046.c", "00047.c", "00048.c", "00049.c", "00050.c", 
-	"00051.c", "00052.c", "00053.c", "00054.c", "00055.c", "00057.c", 
-	"00058.c", "00059.c", "00072.c", "00073.c", "00076.c", "00077.c", 
-	"00078.c", "00080.c", "00081.c", "00082.c", "00086.c", "00087.c", 
-	"00088.c", "00089.c", "00090.c", "00091.c", "00092.c", "00093.c", 
-	"00094.c", "00095.c", "00096.c", "00099.c", "00100.c", "00101.c", 
-	"00102.c", "00103.c", "00105.c", "00106.c", "00107.c", "00109.c", 
-	"00110.c", "00111.c", "00114.c", "00116.c", "00117.c", "00118.c", 
-	"00120.c", "00121.c", "00124.c", "00126.c", "00127.c", "00128.c", 
-	"00130.c", "00133.c", "00134.c", "00135.c", "00140.c", "00144.c", 
-	"00146.c", "00147.c", "00148.c", "00149.c", "00150.c","00151.c",
-	"00155.c", "00209.c",
-};
-
-static void Init_path_buf(
-	char * path_buf, 
-	char ** p_fname_buf,
-	size_t * p_len_fname_buf)
-{
-	memset(path_buf, 0, len_path_buf);
-	const char * root = "C:\\Users\\drape\\Desktop\\good_c\\";
-	size_t len_root = strlen(root);
-
-	if (len_root >= len_path_buf)
+	if (argc != 2)
 	{
-		printf("len_root >= len_path_buf!!!\n");
-		exit(1);
+		printf("wrong number of arguments, expect a single file name\n");
+		return 1;
 	}
 
-	strcpy(path_buf, root);
+	char file_buf[len_file_buf];
+	memset(file_buf, 0, len_file_buf);
 
-	*p_fname_buf = path_buf + len_root;
-	*p_len_fname_buf = len_path_buf - len_root;
-}
-
-static void Init_fname_buf(
-	char * fname_buf, 
-	size_t len_fname_buf,
-	int i_fname)
-{
-	memset(fname_buf, 0, len_fname_buf);
-
-	const char * fname = fnames[i_fname];
-	size_t len_fname = strlen(fname);
-
-	if (len_fname >= len_fname_buf)
+	bool read_file = Try_read_file_at_path_to_buffer(argv[1], file_buf, len_file_buf);
+	if (!read_file)
 	{
-		printf("full path to %s is too long.\n", fname);
-		exit(1);
+		printf("Failed to read file '%s'.\n", argv[1]);
+		return 1;
 	}
 
-	strcpy(fname_buf, fname);
-}
-
-int main(void)
-{
-	char path_buf[len_path_buf];
-	char * fname_buf;
-	size_t len_fname_buf;
-	Init_path_buf(path_buf, &fname_buf, &len_fname_buf);
-
-	for_i_in_ary(i_fname, fnames)
-	{
-		Init_fname_buf(fname_buf, len_fname_buf, i_fname);
-
-		char file_buf[len_file_buf];
-		memset(file_buf, 0, len_file_buf);
-
-		bool read_file = Try_read_file_at_path_to_buffer(path_buf, file_buf, len_file_buf);
-		if (!read_file)
-		{
-			printf("Failed to read file '%s'.\n", path_buf);
-			return 1;
-		}
-
-		Print_toks_in_str(file_buf);
-	}
+	Print_toks_in_str(file_buf);
 
 	return 0;
 }
