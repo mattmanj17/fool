@@ -164,6 +164,43 @@ static bool Is_valid_token(token_t token)
 	return true;
 }
 
+static int Length_of_escape(const char * str) //??? bug, this starts AFTER the leading \, which could be confusing...
+{
+	const char * simple_escapes = "abfnrtv'\"\\?";
+
+	if (Find_in_str(str[0], simple_escapes))
+		return 1;
+
+	if (Is_octal(str[0]))
+	{
+		int len_octal = Count_octal(str);
+		if (len_octal > 3)
+			return 0;
+
+		return len_octal;
+	}
+
+	if (str[0] == 'x' || str[0] == 'X')
+	{
+		++str;
+		return Count_hex(str) + 1;
+	}
+
+	if (str[0] == 'u' || str[0] == 'U')
+	{
+		int len_expected = (str[0] == 'u') ? 4 : 8;
+
+		++str;
+		int len_hex = Count_hex(str);
+		if (len_hex != len_expected)
+			return 0;
+
+		return len_expected + 1;
+	}
+
+	return 0;
+}
+
 static token_t Try_lex_str_lit(const char * str)
 {
 	// todo support encoding-prefix
@@ -186,9 +223,16 @@ static token_t Try_lex_str_lit(const char * str)
 		if (ch0 == '"')
 			break;
 
-		//??? todo add support for escapes
+		if (ch0 == '\\')
+		{
+			int len_esc = Length_of_escape(str);
+			if (len_esc == 0)
+				return Make_error_token();
 
-		if (Find_in_str(ch0, "\\\r\n"))
+			str += len_esc;
+		}
+
+		if (Find_in_str(ch0, "\r\n"))
 			return Make_error_token();
 	}
 	
@@ -204,20 +248,32 @@ static token_t Try_lex_char_lit(const char * str)
 	if (str[0] != '\'')
 		return Make_error_token();
 
+	// NOTE (matthewd) apparently according to the spec, 
+	//  there can be an arbitrary number of characters between
+	//  the single quotes, and it has a 'implementation-defined value'.
+	//  Until I bump into somthing that depends on that, I am
+	//  only going to look for a single char or esc.
+
 	if (str[1] == '\0')
 		return Make_error_token();
 
-	//??? todo add support for escapes
-
-	if (Find_in_str(str[1], "\\\'\r\n"))
+	if (Find_in_str(str[1], "\'\r\n"))
 		return Make_error_token();
 
-	if (str[2] != '\'')
+	int len_body = 1;
+	if (str[1] == '\\')
+	{
+		len_body += Length_of_escape(str + 2);
+		if (len_body == 1)
+			return Make_error_token();
+	}
+
+	if (str[1 + len_body] != '\'')
 		return Make_error_token();
 
 	token_t token;
 	token.kind = tok_char_lit;
-	token.len = 3;
+	token.len = len_body + 2;
 
 	return token;
 }
