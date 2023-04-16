@@ -164,7 +164,7 @@ static bool Is_valid_token(token_t token)
 	return true;
 }
 
-static int Length_of_escape(const char * str) //??? bug, this starts AFTER the leading \, which could be confusing...
+static int Length_of_escape(const char * str) //??? bug, this starts AFTER the leading \, which could be confusing... also do not love the name
 {
 	const char * simple_escapes = "abfnrtv'\"\\?";
 
@@ -201,14 +201,34 @@ static int Length_of_escape(const char * str) //??? bug, this starts AFTER the l
 	return 0;
 }
 
+static int Length_of_str_encoding_prefix(const char * str)
+{
+	if (str[0] == 'u')
+	{
+		if (str[1] == '8')
+			return 2;
+
+		return 1;
+	}
+
+	if (str[0] == 'U')
+		return 1;
+
+	if (str[0] == 'L')
+		return 1;
+
+	return 0;
+}
+
 static token_t Try_lex_str_lit(const char * str)
 {
-	// todo support encoding-prefix
+	const char * tok_start = str;
+
+	str += Length_of_str_encoding_prefix(str);
 
 	if (str[0] != '"')
 		return Make_error_token();
 
-	const char * tok_start = str;
 	++str;
 
 	while (true)
@@ -245,35 +265,42 @@ static token_t Try_lex_str_lit(const char * str)
 
 static token_t Try_lex_char_lit(const char * str)
 {
+	const char * tok_start = str;
+
+	if (str[0] == 'L')
+		++str;
+
 	if (str[0] != '\'')
 		return Make_error_token();
 
-	// NOTE (matthewd) apparently according to the spec, 
-	//  there can be an arbitrary number of characters between
-	//  the single quotes, and it has a 'implementation-defined value'.
-	//  Until I bump into somthing that depends on that, I am
-	//  only going to look for a single char or esc.
+	++str;
 
-	if (str[1] == '\0')
+	// NOTE (matthewd) deciding NOT to handle multi char literals...
+
+	char ch_body_0 = str[0];
+	if (ch_body_0 == '\0')
 		return Make_error_token();
 
-	if (Find_in_str(str[1], "\'\r\n"))
+	if (Find_in_str(ch_body_0, "\'\r\n"))
 		return Make_error_token();
 
-	int len_body = 1;
-	if (str[1] == '\\')
+	++str;
+
+	if (ch_body_0 == '\\')
 	{
-		len_body += Length_of_escape(str + 2);
-		if (len_body == 1)
+		int len_esc = Length_of_escape(str);
+		if (len_esc == 0)
 			return Make_error_token();
+
+		str += len_esc;
 	}
 
-	if (str[1 + len_body] != '\'')
+	if (str[0] != '\'')
 		return Make_error_token();
 
 	token_t token;
 	token.kind = tok_char_lit;
-	token.len = len_body + 2;
+	token.len = (int)(str - tok_start);
 
 	return token;
 }
