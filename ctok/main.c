@@ -269,8 +269,8 @@ static token_t Try_lex_token(const char * str)
 	{
 		Try_lex_char_lit,
 		Try_lex_int_lit,
-		Try_lex_punct,
 		Try_lex_id,
+		Try_lex_punct,
 	};
 
 	for_i_in_ary(i, lex_fns)
