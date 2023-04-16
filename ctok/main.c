@@ -228,25 +228,25 @@ static int Length_of_integer_suffix(const char * str) //??? do not love this nam
 	strncpy(lower_str, str, 3);
 	lower_str[0] |= 0x20;
 
-	if (str[0] != 'u' && str[0] != 'l')
+	if (lower_str[0] != 'u' && lower_str[0] != 'l')
 		return 0;
 
 	lower_str[1] |= 0x20;
 	lower_str[2] |= 0x20;
 
-	if (Starts_with(str, "llu", 3))
+	if (Starts_with(lower_str, "llu", 3))
 		return 3;
 
-	if (Starts_with(str, "ull", 3))
+	if (Starts_with(lower_str, "ull", 3))
 		return 3;
 
-	if (Starts_with(str, "ll", 2))
+	if (Starts_with(lower_str, "ll", 2))
 		return 2;
 
-	if (Starts_with(str, "lu", 2))
+	if (Starts_with(lower_str, "lu", 2))
 		return 2;
 
-	if (Starts_with(str, "ul", 2))
+	if (Starts_with(lower_str, "ul", 2))
 		return 2;
 
 	return 1;
