@@ -112,7 +112,7 @@ typedef enum
 	tok_error,   // BUG (matthewd) create a 'tok_skip' kind, and have tok_error always stop lexing?
 	tok_char_lit,
 	tok_int_lit,
-	tok_keyword,
+	tok_punct,
 	tok_id,
 
 	tok_max,
@@ -199,29 +199,30 @@ static token_t Try_lex_int_lit(const char * str)
 	return token;
 }
 
-static const char * keywords[] =
+static const char * punctuation[] =
 {
-	"_Static_assert",
+	//"_Static_assert",
 	
-	"_Thread_local",
+	//"_Thread_local",
 	
-	"_Imaginary",
+	//"_Imaginary",
 	
-	"_Noreturn",
+	//"_Noreturn",
 	
-	"continue", "register", "restrict", "unsigned", "volatile", "_Alignas",
-	"_Alignof", "_Complex", "_Generic",
+	//"continue", "register", "restrict", "unsigned", "volatile", "_Alignas",
+	//"_Alignof", "_Complex", "_Generic",
 
-	"default", "typedef", "_Atomic",
+	//"default", "typedef", "_Atomic",
 
-	"double", "extern", "inline", "return", "signed", "sizeof", "static",
-	"struct", "switch",
+	//"double", "extern", "inline", "return", "signed", "sizeof", "static",
+	//"struct", "switch",
 
-	"break", "const", "float", "short", "union", "while", "_Bool",
+	//"break", "const", "float", "short", "union", "while", "_Bool",
 
-	"auto", "case", "char", "else", "enum", "goto", "long", "void",
+	//"auto", "case", "char", "else", "enum", "goto", "long", "void",
 
-	"for", "int", "...", "<<=", ">>=",
+	//"for", "int", 
+	"...", "<<=", ">>=",
 
 	"do", "if", "->", "++", "--", "<<", ">>", "<=", ">=", "==", "!=", 
 	"&&", "||", "*=", "/=", "%=", "+=", "-=", "&=", "^=", "|=",
@@ -230,17 +231,17 @@ static const char * keywords[] =
 	"/", "%", "<", ">", "^", "|", "?", ":", ";", "=", ",",
 };
 
-static token_t Try_lex_keyword(const char * str)
+static token_t Try_lex_punct(const char * str)
 {
-	for_i_in_ary(i, keywords)
+	for_i_in_ary(i, punctuation)
 	{
-		const char * keyword = keywords[i];
-		size_t len = strlen(keyword);
+		const char * punct = punctuation[i];
+		size_t len = strlen(punct);
 
-		if (strncmp(str, keyword, len) == 0)
+		if (strncmp(str, punct, len) == 0)
 		{
 			token_t token;
-			token.kind = tok_keyword;
+			token.kind = tok_punct;
 			token.len = (int)len;
 			return token;
 		}
@@ -268,7 +269,7 @@ static token_t Try_lex_token(const char * str)
 	{
 		Try_lex_char_lit,
 		Try_lex_int_lit,
-		Try_lex_keyword,
+		Try_lex_punct,
 		Try_lex_id,
 	};
 
