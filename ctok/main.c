@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string.h> //??? get rid of this later
+#include <stdlib.h>
 
 
 
@@ -123,6 +124,7 @@ static int Count_octal(const char * str)
 typedef enum 
 {
 	tok_error,   // BUG (matthewd) create a 'tok_skip' kind, and have tok_error always stop lexing?
+	tok_str_lit,
 	tok_char_lit,
 	tok_int_lit,
 	tok_punct,
@@ -162,6 +164,41 @@ static bool Is_valid_token(token_t token)
 	return true;
 }
 
+static token_t Try_lex_str_lit(const char * str)
+{
+	// todo support encoding-prefix
+
+	if (str[0] != '"')
+		return Make_error_token();
+
+	const char * tok_start = str;
+	++str;
+
+	while (true)
+	{
+		char ch0 = str[0];
+
+		if (str[0] == '\0')
+			return Make_error_token();
+
+		++str;
+
+		if (ch0 == '"')
+			break;
+
+		//??? todo add support for escapes
+
+		if (Find_in_str(ch0, "\\\r\n"))
+			return Make_error_token();
+	}
+	
+	token_t token;
+	token.kind = tok_str_lit;
+	token.len = (int)(str - tok_start);
+
+	return token;
+}
+
 static token_t Try_lex_char_lit(const char * str)
 {
 	if (str[0] != '\'')
@@ -170,7 +207,9 @@ static token_t Try_lex_char_lit(const char * str)
 	if (str[1] == '\0')
 		return Make_error_token();
 
-	if (Find_in_str(str[1], "\\\'\n"))
+	//??? todo add support for escapes
+
+	if (Find_in_str(str[1], "\\\'\r\n"))
 		return Make_error_token();
 
 	if (str[2] != '\'')
@@ -275,6 +314,8 @@ static token_t Try_lex_punct(const char * str)
 
 static token_t Try_lex_id(const char * str)
 {
+	//?? todo add support for universal-character-names
+
 	if (!Can_start_id(str[0]))
 		return Make_error_token();
 
@@ -288,12 +329,15 @@ typedef token_t (*lex_fn_t)(const char *);
 
 static token_t Try_lex_token(const char * str)
 {
+	//??? todo add support for floating constants
+
 	lex_fn_t lex_fns[] =
 	{
-		Try_lex_char_lit,
-		Try_lex_int_lit,
-		Try_lex_id,
-		Try_lex_punct,
+		Try_lex_str_lit,
+		Try_lex_char_lit, // character constant
+		Try_lex_int_lit, // decimal constant/octal constant/hexadecimal constant
+		Try_lex_id, // keyword/identifier/enumeration-constant
+		Try_lex_punct, // punctuator
 	};
 
 	for_i_in_ary(i, lex_fns)
@@ -383,7 +427,7 @@ static void Print_toks_in_str(const char * str) //??? I wish this function was s
 		}
 		else if (in_block_comment)
 		{
-			const char * star_or_newline = Find_any_in_str("*\n", str);
+			const char * star_or_newline = Find_any_in_str("*\r\n", str);
 			if (!star_or_newline)
 			{
 				str += strlen(str);
@@ -412,7 +456,7 @@ static void Print_toks_in_str(const char * str) //??? I wish this function was s
 		}
 		else if (str[0] == '/' && str[1] == '/')
 		{
-			const char * newline = Find_in_str('\n', str);
+			const char * newline = Find_any_in_str("\r\n", str);
 			if (!newline)
 			{
 				str += strlen(str);
@@ -482,7 +526,7 @@ static bool Try_read_file_at_path_to_buffer(const char * fpath, char * buf, int 
 
 
 
-#define len_file_buf 2048
+#define len_file_buf 0x100000
 
 int main(int argc, char *argv[])
 {
@@ -492,7 +536,12 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	char file_buf[len_file_buf] = {0};
+	char * file_buf = (char *)calloc(len_file_buf, 1);
+	if (!file_buf)
+	{
+		printf("Failed to allocate memory \n");
+		return 1;
+	}
 
 	bool read_file = Try_read_file_at_path_to_buffer(argv[1], file_buf, len_file_buf);
 	if (!read_file)
