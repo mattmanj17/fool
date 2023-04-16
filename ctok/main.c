@@ -26,9 +26,23 @@ static const char * Find_in_str(char ch, const char * str)
 	return NULL;
 }
 
-static bool Is_space(char ch)
+static const char * Find_any_in_str(const char * chs, const char * str)
 {
-	return ch == ' ' || ch == '\t' || ch == '\n';
+	while (*str)
+	{
+		const char * cursor = chs;
+		while (*cursor)
+		{
+			if (*str == *cursor)
+				return str;
+
+			++cursor;
+		}
+
+		++str;
+	}
+
+	return NULL;
 }
 
 static bool Is_digit(char ch)
@@ -89,85 +103,6 @@ static int Count_digits(const char * str)
 static int Count_hex(const char * str)
 {
 	return Count_chars(Is_hex, str);
-}
-
-static int Count_whitespace(const char * str)
-{
-	return Count_chars(Is_space, str);
-}
-
-static int Count_chars_in_block_comment(const char * str)
-{
-	if (str[0] != '/' || str[1] != '*')
-		return 0;
-
-	const char * begin = str;
-	str += 2;
-
-	while (true)
-	{
-		const char * star = Find_in_str('*', str);
-		if (!star)
-		{
-			str += (int)strlen(str);
-			break;
-		}
-
-		str = star;
-		++str;
-
-		if (*str == '/')
-		{
-			++str;
-			break;
-		}
-	}
-
-	return (int)(str - begin);
-}
-
-static int Count_chars_in_comment(const char * str)
-{
-	if (str[0] != '/')
-		return 0;
-	
-	if (str[1] == '*')
-		return Count_chars_in_block_comment(str);
-
-	if (str[1] == '/')
-	{
-		const char * newline = Find_in_str('\n', str);
-		if (!newline)
-			return (int)strlen(str);
-
-		return (int)(newline - str);
-	}
-	
-	// '/' by itself, not a comment
-
-	return 0;
-}
-
-static int Count_chars_to_skip(const char * str)
-{
-	const char * begin = str;
-
-	while (true)
-	{
-		if (Is_space(str[0]))
-		{
-			str += Count_whitespace(str);
-			continue;
-		}
-
-		int len_comment = Count_chars_in_comment(str);
-		if (len_comment == 0)
-			break;
-
-		str += len_comment;
-	}
-
-	return (int)(str - begin);
 }
 
 
@@ -349,63 +284,9 @@ static token_t Try_lex_token(const char * str)
 	return Make_error_token();
 }
 
-static const char * Find_start_of_line(const char * begin, const char * end)
-{
-	while (true)
-	{
-		if (begin == end)
-			break;
-		
-		if (!begin[0])
-			break;
-
-		if (begin[0] == '\n')
-		{
-			return begin + 1;
-		}
-
-		++begin;
-	}
-
-	return NULL;
-}
-
-static void Skip_whitespace_and_comments(
-	const char ** p_str,
-	const char ** p_line_start,
-	int * p_i_line)
-{
-	const char * str = *p_str;
-	const char * line_start = *p_line_start;
-	int i_line = *p_i_line;
-
-	int len_skip = Count_chars_to_skip(*p_str);
-
-	const char * cursor = str;
-	str += len_skip;
-
-	while (true)
-	{
-		const char * line_start_next = Find_start_of_line(cursor, str);
-		if (!line_start_next)
-			break;
-
-		if (!line_start_next[0])
-			break;
-
-		++i_line;
-		line_start = line_start_next;
-		cursor = line_start_next;
-	}
-
-	*p_str = str;
-	*p_line_start = line_start;
-	*p_i_line = i_line;
-}
-
 static void Print_token(
-	const char * str, 
-	int len, 
+	const char * tok_start, 
+	int tok_len, 
 	const char * line_start, 
 	int i_line)
 {
@@ -416,10 +297,10 @@ static void Print_token(
 
 	printf(
 		"'%.*s' %d:%d\n",
-		len,
-		str,
+		tok_len,
+		tok_start,
 		i_line + 1,
-		(int)(str - line_start + 1));
+		(int)(tok_start - line_start + 1));
 }
 
 static void Print_toks_in_str(const char * str)
@@ -427,29 +308,87 @@ static void Print_toks_in_str(const char * str)
 	const char * line_start = str;
 	int i_line = 0;
 
+	bool in_block_comment = false;
+
 	while (str[0])
 	{
-		Skip_whitespace_and_comments(
-			&str, 
-			&line_start, 
-			&i_line);
-
-		if (!str[0])
-			break;
-
-		token_t token = Try_lex_token(str);
-		if (!Is_valid_token(token))
+		if (str[0] == '\n')
 		{
-			printf("Lex error\n");
-			return;
+			// To match clang's output for eof line+col,
+			//  we leave the cursor on the last newline
+			//  (if the string ends with new line)
+
+			// BUG (matthewd) test what clang does with files that
+			//  do not end in '\n'...
+
+			if (!str[1])
+				break;
+
+			++i_line;
+			++str;
+			line_start = str;
 		}
+		else if (in_block_comment)
+		{
+			const char * star_or_newline = Find_any_in_str("*\n", str);
+			if (!star_or_newline)
+			{
+				str += strlen(str);
+				continue;
+			}
 
-		Print_token(str, token.len, line_start, i_line);
+			str = star_or_newline;
 
-		str += token.len;
+			if (str[0] == '*')
+			{
+				if (str[1] == '/')
+				{
+					str += 2;
+					in_block_comment = false;
+				}
+				else
+				{
+					++str;
+				}
+			}
+		}
+		else if (str[0] == '/' && str[1] == '*')
+		{
+			str += 2;
+			in_block_comment = true;
+		}
+		else if (str[0] == '/' && str[1] == '/')
+		{
+			const char * newline = Find_in_str('\n', str);
+			if (!newline)
+			{
+				str += strlen(str);
+			}
+			else
+			{
+				str = newline;
+			}
+		}
+		else if (str[0] == ' ' || str[0] == '\t')
+		{
+			++str;
+		}
+		else
+		{
+			token_t token = Try_lex_token(str);
+			if (!Is_valid_token(token))
+			{
+				printf("Lex error\n");
+				return;
+			}
+
+			Print_token(str, token.len, line_start, i_line);
+
+			str += token.len;
+		}
 	}
 
-	Print_token(str - 1, 0, line_start, i_line);
+	Print_token(str, 0, line_start, i_line);
 }
 
 
