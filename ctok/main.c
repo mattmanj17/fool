@@ -1,10 +1,8 @@
 
-#include <stdint.h>
 #include <stdbool.h>
 
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+#include <string.h> //??? get rid of this later
 
 
 
@@ -45,6 +43,11 @@ static const char * Find_any_in_str(const char * chs, const char * str)
 	return NULL;
 }
 
+static bool Starts_with(const char * str, const char * prefix, int len_prefix)
+{
+	return strncmp(str, prefix, (size_t)len_prefix) == 0;
+}
+
 static bool Is_digit(char ch)
 {
 	return Find_in_str(ch, "0123456789") != NULL;
@@ -57,6 +60,11 @@ static bool Is_hex(char ch)
 			"0123456789"
 			"abcdef"
 			"ABCDEF") != NULL;
+}
+
+static bool Is_octal(char ch)
+{
+	return Find_in_str(ch, "01234567") != NULL;
 }
 
 static bool Can_start_id(char ch)
@@ -103,6 +111,11 @@ static int Count_digits(const char * str)
 static int Count_hex(const char * str)
 {
 	return Count_chars(Is_hex, str);
+}
+
+static int Count_octal(const char * str)
+{
+	return Count_chars(Is_octal, str);
 }
 
 
@@ -170,58 +183,68 @@ static token_t Try_lex_char_lit(const char * str)
 	return token;
 }
 
+static int Length_of_integer_suffix(const char * str) //??? do not love this name
+{
+	char lower_str[4] = {0};
+	strncpy(lower_str, str, 3);
+	lower_str[0] |= 0x20;
+
+	if (str[0] != 'u' && str[0] != 'l')
+		return 0;
+
+	lower_str[1] |= 0x20;
+	lower_str[2] |= 0x20;
+
+	if (Starts_with(str, "llu", 3))
+		return 3;
+
+	if (Starts_with(str, "ull", 3))
+		return 3;
+
+	if (Starts_with(str, "ll", 2))
+		return 2;
+
+	if (Starts_with(str, "lu", 2))
+		return 2;
+
+	if (Starts_with(str, "ul", 2))
+		return 2;
+
+	return 1;
+}
+
 static token_t Try_lex_int_lit(const char * str)
 {
 	if (!Is_digit(str[0]))
 		return Make_error_token();
+
+	const char * tok_start = str;
 
 	token_t token;
 	token.kind = tok_int_lit;
 
 	if (str[0] != '0')
 	{
-		token.len = Count_digits(str);
-		return token;
+		str += Count_digits(str);
 	}
-
-	if (str[1] == 'x' || str[1] == 'X')
+	else if (str[1] == 'x' || str[1] == 'X')
 	{
-		if (Count_hex(str + 2) != 2)
-			return Make_error_token();
-
-		token.len = 4;
-		return token;
+		str += 2;
+		str += Count_hex(str);
+	}
+	else
+	{
+		str += Count_octal(str);
 	}
 
-	// literal 0
+	str += Length_of_integer_suffix(str);
 
-	token.len = 1;
+	token.len = (int)(str - tok_start);
 	return token;
 }
 
 static const char * punctuation[] =
 {
-	//"_Static_assert",
-	
-	//"_Thread_local",
-	
-	//"_Imaginary",
-	
-	//"_Noreturn",
-	
-	//"continue", "register", "restrict", "unsigned", "volatile", "_Alignas",
-	//"_Alignof", "_Complex", "_Generic",
-
-	//"default", "typedef", "_Atomic",
-
-	//"double", "extern", "inline", "return", "signed", "sizeof", "static",
-	//"struct", "switch",
-
-	//"break", "const", "float", "short", "union", "while", "_Bool",
-
-	//"auto", "case", "char", "else", "enum", "goto", "long", "void",
-
-	//"for", "int", 
 	"...", "<<=", ">>=",
 
 	"do", "if", "->", "++", "--", "<<", ">>", "<=", ">=", "==", "!=", 
@@ -236,9 +259,9 @@ static token_t Try_lex_punct(const char * str)
 	for_i_in_ary(i, punctuation)
 	{
 		const char * punct = punctuation[i];
-		size_t len = strlen(punct);
+		int len = (int)strlen(punct);
 
-		if (strncmp(str, punct, len) == 0)
+		if (Starts_with(str, punct, len))
 		{
 			token_t token;
 			token.kind = tok_punct;
@@ -304,7 +327,7 @@ static void Print_token(
 		(int)(tok_start - line_start + 1));
 }
 
-static void Print_toks_in_str(const char * str)
+static void Print_toks_in_str(const char * str) //??? I wish this function was shorter...
 {
 	const char * line_start = str;
 	int i_line = 0;
@@ -318,9 +341,6 @@ static void Print_toks_in_str(const char * str)
 			// To match clang's output for eof line+col,
 			//  we leave the cursor on the last newline
 			//  (if the string ends with new line)
-
-			// BUG (matthewd) test what clang does with files that
-			//  do not end in '\n'...
 
 			if (!str[1])
 				break;
@@ -440,8 +460,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	char file_buf[len_file_buf];
-	memset(file_buf, 0, len_file_buf);
+	char file_buf[len_file_buf] = {0};
 
 	bool read_file = Try_read_file_at_path_to_buffer(argv[1], file_buf, len_file_buf);
 	if (!read_file)
