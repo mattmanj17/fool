@@ -373,13 +373,11 @@ static const char * Find_start_of_line(const char * begin, const char * end)
 static void Skip_whitespace_and_comments(
 	const char ** p_str,
 	const char ** p_line_start,
-	int * p_i_line,
-	const char ** p_line_start_prev)
+	int * p_i_line)
 {
 	const char * str = *p_str;
 	const char * line_start = *p_line_start;
 	int i_line = *p_i_line;
-	const char * line_start_prev = *p_line_start_prev;
 
 	int len_skip = Count_chars_to_skip(*p_str);
 
@@ -392,8 +390,10 @@ static void Skip_whitespace_and_comments(
 		if (!line_start_next)
 			break;
 
+		if (!line_start_next[0])
+			break;
+
 		++i_line;
-		line_start_prev = line_start;
 		line_start = line_start_next;
 		cursor = line_start_next;
 	}
@@ -401,7 +401,6 @@ static void Skip_whitespace_and_comments(
 	*p_str = str;
 	*p_line_start = line_start;
 	*p_i_line = i_line;
-	*p_line_start_prev = line_start_prev;
 }
 
 static void Print_token(
@@ -423,36 +422,8 @@ static void Print_token(
 		(int)(str - line_start + 1));
 }
 
-static void Print_eof(
-	const char * str, 
-	const char * line_start, 
-	int i_line,
-	const char * line_start_prev)
-{
-	// We want to match the line/col numbers output by clang,
-	//  so we have to do some munging. Specifically,
-	//  we need to do a handwave when the last char
-	//  in a file is '\n'
-
-	if (str == line_start)
-	{
-		printf(
-			"'' %d:%lld\n",
-			i_line,
-			line_start - line_start_prev);
-	}
-	else
-	{
-		printf(
-			"'' %d:%lld\n",
-			i_line + 1,
-			str - line_start + 1);
-	}
-}
-
 static void Print_toks_in_str(const char * str)
 {
-	const char * line_start_prev = NULL;
 	const char * line_start = str;
 	int i_line = 0;
 
@@ -461,8 +432,7 @@ static void Print_toks_in_str(const char * str)
 		Skip_whitespace_and_comments(
 			&str, 
 			&line_start, 
-			&i_line,
-			&line_start_prev);
+			&i_line);
 
 		if (!str[0])
 			break;
@@ -479,7 +449,7 @@ static void Print_toks_in_str(const char * str)
 		str += token.len;
 	}
 
-	Print_eof(str, line_start, i_line, line_start_prev);
+	Print_token(str - 1, 0, line_start, i_line);
 }
 
 
