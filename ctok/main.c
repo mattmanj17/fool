@@ -1,14 +1,12 @@
 
 #include <stdbool.h>
-
 #include <stdio.h>
-#include <string.h> //??? get rid of this later
 #include <stdlib.h>
+#include <string.h>
 
 
 
 #define len_ary(array) (sizeof(array)/sizeof(0[array]))
-#define for_i_in_ary(i, ary) for (int i = 0; i < len_ary(ary); ++i)
 
 
 
@@ -432,31 +430,58 @@ static token_t Try_lex_pp_num(const char * str)
 }
 
 
-
-static const char * punctuation[] =
+static const char * punct_3[]
 {
 	"...", "<<=", ">>=",
 
+	"\0",
+};
+
+static const char * punct_2[]
+{
 	"do", "if", "->", "++", "--", "<<", ">>", "<=", ">=", "==", "!=", 
 	"&&", "||", "*=", "/=", "%=", "+=", "-=", "&=", "^=", "|=",
 
+	"\0",
+};
+
+static const char * punct_1[]
+{
 	"[", "]", "(", ")", "{", "}", ".", "&", "*", "+", "-", "~", "!", 
 	"/", "%", "<", ">", "^", "|", "?", ":", ";", "=", ",",
+
+	"\0",
+};
+
+static const char ** punctuation[]
+{
+	punct_1,
+	punct_2,
+	punct_3,
 };
 
 static token_t Try_lex_punct(const char * str)
 {
-	for_i_in_ary(i, punctuation)
+	for (int len = 3; len > 0; --len)
 	{
-		const char * punct = punctuation[i];
-		int len = (int)strlen(punct);
+		int i = len - 1;
+		const char ** punct_of_len = punctuation[i];
 
-		if (Starts_with(str, punct, len))
+		while (true)
 		{
-			token_t token;
-			token.kind = tok_punct;
-			token.len = (int)len;
-			return token;
+			const char * punct = *punct_of_len;
+			if (!punct[0])
+				break;
+
+			if (Starts_with(str, punct, len))
+			{
+				token_t token;
+				token.kind = tok_punct;
+				token.len = (int)len;
+				return token;
+			}
+
+			++punct_of_len;
 		}
 	}
 
@@ -493,7 +518,7 @@ static token_t Try_lex_token(const char * str)
 		Try_lex_punct,
 	};
 
-	for_i_in_ary(i, lex_fns)
+	for (int i = 0; i < len_ary(lex_fns); ++i)
 	{
 		token_t token = lex_fns[i](str);
 		if (!Is_valid_token(token))
