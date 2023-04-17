@@ -104,11 +104,6 @@ static int Count_chars(
 	return len;
 }
 
-static int Count_digits(const char * str)
-{
-	return Count_chars(Is_digit, str);
-}
-
 static int Count_hex(const char * str)
 {
 	return Count_chars(Is_hex, str);
@@ -126,9 +121,9 @@ typedef enum
 	tok_error,   // BUG (matthewd) create a 'tok_skip' kind, and have tok_error always stop lexing?
 	tok_str_lit,
 	tok_char_lit,
-	tok_int_lit,
-	tok_punct,
+	tok_pp_num,
 	tok_id,
+	tok_punct,
 
 	tok_max,
 } token_kind_t;
@@ -307,63 +302,123 @@ static token_t Try_lex_char_lit(const char * str)
 	return token;
 }
 
-static int Length_of_integer_suffix(const char * str) //??? do not love this name
+bool Starts_pp_num_sign(char ch)
 {
-	char lower_str[4] = {0};
-	strncpy(lower_str, str, 3);
-	lower_str[0] |= 0x20;
-
-	if (lower_str[0] != 'u' && lower_str[0] != 'l')
-		return 0;
-
-	lower_str[1] |= 0x20;
-	lower_str[2] |= 0x20;
-
-	if (Starts_with(lower_str, "llu", 3))
-		return 3;
-
-	if (Starts_with(lower_str, "ull", 3))
-		return 3;
-
-	if (Starts_with(lower_str, "ll", 2))
-		return 2;
-
-	if (Starts_with(lower_str, "lu", 2))
-		return 2;
-
-	if (Starts_with(lower_str, "ul", 2))
-		return 2;
-
-	return 1;
+	return ch == 'e' || ch == 'E' || ch == 'p' || ch == 'P';
 }
 
-static token_t Try_lex_int_lit(const char * str)
+bool Is_sign(char ch)
 {
-	if (!Is_digit(str[0]))
-		return Make_error_token();
+	return ch == '-' || ch == '+';
+}
+
+static token_t Try_lex_pp_num(const char * str)
+{
+	/* NOTE (matthewd)
+		preprocesor numbers are a bit unintuative,
+		since they can match things that are not valid tokens
+		in later translation phases.
+
+		so, here is a quick antlr style definition of pp-num
+	
+		pp_num
+			: pp_num_start pp_num_continue*
+			;
+
+		pp_num_start
+			: [0-9]
+			| '.' [0-9]
+			;
+
+		pp_num_continue
+			: '.'
+			| [eEpP][+-]
+			| [0-9a-zA-Z_]
+			;
+
+		note that, pp_num_continue is technically also supposed
+		to include "universal character names" (\uxxxx or \Uxxxxxxxx),
+		but I have not implemented that, for now.
+
+		also note that, this is not how this is defined in the standard.
+		That standard defines it with left recursion, so I factored out
+		the left recursion so it would be more obvious what the code was doing
+
+		the original definition is
+
+		pp_num
+			: [0-9]
+			| '.' [0-9]
+			| pp_num [0-9]
+			| pp_num identifier_nondigit
+			| pp_num 'e' [+-]
+			| pp_num 'E' [+-]
+			| pp_num 'p' [+-]
+			| pp_num 'P' [+-]
+			| pp_num '.'
+			;
+
+		where identifier_nondigit is 
+		[0-9a-zA-Z_] OR a "universal character name"
+	*/
 
 	const char * tok_start = str;
 
-	token_t token;
-	token.kind = tok_int_lit;
+	// pp_num_start
 
-	if (str[0] != '0')
+	if (Is_digit(str[0]))
 	{
-		str += Count_digits(str);
+		++str;
 	}
-	else if (str[1] == 'x' || str[1] == 'X')
+	else if (str[0] == '.')
 	{
-		str += 2;
-		str += Count_hex(str);
+		++str;
+		
+		if (!Is_digit(str[0]))
+			return Make_error_token();
+
+		++str;
 	}
 	else
 	{
-		str += Count_octal(str);
+		return Make_error_token();
+	}
+	
+	// pp_num_continue
+
+	while (true)
+	{
+		// '.'
+
+		if (str[0] == '.')
+		{
+			++str;
+			continue;
+		}
+
+		// [eEpP][+-]
+
+		if (Starts_pp_num_sign(str[0]) && Is_sign(str[1]))
+		{
+			str += 2;
+			continue;
+		}
+
+		// [0-9a-zA-Z_]
+
+		if (Extends_id(str[0]))
+		{
+			++str;
+			continue;
+		}
+
+		break;
 	}
 
-	str += Length_of_integer_suffix(str);
-
+	token_t token;
+	token.kind = tok_pp_num;
 	token.len = (int)(str - tok_start);
+
 	return token;
 }
 
@@ -414,15 +469,13 @@ typedef token_t (*lex_fn_t)(const char *);
 
 static token_t Try_lex_token(const char * str)
 {
-	//??? todo add support for floating constants
-
 	lex_fn_t lex_fns[] =
 	{
 		Try_lex_str_lit,
-		Try_lex_char_lit, // character constant
-		Try_lex_int_lit, // decimal constant/octal constant/hexadecimal constant
-		Try_lex_id, // keyword/identifier/enumeration-constant
-		Try_lex_punct, // punctuator
+		Try_lex_char_lit,
+		Try_lex_pp_num,
+		Try_lex_id,
+		Try_lex_punct,
 	};
 
 	for_i_in_ary(i, lex_fns)
