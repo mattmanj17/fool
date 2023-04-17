@@ -12,11 +12,16 @@
 
 
 
-static const char * Find_in_str(char ch, const char * str)
+static const char * Find_in_str(
+	char ch, 
+	const char * str)
 {
-	while (*str)
+	while (true)
 	{
-		if (*str == ch)
+		if (!str[0])
+			break;
+
+		if (str[0] == ch)
 			return str;
 
 		++str;
@@ -25,20 +30,29 @@ static const char * Find_in_str(char ch, const char * str)
 	return NULL;
 }
 
-static const char * Find_any_in_str(const char * chs, const char * str)
+static const char * Find_first_in_span(
+	const char * chars_to_find, 
+	const char * begin,
+	const char * end)
 {
-	while (*str)
+	while (true)
 	{
-		const char * cursor = chs;
-		while (*cursor)
+		if (begin >= end)
+			break;
+
+		if (!begin[0])
+			break;
+
+		const char * cursor = chars_to_find;
+		while (cursor[0])
 		{
-			if (*str == *cursor)
-				return str;
+			if (begin[0] == cursor[0])
+				return begin;
 
 			++cursor;
 		}
 
-		++str;
+		++begin;
 	}
 
 	return NULL;
@@ -539,130 +553,144 @@ static void Print_eof(
 		Column_number_for_eof(line_start, tok_start));
 }
 
-static void Print_toks_in_str(const char * str) //??? I wish this function was shorter...
+static void Print_toks_in_str(const char * begin, const char * end) //??? I wish this function was shorter...
 {
-	const char * line_start = str;
+	const char * line_start = begin;
 	int i_line = 0;
 
 	bool in_block_comment = false;
 
-	while (str[0])
+	char ch0;
+	char ch1;
+
+	while (true)
 	{
-		if (str[0] == '\n' || str[0] == '\r')
+		if (begin >= end)
+			break;
+
+		ch0 = begin[0];
+
+		if (!ch0)
+			break;
+
+		ch1 = (begin == end) ? '\0' : begin[1];
+	
+		if (ch0 == '\r' || ch0 == '\n')
 		{
-			if (str[0] == '\r' && str[1] == '\n')
+			if (ch0 == '\r' && ch1 == '\n')
 			{
-				++str;
+				++begin;
+				ch1 = (begin == end) ? '\0' : begin[1];
 			}
 
 			// To match clang's output for eof line+col,
 			//  we leave the cursor on the last newline
 			//  (if the string ends with new line)
 
-			if (!str[1])
+			if (!ch1)
 				break;
 
 			++i_line;
-			++str;
-			line_start = str;
+			++begin;
+			line_start = begin;
 		}
 		else if (in_block_comment)
 		{
-			const char * star_or_newline = Find_any_in_str("*\r\n", str);
+			const char * star_or_newline = Find_first_in_span("*\r\n", begin, end);
 			if (!star_or_newline)
 			{
-				str += strlen(str);
+				begin = end;
 				continue;
 			}
 
-			str = star_or_newline;
+			begin = star_or_newline;
 
-			if (str[0] == '*')
+			if (begin[0] == '*')
 			{
-				if (str[1] == '/')
+				if (begin < end && begin[1] == '/')
 				{
-					str += 2;
+					begin += 2;
 					in_block_comment = false;
 				}
 				else
 				{
-					++str;
+					++begin;
 				}
 			}
 		}
-		else if (str[0] == '/' && str[1] == '*')
+		else if (ch0 == '/' && ch1 == '*')
 		{
-			str += 2;
+			begin += 2;
 			in_block_comment = true;
 		}
-		else if (str[0] == '/' && str[1] == '/')
+		else if (ch0 == '/' && ch1 == '/')
 		{
-			const char * newline = Find_any_in_str("\r\n", str);
+			const char * newline = Find_first_in_span("\r\n", begin, end);
 			if (!newline)
 			{
-				str += strlen(str);
+				begin = end;
 			}
 			else
 			{
-				str = newline;
+				begin = newline;
 			}
 		}
-		else if (str[0] == ' ' || str[0] == '\t')
+		else if (ch0 == ' ' || ch0 == '\t')
 		{
-			++str;
+			++begin;
 		}
 		else
 		{
-			token_t token = Try_lex_token(str);
+			token_t token = Try_lex_token(begin); //??? not respecting end?
 			if (!Is_valid_token(token))
 			{
 				printf("Lex error\n");
 				return;
 			}
 
-			Print_token(line_start, i_line, str, token.len);
+			Print_token(line_start, i_line, begin, token.len);
 
-			str += token.len;
+			begin += token.len;
 		}
 	}
 
-	Print_eof(i_line, line_start, str);
+	Print_eof(i_line, line_start, begin);
 }
 
 
 
-static bool Try_read_file_to_buffer(FILE * file, char * buf, int len_buf)
+static char * Try_read_file_to_buffer(FILE * file, char * buf, int len_buf)
 {
 	int err = fseek(file, 0, SEEK_END);
 	if (err)
-		return false;
+		return NULL;
 
 	long len_file = ftell(file);
 	if (len_file < 0 || len_file >= len_buf)
-		return false;
+		return NULL;
 
 	err = fseek(file, 0, SEEK_SET);
 	if (err)
-		return false;
+		return NULL;
 
 	size_t bytes_read = fread(buf, 1, (size_t)len_file, file);
 	if (bytes_read != (size_t)len_file)
-		return false;
+		return NULL;
 
-	return true;
+	return buf + len_file;
 }
 
-static bool Try_read_file_at_path_to_buffer(const char * fpath, char * buf, int len_buf)
+static char * Try_read_file_at_path_to_buffer(const char * fpath, char * buf, int len_buf)
 {
 	FILE * file = fopen(fpath, "rb");
 	if (!file)
-		return false;
+		return NULL;
 
-	bool read_file = Try_read_file_to_buffer(file, buf, len_buf);
+	char * end = Try_read_file_to_buffer(file, buf, len_buf);
 
 	fclose(file); // BUG (matthewd) ignoring return value?
 
-	return read_file;
+	return end;
 }
 
 
@@ -684,14 +712,14 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	bool read_file = Try_read_file_at_path_to_buffer(argv[1], file_buf, len_file_buf);
-	if (!read_file)
+	char * end = Try_read_file_at_path_to_buffer(argv[1], file_buf, len_file_buf);
+	if (!end)
 	{
 		printf("Failed to read file '%s'.\n", argv[1]);
 		return 1;
 	}
 
-	Print_toks_in_str(file_buf);
+	Print_toks_in_str(file_buf, end);
 
 	return 0;
 }
