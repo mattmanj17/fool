@@ -2,7 +2,6 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 
 
 
@@ -26,39 +25,6 @@ static const char * Find_in_str(
 	}
 
 	return NULL;
-}
-
-static const char * Find_first_in_span(
-	const char * chars_to_find, 
-	const char * begin,
-	const char * end)
-{
-	while (true)
-	{
-		if (begin >= end)
-			break;
-
-		if (!begin[0])
-			break;
-
-		const char * cursor = chars_to_find;
-		while (cursor[0])
-		{
-			if (begin[0] == cursor[0])
-				return begin;
-
-			++cursor;
-		}
-
-		++begin;
-	}
-
-	return NULL;
-}
-
-static bool Starts_with(const char * str, const char * prefix, int len_prefix)
-{
-	return strncmp(str, prefix, (size_t)len_prefix) == 0;
 }
 
 static bool Is_digit(char ch)
@@ -430,6 +396,22 @@ static token_t Try_lex_pp_num(const char * str)
 }
 
 
+
+static token_t Try_lex_id(const char * str)
+{
+	//??? todo add support for universal-character-names
+
+	if (!Can_start_id(str[0]))
+		return Make_error_token();
+
+	token_t token;
+	token.kind = tok_id;
+	token.len = Count_chars(Extends_id, str);
+	return token;
+}
+
+
+
 static const char * punct_3[]
 {
 	"...", "<<=", ">>=",
@@ -460,6 +442,23 @@ static const char ** punctuation[]
 	punct_3,
 };
 
+static bool First_n_ch_equal(const char * str0, const char * str1, int len)
+{
+	for (int i = 0; i < len; ++i)
+	{
+		if (!str0[i])
+			return false;
+
+		if (!str1[i])
+			return false;
+
+		if (str0[i] != str1[i])
+			return false;
+	}
+
+	return true;
+}
+
 static token_t Try_lex_punct(const char * str)
 {
 	for (int len = 3; len > 0; --len)
@@ -473,7 +472,7 @@ static token_t Try_lex_punct(const char * str)
 			if (!punct[0])
 				break;
 
-			if (Starts_with(str, punct, len))
+			if (First_n_ch_equal(str, punct, len))
 			{
 				token_t token;
 				token.kind = tok_punct;
@@ -486,21 +485,6 @@ static token_t Try_lex_punct(const char * str)
 	}
 
 	return Make_error_token();
-}
-
-
-
-static token_t Try_lex_id(const char * str)
-{
-	//??? todo add support for universal-character-names
-
-	if (!Can_start_id(str[0]))
-		return Make_error_token();
-
-	token_t token;
-	token.kind = tok_id;
-	token.len = Count_chars(Extends_id, str);
-	return token;
 }
 
 
@@ -576,6 +560,34 @@ static void Print_eof(
 		"'' %d:%d\n",
 		i_line + 1,
 		Column_number_for_eof(line_start, tok_start));
+}
+
+static const char * Find_first_in_span(
+	const char * chars_to_find, 
+	const char * begin,
+	const char * end)
+{
+	while (true)
+	{
+		if (begin >= end)
+			break;
+
+		if (!begin[0])
+			break;
+
+		const char * cursor = chars_to_find;
+		while (cursor[0])
+		{
+			if (begin[0] == cursor[0])
+				return begin;
+
+			++cursor;
+		}
+
+		++begin;
+	}
+
+	return NULL;
 }
 
 static void Print_toks_in_str(const char * begin, const char * end) //??? I wish this function was shorter...
