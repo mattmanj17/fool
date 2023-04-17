@@ -159,6 +159,8 @@ static bool Is_valid_token(token_t token)
 	return true;
 }
 
+
+
 static int Length_of_escape(const char * str) //??? bug, this starts AFTER the leading \, which could be confusing... also do not love the name
 {
 	const char * simple_escapes = "abfnrtv'\"\\?";
@@ -215,7 +217,7 @@ static int Length_of_str_encoding_prefix(const char * str)
 	return 0;
 }
 
-static token_t Try_lex_str_lit(const char * str)
+static token_t Try_lex_str_lit(const char * str) //??? this fucntion is a little long
 {
 	const char * tok_start = str;
 
@@ -258,7 +260,9 @@ static token_t Try_lex_str_lit(const char * str)
 	return token;
 }
 
-static token_t Try_lex_char_lit(const char * str)
+
+
+static token_t Try_lex_char_lit(const char * str) //??? this fucntion is a little long
 {
 	const char * tok_start = str;
 
@@ -302,117 +306,108 @@ static token_t Try_lex_char_lit(const char * str)
 	return token;
 }
 
-bool Starts_pp_num_sign(char ch)
+
+
+/* NOTE (matthewd)
+	preprocesor numbers are a bit unintuative,
+	since they can match things that are not valid tokens
+	in later translation phases.
+
+	so, here is a quick antlr style definition of pp-num
+	
+	pp_num
+		: pp_num_start pp_num_continue*
+		;
+
+	pp_num_start
+		: [0-9]
+		| '.' [0-9]
+		;
+
+	pp_num_continue
+		: '.'
+		| [eEpP][+-]
+		| [0-9a-zA-Z_]
+		;
+
+	note that, pp_num_continue is technically also supposed
+	to include "universal character names" (\uxxxx or \Uxxxxxxxx),
+	but I have not implemented that, for now.
+
+	also note that, this is not how this is defined in the standard.
+	That standard defines it with left recursion, so I factored out
+	the left recursion so it would be more obvious what the code was doing
+
+	the original definition is
+
+	pp_num
+		: [0-9]
+		| '.' [0-9]
+		| pp_num [0-9]
+		| pp_num identifier_nondigit
+		| pp_num 'e' [+-]
+		| pp_num 'E' [+-]
+		| pp_num 'p' [+-]
+		| pp_num 'P' [+-]
+		| pp_num '.'
+		;
+
+	where identifier_nondigit is 
+	[0-9a-zA-Z_] OR a "universal character name"
+*/
+
+static int Len_pp_num_start(const char * str)
+{
+	if (Is_digit(str[0]))
+		return 1;
+
+	if (str[0] == '.' && Is_digit(str[1]))
+		return 2;
+	
+	return 0;
+}
+
+static bool Starts_pp_num_sign(char ch)
 {
 	return ch == 'e' || ch == 'E' || ch == 'p' || ch == 'P';
 }
 
-bool Is_sign(char ch)
+static bool Is_sign(char ch)
 {
 	return ch == '-' || ch == '+';
 }
 
+static int Len_pp_num_continue(const char * str)
+{
+	if (str[0] == '.')
+		return 1;
+
+	if (Starts_pp_num_sign(str[0]) && Is_sign(str[1]))
+		return 2;
+
+	if (Extends_id(str[0]))
+		return 1;
+	
+	return 0;
+}
+
 static token_t Try_lex_pp_num(const char * str)
 {
-	/* NOTE (matthewd)
-		preprocesor numbers are a bit unintuative,
-		since they can match things that are not valid tokens
-		in later translation phases.
-
-		so, here is a quick antlr style definition of pp-num
-	
-		pp_num
-			: pp_num_start pp_num_continue*
-			;
-
-		pp_num_start
-			: [0-9]
-			| '.' [0-9]
-			;
-
-		pp_num_continue
-			: '.'
-			| [eEpP][+-]
-			| [0-9a-zA-Z_]
-			;
-
-		note that, pp_num_continue is technically also supposed
-		to include "universal character names" (\uxxxx or \Uxxxxxxxx),
-		but I have not implemented that, for now.
-
-		also note that, this is not how this is defined in the standard.
-		That standard defines it with left recursion, so I factored out
-		the left recursion so it would be more obvious what the code was doing
-
-		the original definition is
-
-		pp_num
-			: [0-9]
-			| '.' [0-9]
-			| pp_num [0-9]
-			| pp_num identifier_nondigit
-			| pp_num 'e' [+-]
-			| pp_num 'E' [+-]
-			| pp_num 'p' [+-]
-			| pp_num 'P' [+-]
-			| pp_num '.'
-			;
-
-		where identifier_nondigit is 
-		[0-9a-zA-Z_] OR a "universal character name"
-	*/
-
 	const char * tok_start = str;
 
-	// pp_num_start
-
-	if (Is_digit(str[0]))
-	{
-		++str;
-	}
-	else if (str[0] == '.')
-	{
-		++str;
-		
-		if (!Is_digit(str[0]))
-			return Make_error_token();
-
-		++str;
-	}
-	else
-	{
+	int len_start = Len_pp_num_start(str);
+	if (!len_start)
 		return Make_error_token();
-	}
-	
-	// pp_num_continue
+
+	str += len_start;
 
 	while (true)
 	{
-		// '.'
+		int len_continue = Len_pp_num_continue(str);
+		if (!len_continue)
+			break;
 
-		if (str[0] == '.')
-		{
-			++str;
-			continue;
-		}
-
-		// [eEpP][+-]
-
-		if (Starts_pp_num_sign(str[0]) && Is_sign(str[1]))
-		{
-			str += 2;
-			continue;
-		}
-
-		// [0-9a-zA-Z_]
-
-		if (Extends_id(str[0]))
-		{
-			++str;
-			continue;
-		}
-
-		break;
+		str += len_continue;
 	}
 
 	token_t token;
@@ -421,6 +416,8 @@ static token_t Try_lex_pp_num(const char * str)
 
 	return token;
 }
+
+
 
 static const char * punctuation[] =
 {
@@ -452,9 +449,11 @@ static token_t Try_lex_punct(const char * str)
 	return Make_error_token();
 }
 
+
+
 static token_t Try_lex_id(const char * str)
 {
-	//?? todo add support for universal-character-names
+	//??? todo add support for universal-character-names
 
 	if (!Can_start_id(str[0]))
 		return Make_error_token();
@@ -464,6 +463,8 @@ static token_t Try_lex_id(const char * str)
 	token.len = Count_chars(Extends_id, str);
 	return token;
 }
+
+
 
 typedef token_t (*lex_fn_t)(const char *);
 
@@ -489,6 +490,8 @@ static token_t Try_lex_token(const char * str)
 
 	return Make_error_token();
 }
+
+
 
 static void Print_token(
 	const char * line_start, 
