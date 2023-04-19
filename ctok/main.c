@@ -515,6 +515,32 @@ static token_t Try_lex_token(const char * str)
 }
 
 
+static void Clean_and_print_ch(char ch)
+{
+	const char * good_ch = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&'()*+,-./:;<=>?@[]^_`{|}~";
+	if (Find_in_str(ch, good_ch))
+		putchar(ch);
+	else if (ch == '\a') 
+        printf("\\a");
+    else if (ch == '\b') 
+        printf("\\b");
+    else if (ch == '\f') 
+        printf("\\f");
+    else if (ch == '\n') 
+        printf("\\n");
+    else if (ch == '\r') 
+        printf("\\r");
+    else if (ch == '\t') 
+        printf("\\t");
+    else if (ch == '\v') 
+        printf("\\v");
+    else if (ch == '"') 
+        printf("\\\"");
+    else if (ch == '\\') 
+        printf("\\\\");
+	else
+		printf("%02X", ch);
+}
 
 static void Print_token(
 	const char * line_start, 
@@ -522,15 +548,15 @@ static void Print_token(
 	const char * tok_start, 
 	int tok_len)
 {
-	// NOTE (matthewd) "%.*s" is printf magic.
-	//  printf("%.*s", len, str) 
-	//  will only print the first 'len' 
-	//  characters from the beginning of 'str'
+	printf("\"");
+	for (int i = 0; i < tok_len; ++i)
+	{
+		Clean_and_print_ch(tok_start[i]);
+	}
+	printf("\"");
 
 	printf(
-		"'%.*s' %d:%d\n",
-		tok_len,
-		tok_start,
+		" %d:%d\n",
 		i_line + 1,
 		(int)(tok_start - line_start + 1));
 }
@@ -557,7 +583,7 @@ static void Print_eof(
 	const char * tok_start)
 {
 	printf(
-		"'' %d:%d\n",
+		"\"\" %d:%d\n",
 		i_line + 1,
 		Column_number_for_eof(line_start, tok_start));
 }
