@@ -539,7 +539,7 @@ static void Clean_and_print_ch(char ch)
     else if (ch == '\\') 
         printf("\\\\");
 	else
-		printf("%02X", ch);
+		printf("\\x%02hhx", ch);
 }
 
 static void Print_token(
@@ -559,33 +559,6 @@ static void Print_token(
 		" %d:%d\n",
 		i_line + 1,
 		(int)(tok_start - line_start + 1));
-}
-
-static int Column_number_for_eof(
-	const char * line_start,
-	const char * line_end)
-{
-	// magic handling of \r\n
-
-	int len_line = (int)(line_end - line_start);
-	if (len_line < 2)
-		return len_line;
-
-	if (line_start[len_line - 2] == '\r' && line_start[len_line - 1] == '\n')
-		return len_line - 1;
-
-	return len_line;
-}
-
-static void Print_eof(
-	int i_line,
-	const char * line_start,
-	const char * tok_start)
-{
-	printf(
-		"\"\" %d:%d\n",
-		i_line + 1,
-		Column_number_for_eof(line_start, tok_start));
 }
 
 static const char * Find_first_in_span(
@@ -616,12 +589,23 @@ static const char * Find_first_in_span(
 	return NULL;
 }
 
-static void Print_toks_in_str(const char * begin, const char * end) //??? I wish this function was shorter...
+static void Print_toks_in_str(const char * begin, const char * end) //??? I wish this function was shorter... //!!! gah, dont bother with end... need other way to skip to end...
 {
+	//??? gah, need to rewrite this: keeping comments + whitespace needs to be handled lower
+	//  ... this means I need to rethink line+col number tracking
+
 	const char * line_start = begin;
 	int i_line = 0;
 
 	bool in_block_comment = false;
+	const char * block_comment_begin = NULL;
+	const char * line_start_block_comment = NULL;
+	int i_line_block_comment = 0;
+
+	bool in_white = false;
+	const char * ws_begin = NULL;
+	const char * line_start_ws = NULL;
+	int i_line_ws = 0;
 
 	char ch0;
 	char ch1;
@@ -640,18 +624,20 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 	
 		if (ch0 == '\r' || ch0 == '\n')
 		{
+			if (!in_white)
+			{
+				line_start_ws = line_start;
+				i_line_ws = i_line;
+				ws_begin = begin;
+
+				in_white = true;
+			}
+
 			if (ch0 == '\r' && ch1 == '\n')
 			{
 				++begin;
 				ch1 = (begin == end) ? '\0' : begin[1];
 			}
-
-			// To match clang's output for eof line+col,
-			//  we leave the cursor on the last newline
-			//  (if the string ends with new line)
-
-			if (!ch1)
-				break;
 
 			++i_line;
 			++begin;
@@ -663,6 +649,12 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 			if (!star_or_newline)
 			{
 				begin = end;
+
+				// I wonder what clang does here...
+
+				int len = (int)(begin - block_comment_begin);
+				Print_token(line_start_block_comment, i_line_block_comment, block_comment_begin, len);
+
 				continue;
 			}
 
@@ -674,6 +666,9 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 				{
 					begin += 2;
 					in_block_comment = false;
+
+					int len = (int)(begin - block_comment_begin);
+					Print_token(line_start_block_comment, i_line_block_comment, block_comment_begin, len);
 				}
 				else
 				{
@@ -683,11 +678,30 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 		}
 		else if (ch0 == '/' && ch1 == '*')
 		{
+			if (in_white)
+			{
+				in_white = false;
+				int len = (int)(begin - ws_begin);
+				Print_token(line_start_ws, i_line_ws, ws_begin, len);
+			}
+
+			line_start_block_comment = line_start;
+			i_line_block_comment = i_line;
+			block_comment_begin = begin;
 			begin += 2;
 			in_block_comment = true;
 		}
 		else if (ch0 == '/' && ch1 == '/')
 		{
+			if (in_white)
+			{
+				in_white = false;
+				int len = (int)(begin - ws_begin);
+				Print_token(line_start_ws, i_line_ws, ws_begin, len);
+			}
+
+			const char * old_begin = begin;
+
 			const char * newline = Find_first_in_span("\r\n", begin, end);
 			if (!newline)
 			{
@@ -697,13 +711,32 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 			{
 				begin = newline;
 			}
+
+			int len = (int)(begin - old_begin);
+			Print_token(line_start, i_line, old_begin, len);
 		}
 		else if (ch0 == ' ' || ch0 == '\t')
 		{
+			if (!in_white)
+			{
+				line_start_ws = line_start;
+				i_line_ws = i_line;
+				ws_begin = begin;
+
+				in_white = true;
+			}
+
 			++begin;
 		}
 		else
 		{
+			if (in_white)
+			{
+				in_white = false;
+				int len = (int)(begin - ws_begin);
+				Print_token(line_start_ws, i_line_ws, ws_begin, len);
+			}
+
 			token_t token = Try_lex_token(begin); //??? not respecting end?
 			if (!Is_valid_token(token))
 			{
@@ -717,7 +750,12 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 		}
 	}
 
-	Print_eof(i_line, line_start, begin);
+	if (in_white)
+	{
+		in_white = false;
+		int len = (int)(begin - ws_begin);
+		Print_token(line_start_ws, i_line_ws, ws_begin, len);
+	}
 }
 
 
