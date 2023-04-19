@@ -561,40 +561,34 @@ static void Print_token(
 		(int)(tok_start - line_start + 1));
 }
 
-static const char * Find_first_in_span(
+static const char * Find_first_in_str_or_end( //??? this function is doing too much again... at least needs a better name
 	const char * chars_to_find, 
-	const char * begin,
-	const char * end)
+	const char * str)
 {
 	while (true)
 	{
-		if (begin >= end)
-			break;
-
-		if (!begin[0])
-			break;
+		if (!str[0])
+			return str;
 
 		const char * cursor = chars_to_find;
 		while (cursor[0])
 		{
-			if (begin[0] == cursor[0])
-				return begin;
+			if (str[0] == cursor[0])
+				return str;
 
 			++cursor;
 		}
 
-		++begin;
+		++str;
 	}
-
-	return NULL;
 }
 
-static void Print_toks_in_str(const char * begin, const char * end) //??? I wish this function was shorter... //!!! gah, dont bother with end... need other way to skip to end...
+static void Print_toks_in_str(const char * str) //??? I wish this function was shorter...
 {
 	//??? gah, need to rewrite this: keeping comments + whitespace needs to be handled lower
 	//  ... this means I need to rethink line+col number tracking
 
-	const char * line_start = begin;
+	const char * line_start = str;
 	int i_line = 0;
 
 	bool in_block_comment = false;
@@ -612,15 +606,12 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 
 	while (true)
 	{
-		if (begin >= end)
-			break;
-
-		ch0 = begin[0];
+		ch0 = str[0];
 
 		if (!ch0)
 			break;
 
-		ch1 = (begin == end) ? '\0' : begin[1];
+		ch1 = str[1];
 	
 		if (ch0 == '\r' || ch0 == '\n')
 		{
@@ -628,51 +619,50 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 			{
 				line_start_ws = line_start;
 				i_line_ws = i_line;
-				ws_begin = begin;
+				ws_begin = str;
 
 				in_white = true;
 			}
 
 			if (ch0 == '\r' && ch1 == '\n')
 			{
-				++begin;
-				ch1 = (begin == end) ? '\0' : begin[1];
+				++str;
 			}
 
 			++i_line;
-			++begin;
-			line_start = begin;
+			++str;
+			line_start = str;
 		}
 		else if (in_block_comment)
 		{
-			const char * star_or_newline = Find_first_in_span("*\r\n", begin, end);
-			if (!star_or_newline)
+			const char * star_or_newline_or_end = Find_first_in_str_or_end("*\r\n", str);
+			if (!star_or_newline_or_end[0]) // check for end of string
 			{
-				begin = end;
+				str = star_or_newline_or_end;
 
 				// I wonder what clang does here...
 
-				int len = (int)(begin - block_comment_begin);
+				int len = (int)(str - block_comment_begin);
 				Print_token(line_start_block_comment, i_line_block_comment, block_comment_begin, len);
 
 				continue;
 			}
 
-			begin = star_or_newline;
+			str = star_or_newline_or_end;
 
-			if (begin[0] == '*')
+			if (str[0] == '*')
 			{
-				if (begin < end && begin[1] == '/')
+				if (str[1] == '/')
 				{
-					begin += 2;
+					str += 2;
 					in_block_comment = false;
 
-					int len = (int)(begin - block_comment_begin);
+					int len = (int)(str - block_comment_begin);
 					Print_token(line_start_block_comment, i_line_block_comment, block_comment_begin, len);
 				}
 				else
 				{
-					++begin;
+					++str;
 				}
 			}
 		}
@@ -681,14 +671,14 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 			if (in_white)
 			{
 				in_white = false;
-				int len = (int)(begin - ws_begin);
+				int len = (int)(str - ws_begin);
 				Print_token(line_start_ws, i_line_ws, ws_begin, len);
 			}
 
 			line_start_block_comment = line_start;
 			i_line_block_comment = i_line;
-			block_comment_begin = begin;
-			begin += 2;
+			block_comment_begin = str;
+			str += 2;
 			in_block_comment = true;
 		}
 		else if (ch0 == '/' && ch1 == '/')
@@ -696,23 +686,17 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 			if (in_white)
 			{
 				in_white = false;
-				int len = (int)(begin - ws_begin);
+				int len = (int)(str - ws_begin);
 				Print_token(line_start_ws, i_line_ws, ws_begin, len);
 			}
 
-			const char * old_begin = begin;
+			const char * old_begin = str;
 
-			const char * newline = Find_first_in_span("\r\n", begin, end);
-			if (!newline)
-			{
-				begin = end;
-			}
-			else
-			{
-				begin = newline;
-			}
+			// BUG check what clang does on line commnet without newline at end
 
-			int len = (int)(begin - old_begin);
+			str = Find_first_in_str_or_end("\r\n", str);
+
+			int len = (int)(str - old_begin);
 			Print_token(line_start, i_line, old_begin, len);
 		}
 		else if (ch0 == ' ' || ch0 == '\t')
@@ -721,39 +705,39 @@ static void Print_toks_in_str(const char * begin, const char * end) //??? I wish
 			{
 				line_start_ws = line_start;
 				i_line_ws = i_line;
-				ws_begin = begin;
+				ws_begin = str;
 
 				in_white = true;
 			}
 
-			++begin;
+			++str;
 		}
 		else
 		{
 			if (in_white)
 			{
 				in_white = false;
-				int len = (int)(begin - ws_begin);
+				int len = (int)(str - ws_begin);
 				Print_token(line_start_ws, i_line_ws, ws_begin, len);
 			}
 
-			token_t token = Try_lex_token(begin); //??? not respecting end?
+			token_t token = Try_lex_token(str);
 			if (!Is_valid_token(token))
 			{
 				printf("Lex error\n");
 				return;
 			}
 
-			Print_token(line_start, i_line, begin, token.len);
+			Print_token(line_start, i_line, str, token.len);
 
-			begin += token.len;
+			str += token.len;
 		}
 	}
 
 	if (in_white)
 	{
 		in_white = false;
-		int len = (int)(begin - ws_begin);
+		int len = (int)(str - ws_begin);
 		Print_token(line_start_ws, i_line_ws, ws_begin, len);
 	}
 }
@@ -820,7 +804,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	Print_toks_in_str(file_buf, end);
+	Print_toks_in_str(file_buf);
 
 	return 0;
 }
