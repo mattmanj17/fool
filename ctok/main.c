@@ -27,6 +27,16 @@ static const char * Find_in_str(
 	return NULL;
 }
 
+static bool Is_horizontal_whitespace(char ch)
+{
+	return ch == ' ' || ch == '\t';
+}
+
+static bool Is_line_break(char ch)
+{
+	return ch == '\r' || ch == '\n';
+}
+
 static bool Is_digit(char ch)
 {
 	return Find_in_str(ch, "0123456789") != NULL;
@@ -96,7 +106,9 @@ static int Count_octal(const char * str)
 
 typedef enum 
 {
-	tok_error,   // BUG (matthewd) create a 'tok_skip' kind, and have tok_error always stop lexing?
+	tok_space,
+	tok_block_comment,
+	tok_line_comment,
 	tok_str_lit,
 	tok_char_lit,
 	tok_pp_num,
@@ -106,33 +118,125 @@ typedef enum
 	tok_max,
 } token_kind_t;
 
-typedef struct 
+typedef struct
 {
-	token_kind_t kind;
-	int len;
+	int length;
+	token_kind_t kind; 
+	int line_breaks;
+	int last_line_break;
 } token_t;
 
-static token_t Make_error_token(void)
+static const token_t clear_token = {0};
+
+static void Append_line_break(token_t * p_token, int len_line_break)
 {
-	token_t token;
-	token.kind = tok_error;
-	token.len = 0;
-	return token;
+	p_token->length += len_line_break;
+	p_token->last_line_break = p_token->length - 1;
+	p_token->line_breaks += 1;
 }
 
-static bool Is_valid_token(token_t token)
+
+
+static int Len_line_break(const char * str)
 {
-	if (token.kind == tok_error)
+	char ch = str[0];
+
+	if (ch == '\n')
+		return 1;
+
+	if (ch == '\r')
+	{
+		if (str[1] == '\n')
+			return 2;
+
+		return 1;
+	}
+
+	return 0;
+}
+
+static bool Try_lex_space(token_t * p_token, const char * str)
+{
+	*p_token = clear_token;
+	p_token->kind = tok_space; // lol, we actually do not need to do this, since tok_space == 0
+
+	while (true)
+	{
+		const char * cur = str + p_token->length;
+
+		int len_line_break = Len_line_break(cur);
+		bool is_horizontal_whitespace = Is_horizontal_whitespace(cur[0]);
+
+		if (!len_line_break && !is_horizontal_whitespace)
+			return p_token->length > 0;
+
+		if (is_horizontal_whitespace)
+		{
+			++p_token->length;
+		}
+		else
+		{
+			Append_line_break(p_token, len_line_break);
+		}
+	}
+}
+
+
+
+static bool Try_lex_block_comment(token_t * p_token, const char * str)
+{
+	if (str[0] != '/' || str[1] != '*')
 		return false;
 
-	if (token.kind < 0)
+	*p_token = clear_token;
+	p_token->kind = tok_block_comment;
+	p_token->length = 2;
+
+	while (true)
+	{
+		const char * cur = str + p_token->length;
+
+		if (cur[0] == '*' && cur[1] == '/')
+		{
+			p_token->length += 2;
+			break;
+		}
+
+		int len_line_break = Len_line_break(cur);
+		if (len_line_break)
+		{
+			Append_line_break(p_token, len_line_break);
+			continue;
+		}
+
+		++p_token->length;
+	}
+
+	return true;
+}
+
+
+
+static bool Try_lex_line_comment(token_t * p_token, const char * str)
+{
+	if (str[0] != '/' || str[1] != '/')
 		return false;
 
-	if (token.kind >= tok_max)
-		return false;
+	*p_token = clear_token;
+	p_token->kind = tok_line_comment;
+	p_token->length = 2;
 
-	if (token.len <= 0)
-		return false;
+	while (true)
+	{
+		char ch = str[p_token->length];
+		if (!ch)
+			break;
+
+		if (Is_line_break(ch))
+			break;
+
+		++p_token->length;
+	}
 
 	return true;
 }
@@ -195,14 +299,14 @@ static int Length_of_str_encoding_prefix(const char * str)
 	return 0;
 }
 
-static token_t Try_lex_str_lit(const char * str) //??? this fucntion is a little long
+static bool Try_lex_str_lit(token_t * p_token, const char * str) //??? this fucntion is a little long
 {
 	const char * tok_start = str;
 
 	str += Length_of_str_encoding_prefix(str);
 
 	if (str[0] != '"')
-		return Make_error_token();
+		return false;
 
 	++str;
 
@@ -211,7 +315,7 @@ static token_t Try_lex_str_lit(const char * str) //??? this fucntion is a little
 		char ch0 = str[0];
 
 		if (str[0] == '\0')
-			return Make_error_token();
+			return false;
 
 		++str;
 
@@ -222,25 +326,25 @@ static token_t Try_lex_str_lit(const char * str) //??? this fucntion is a little
 		{
 			int len_esc = Length_of_escape(str);
 			if (len_esc == 0)
-				return Make_error_token();
+				return false;
 
 			str += len_esc;
 		}
 
 		if (Find_in_str(ch0, "\r\n"))
-			return Make_error_token();
+			return false;
 	}
 	
-	token_t token;
-	token.kind = tok_str_lit;
-	token.len = (int)(str - tok_start);
+	*p_token = clear_token;
+	p_token->kind = tok_str_lit;
+	p_token->length = (int)(str - tok_start);
 
-	return token;
+	return true;
 }
 
 
 
-static token_t Try_lex_char_lit(const char * str) //??? this fucntion is a little long
+static bool Try_lex_char_lit(token_t * p_token, const char * str) //??? this fucntion is a little long
 {
 	const char * tok_start = str;
 
@@ -248,7 +352,7 @@ static token_t Try_lex_char_lit(const char * str) //??? this fucntion is a littl
 		++str;
 
 	if (str[0] != '\'')
-		return Make_error_token();
+		return false;
 
 	++str;
 
@@ -256,10 +360,10 @@ static token_t Try_lex_char_lit(const char * str) //??? this fucntion is a littl
 
 	char ch_body_0 = str[0];
 	if (ch_body_0 == '\0')
-		return Make_error_token();
+		return false;
 
 	if (Find_in_str(ch_body_0, "\'\r\n"))
-		return Make_error_token();
+		return false;
 
 	++str;
 
@@ -267,21 +371,21 @@ static token_t Try_lex_char_lit(const char * str) //??? this fucntion is a littl
 	{
 		int len_esc = Length_of_escape(str);
 		if (len_esc == 0)
-			return Make_error_token();
+			return false;
 
 		str += len_esc;
 	}
 
 	if (str[0] != '\'')
-		return Make_error_token();
+		return false;
 
 	++str;
 
-	token_t token;
-	token.kind = tok_char_lit;
-	token.len = (int)(str - tok_start);
+	*p_token = clear_token;
+	p_token->kind = tok_char_lit;
+	p_token->length = (int)(str - tok_start);
 
-	return token;
+	return true;
 }
 
 
@@ -369,13 +473,13 @@ static int Len_pp_num_continue(const char * str)
 	return 0;
 }
 
-static token_t Try_lex_pp_num(const char * str)
+static bool Try_lex_pp_num(token_t * p_token, const char * str)
 {
 	const char * tok_start = str;
 
 	int len_start = Len_pp_num_start(str);
 	if (!len_start)
-		return Make_error_token();
+		return false;
 
 	str += len_start;
 
@@ -388,26 +492,26 @@ static token_t Try_lex_pp_num(const char * str)
 		str += len_continue;
 	}
 
-	token_t token;
-	token.kind = tok_pp_num;
-	token.len = (int)(str - tok_start);
+	*p_token = clear_token;
+	p_token->kind = tok_pp_num;
+	p_token->length = (int)(str - tok_start);
 
-	return token;
+	return true;
 }
 
 
 
-static token_t Try_lex_id(const char * str)
+static bool Try_lex_id(token_t * p_token, const char * str)
 {
 	//??? todo add support for universal-character-names
 
 	if (!Can_start_id(str[0]))
-		return Make_error_token();
+		return false;
 
-	token_t token;
-	token.kind = tok_id;
-	token.len = Count_chars(Extends_id, str);
-	return token;
+	*p_token = clear_token;
+	p_token->kind = tok_id;
+	p_token->length = Count_chars(Extends_id, str);
+	return true;
 }
 
 
@@ -459,7 +563,7 @@ static bool First_n_ch_equal(const char * str0, const char * str1, int len)
 	return true;
 }
 
-static token_t Try_lex_punct(const char * str)
+static bool Try_lex_punct(token_t * p_token, const char * str)
 {
 	for (int len = 3; len > 0; --len)
 	{
@@ -474,27 +578,34 @@ static token_t Try_lex_punct(const char * str)
 
 			if (First_n_ch_equal(str, punct, len))
 			{
-				token_t token;
-				token.kind = tok_punct;
-				token.len = (int)len;
-				return token;
+				*p_token = clear_token;
+				p_token->kind = tok_punct;
+				p_token->length = (int)len;
+				return true;
 			}
 
 			++punct_of_len;
 		}
 	}
 
-	return Make_error_token();
+	return false;
 }
 
 
+//??? have lex_fn_t return an enum, signifying if we have actually hit a lexer error, 
+// or if the str just did not start with that kind of token
+// ... although, some of them read more than one char to even figure THAT out...
+//  goal is to not have any 'backtracking'
 
-typedef token_t (*lex_fn_t)(const char *);
+typedef bool (*lex_fn_t)(token_t *, const char *); 
 
-static token_t Try_lex_token(const char * str)
+static bool Try_lex_token(token_t * p_token, const char * str)
 {
 	lex_fn_t lex_fns[] =
 	{
+		Try_lex_space,
+		Try_lex_block_comment,
+		Try_lex_line_comment,
 		Try_lex_str_lit,
 		Try_lex_char_lit,
 		Try_lex_pp_num,
@@ -504,20 +615,24 @@ static token_t Try_lex_token(const char * str)
 
 	for (int i = 0; i < len_ary(lex_fns); ++i)
 	{
-		token_t token = lex_fns[i](str);
-		if (!Is_valid_token(token))
+		if (!lex_fns[i](p_token, str))
 			continue;
 
-		return token;
+		return true;
 	}
 
-	return Make_error_token();
+	return false;
 }
 
 
 static void Clean_and_print_ch(char ch)
 {
-	const char * good_ch = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!#$%&'()*+,-./:;<=>?@[]^_`{|}~";
+	const char * good_ch = 
+		"0123456789"
+		"abcdefghijklmnopqrstuvwxyz"
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+		"!#$%&'()*+,-./:;<=>?@[]^_`{|}~";
+
 	if (Find_in_str(ch, good_ch))
 		putchar(ch);
 	else if (ch == '\a') 
@@ -543,8 +658,8 @@ static void Clean_and_print_ch(char ch)
 }
 
 static void Print_token(
-	const char * line_start, 
-	int i_line,
+	const char * last_line_break, 
+	int line_breaks_seen,
 	const char * tok_start, 
 	int tok_len)
 {
@@ -557,188 +672,33 @@ static void Print_token(
 
 	printf(
 		" %d:%d\n",
-		i_line + 1,
-		(int)(tok_start - line_start + 1));
+		line_breaks_seen + 1,
+		(int)(tok_start - last_line_break));
 }
 
-static const char * Find_first_in_str_or_end( //??? this function is doing too much again... at least needs a better name
-	const char * chars_to_find, 
-	const char * str)
+static void Print_toks_in_str(const char * str)
 {
-	while (true)
+	const char * last_line_break = str - 1; // bug, the fact that we have to do this -1 here is confusing
+	int line_breaks_seen = 0;
+
+	while (str[0])
 	{
-		if (!str[0])
-			return str;
-
-		const char * cursor = chars_to_find;
-		while (cursor[0])
+		token_t token;
+		if (!Try_lex_token(&token, str))
 		{
-			if (str[0] == cursor[0])
-				return str;
-
-			++cursor;
+			printf("Lex error\n");
+			return;
 		}
 
-		++str;
-	}
-}
+		Print_token(last_line_break, line_breaks_seen, str, token.length);
 
-static void Print_toks_in_str(const char * str) //??? I wish this function was shorter...
-{
-	//??? gah, need to rewrite this: keeping comments + whitespace needs to be handled lower
-	//  ... this means I need to rethink line+col number tracking
-
-	const char * line_start = str;
-	int i_line = 0;
-
-	bool in_block_comment = false;
-	const char * block_comment_begin = NULL;
-	const char * line_start_block_comment = NULL;
-	int i_line_block_comment = 0;
-
-	bool in_white = false;
-	const char * ws_begin = NULL;
-	const char * line_start_ws = NULL;
-	int i_line_ws = 0;
-
-	char ch0;
-	char ch1;
-
-	while (true)
-	{
-		ch0 = str[0];
-
-		if (!ch0)
-			break;
-
-		ch1 = str[1];
-	
-		if (ch0 == '\r' || ch0 == '\n')
+		if (token.line_breaks)
 		{
-			if (!in_white)
-			{
-				line_start_ws = line_start;
-				i_line_ws = i_line;
-				ws_begin = str;
-
-				in_white = true;
-			}
-
-			if (ch0 == '\r' && ch1 == '\n')
-			{
-				++str;
-			}
-
-			++i_line;
-			++str;
-			line_start = str;
+			line_breaks_seen += token.line_breaks;
+			last_line_break = str + token.last_line_break;
 		}
-		else if (in_block_comment)
-		{
-			const char * star_or_newline_or_end = Find_first_in_str_or_end("*\r\n", str);
-			if (!star_or_newline_or_end[0]) // check for end of string
-			{
-				str = star_or_newline_or_end;
 
-				// I wonder what clang does here...
-
-				int len = (int)(str - block_comment_begin);
-				Print_token(line_start_block_comment, i_line_block_comment, block_comment_begin, len);
-
-				continue;
-			}
-
-			str = star_or_newline_or_end;
-
-			if (str[0] == '*')
-			{
-				if (str[1] == '/')
-				{
-					str += 2;
-					in_block_comment = false;
-
-					int len = (int)(str - block_comment_begin);
-					Print_token(line_start_block_comment, i_line_block_comment, block_comment_begin, len);
-				}
-				else
-				{
-					++str;
-				}
-			}
-		}
-		else if (ch0 == '/' && ch1 == '*')
-		{
-			if (in_white)
-			{
-				in_white = false;
-				int len = (int)(str - ws_begin);
-				Print_token(line_start_ws, i_line_ws, ws_begin, len);
-			}
-
-			line_start_block_comment = line_start;
-			i_line_block_comment = i_line;
-			block_comment_begin = str;
-			str += 2;
-			in_block_comment = true;
-		}
-		else if (ch0 == '/' && ch1 == '/')
-		{
-			if (in_white)
-			{
-				in_white = false;
-				int len = (int)(str - ws_begin);
-				Print_token(line_start_ws, i_line_ws, ws_begin, len);
-			}
-
-			const char * old_begin = str;
-
-			// BUG check what clang does on line commnet without newline at end
-
-			str = Find_first_in_str_or_end("\r\n", str);
-
-			int len = (int)(str - old_begin);
-			Print_token(line_start, i_line, old_begin, len);
-		}
-		else if (ch0 == ' ' || ch0 == '\t')
-		{
-			if (!in_white)
-			{
-				line_start_ws = line_start;
-				i_line_ws = i_line;
-				ws_begin = str;
-
-				in_white = true;
-			}
-
-			++str;
-		}
-		else
-		{
-			if (in_white)
-			{
-				in_white = false;
-				int len = (int)(str - ws_begin);
-				Print_token(line_start_ws, i_line_ws, ws_begin, len);
-			}
-
-			token_t token = Try_lex_token(str);
-			if (!Is_valid_token(token))
-			{
-				printf("Lex error\n");
-				return;
-			}
-
-			Print_token(line_start, i_line, str, token.len);
-
-			str += token.len;
-		}
-	}
-
-	if (in_white)
-	{
-		in_white = false;
-		int len = (int)(str - ws_begin);
-		Print_token(line_start_ws, i_line_ws, ws_begin, len);
+		str += token.length;
 	}
 }
 
