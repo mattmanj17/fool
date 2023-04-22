@@ -624,15 +624,6 @@ static int Len_leading_token(
 	len = Len_leading_line_breaks(str, line_breaks, new_start_of_line);
 	if (len) return len;
 
-	// BUG this is super scuffed handling of line continuations,
-	//  but it might actualy be enough for most real code
-
-	if (str[0] == '\\')
-	{
-		len = Len_leading_line_breaks(str + 1, line_breaks, new_start_of_line);
-		if (len) return len + 1;
-	}
-
 	len = Len_leading_block_comment(str, line_breaks, new_start_of_line);
 	if (len) return len;
 
