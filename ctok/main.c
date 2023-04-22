@@ -308,6 +308,10 @@ static int Length_of_str_encoding_prefix(const char * str)
 
 static int Len_leading_str_lit(const char * str) //??? this function is a little long
 {
+	//??? TODO support utf8 chars? or do we get that for free?
+	//  should probably at least check for mal-formed utf8, instead
+	//  of just accepting all the bytes between the quotes
+
 	const char * begin = str;
 
 	str += Length_of_str_encoding_prefix(str);
@@ -359,7 +363,11 @@ static int Len_leading_char_lit(const char * str) //??? this fucntion is a littl
 
 	++str;
 
-	// NOTE (matthewd) deciding NOT to handle multi char literals...
+	//??? deciding NOT to handle multi char literals...
+	//  but if I start throwing weird test files at this, I bet I
+	//  will need to support them...
+
+	//??? TODO support utf8 chars?
 
 	char ch_body_0 = str[0];
 	if (ch_body_0 == '\0')
@@ -498,6 +506,7 @@ static int Len_leading_pp_num(const char * str)
 static int Len_leading_id(const char * str)
 {
 	//??? todo add support for universal-character-names
+	//??? todo support utf8 in ids
 
 	if (!Can_start_id(str[0]))
 		return 0;
@@ -518,6 +527,13 @@ static int Len_leading_id(const char * str)
 
 
 
+static const char * punct_4[]
+{
+	"%:%:",
+
+	"\0",
+};
+
 static const char * punct_3[]
 {
 	"...", "<<=", ">>=",
@@ -527,16 +543,17 @@ static const char * punct_3[]
 
 static const char * punct_2[]
 {
-	"do", "if", "->", "++", "--", "<<", ">>", "<=", ">=", "==", "!=", 
-	"&&", "||", "*=", "/=", "%=", "+=", "-=", "&=", "^=", "|=",
+	"!=", "##", "%:", "%=", "%>", "&&", "&=", "*=", "++", "+=", "--", "-=", 
+	"->", "/=", ":>", "<%", "<:", "<<", "<=", "==", ">=", ">>", "^=", "|=", 
+	"||",
 
 	"\0",
 };
 
 static const char * punct_1[]
 {
-	"[", "]", "(", ")", "{", "}", ".", "&", "*", "+", "-", "~", "!", 
-	"/", "%", "<", ">", "^", "|", "?", ":", ";", "=", ",",
+	"!", "#", "%", "&", "(", ")", "*", "+", ",", "-", ".", "/", ":", ";", 
+	"<", "=", ">", "?", "[", "]", "^", "{", "|", "}", "~",
 
 	"\0",
 };
@@ -546,6 +563,7 @@ static const char ** punctuation[]
 	punct_1,
 	punct_2,
 	punct_3,
+	punct_4,
 };
 
 static bool First_n_ch_equal(const char * str0, const char * str1, int len)
@@ -567,7 +585,7 @@ static bool First_n_ch_equal(const char * str0, const char * str1, int len)
 
 static int Len_leading_punct(const char * str)
 {
-	for (int len = 3; len > 0; --len)
+	for (int len = 4; len > 0; --len)
 	{
 		int i = len - 1;
 		const char ** punct_of_len = punctuation[i];
