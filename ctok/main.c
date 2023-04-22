@@ -134,48 +134,55 @@ static int Len_line_break(const char * str)
 	return 0;
 }
 
+// BUG clang has weird handling of line breaks + white space in raw mode...
+//  it returns whitespace before line breaks as their own token,
+//  but merges all adjacent lines breaks/white space after a line break into
+//  one token... this goo is to match that
+
+static int Len_leading_line_break_or_space(
+	const char * str, 
+	int * line_breaks,
+	const char ** new_start_of_line)
+{
+	int len_ws = Len_leading_horizontal_whitespace(str);
+	if (len_ws)
+		return len_ws;
+
+	int len_break = Len_line_break(str);
+	if (len_break)
+	{
+		*line_breaks += 1;
+		*new_start_of_line = str + len_break;
+		return len_break;
+	}
+
+	return 0;
+}
+
 static int Len_leading_line_breaks(
 	const char * str, 
 	int * line_breaks,
 	const char ** new_start_of_line)
 {
-	int len = Len_line_break(str);
-	if (!len)
+	const char * begin = str;
+	str += Len_line_break(str);
+
+	if (str == begin)
 		return 0;
 	
-	// BUG clang has weird handling of line breaks + white space in raw mode...
-	//  it returns whitespace before line breaks as their own token,
-	//  but merges all adjacent lines breaks/white space after a line break into
-	//  one token... this goo is to match that
-
-	str += len;
 	*line_breaks = 1;
 	*new_start_of_line = str;
 
 	while (true)
 	{
-		int len_ws = Len_leading_horizontal_whitespace(str);
-		if (len_ws)
-		{
-			str += len_ws;
-			len += len_ws;
-			continue;
-		}
+		int len = Len_leading_line_break_or_space(str, line_breaks, new_start_of_line);
+		if (!len)
+			break;
 
-		int len_break = Len_line_break(str);
-		if (len_break)
-		{
-			str += len_break;
-			len += len_break;
-			*line_breaks += 1;
-			*new_start_of_line = str;
-			continue;
-		}
-
-		break;
+		str += len;
 	}
 		
-	return len;
+	return (int)(str - begin);
 }
 
 
