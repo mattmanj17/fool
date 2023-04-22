@@ -180,9 +180,6 @@ static int Len_leading_line_breaks(
 
 
 
-
-
-
 static int Len_leading_block_comment(
 	const char * str, 
 	int * line_breaks,
