@@ -122,32 +122,17 @@ static int Len_line_break(const char * str)
 	return 0;
 }
 
-static int Len_leading_whitespace(
-	const char * str, 
-	int * line_breaks,
-	const char ** new_start_of_line)
+static int Len_leading_horizontal_whitespace(
+	const char * str)
 {
 	const char * begin = str;
-	*line_breaks = 0;
 
 	while (true)
 	{
-		int len_line_break = Len_line_break(str);
-		bool is_horizontal_whitespace = Is_horizontal_whitespace(str[0]);
-
-		if (!len_line_break && !is_horizontal_whitespace)
+		if (!Is_horizontal_whitespace(str[0]))
 			return (int)(str - begin);
 
-		if (is_horizontal_whitespace)
-		{
-			++str;
-		}
-		else
-		{
-			str += len_line_break;
-			*line_breaks += 1;
-			*new_start_of_line = str;
-		}
+		++str;
 	}
 }
 
@@ -564,8 +549,48 @@ static int Len_leading_token(
 	int * line_breaks,
 	const char ** new_start_of_line)
 {
-	int len = Len_leading_whitespace(str, line_breaks, new_start_of_line);
+	*line_breaks = 0;
+
+	int len = Len_leading_horizontal_whitespace(str);
 	if (len) return len;
+
+	len = Len_line_break(str);
+	if (len)
+	{
+		// BUG clang has weird handling of line breaks + white space in raw mode...
+		//  it returns whitespace before line breaks as their own token,
+		//  but merges all adjacent lines breaks/white space after a line break into
+		//  one token... this goo is to match that
+
+		str += len;
+		*line_breaks = 1;
+		*new_start_of_line = str;
+
+		while (true)
+		{
+			int len_ws = Len_leading_horizontal_whitespace(str);
+			if (len_ws)
+			{
+				str += len_ws;
+				len += len_ws;
+				continue;
+			}
+
+			int len_break = Len_line_break(str);
+			if (len_break)
+			{
+				str += len_break;
+				len += len_break;
+				*line_breaks += 1;
+				*new_start_of_line = str;
+				continue;
+			}
+
+			break;
+		}
+		
+		return len;
+	}
 
 	len = Len_leading_block_comment(str, line_breaks, new_start_of_line);
 	if (len) return len;
