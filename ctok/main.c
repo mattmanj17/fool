@@ -5,10 +5,6 @@
 
 
 
-#define len_ary(array) (sizeof(array)/sizeof(0[array]))
-
-
-
 static const char * Find_in_str(
 	char ch, 
 	const char * str)
@@ -70,19 +66,13 @@ static bool Extends_id(char ch)
 	return Is_digit(ch) || Can_start_id(ch);
 }
 
-
-
-typedef bool (*predicate_t)(char);
-
-static int Count_chars(
-	predicate_t predicate, 
-	const char * str)
+static int Count_hex(const char * str)
 {
 	int len = 0;
 
 	while (str[0])
 	{
-		if (!predicate(str[0]))
+		if (!Is_hex(str[0]))
 			break;
 
 		++str;
@@ -92,14 +82,20 @@ static int Count_chars(
 	return len;
 }
 
-static int Count_hex(const char * str)
-{
-	return Count_chars(Is_hex, str);
-}
-
 static int Count_octal(const char * str)
 {
-	return Count_chars(Is_octal, str);
+	int len = 0;
+
+	while (str[0])
+	{
+		if (!Is_octal(str[0]))
+			break;
+
+		++str;
+		++len;
+	}
+
+	return len;
 }
 
 
@@ -459,7 +455,18 @@ static int Len_leading_id(const char * str)
 	if (!Can_start_id(str[0]))
 		return 0;
 
-	return Count_chars(Extends_id, str);
+	int len = 0;
+
+	while (str[0])
+	{
+		if (!Extends_id(str[0]))
+			break;
+
+		++str;
+		++len;
+	}
+
+	return len;
 }
 
 
@@ -539,30 +546,31 @@ static int Len_leading_punct(const char * str)
 
 // BUG it would be better if we did not do any backtracking...
 
-typedef int (*len_fn)(const char *); 
-
 static int Len_leading_token(const char * str)
 {
-	len_fn len_fns[] =
-	{
-		Len_leading_whitespace,
-		Len_leading_block_comment,
-		Len_leading_line_comment,
-		Len_leading_str_lit,
-		Len_leading_char_lit,
-		Len_leading_pp_num,
-		Len_leading_id,
-		Len_leading_punct,
-	};
+	int len = Len_leading_whitespace(str);
+	if (len) return len;
 
-	for (int i = 0; i < len_ary(len_fns); ++i)
-	{
-		int len = len_fns[i](str);
-		if (!len)
-			continue;
+	len = Len_leading_block_comment(str);
+	if (len) return len;
 
-		return len;
-	}
+	len = Len_leading_line_comment(str);
+	if (len) return len;
+
+	len = Len_leading_str_lit(str);
+	if (len) return len;
+
+	len = Len_leading_char_lit(str);
+	if (len) return len;
+
+	len = Len_leading_pp_num(str);
+	if (len) return len;
+
+	len = Len_leading_id(str);
+	if (len) return len;
+
+	len = Len_leading_punct(str);
+	if (len) return len;
 
 	return 0;
 }
@@ -727,17 +735,17 @@ static char * Try_read_file_at_path_to_buffer(const char * fpath, char * buf, in
 
 
 
-#define len_file_buf 0x100000
-
 int main(int argc, char *argv[])
 {
+	const int len_file_buf = 0x100000;
+
 	if (argc != 2)
 	{
 		printf("wrong number of arguments, expect a single file name\n");
 		return 1;
 	}
 
-	char * file_buf = (char *)calloc(len_file_buf, 1);
+	char * file_buf = (char *)calloc((size_t)len_file_buf, 1);
 	if (!file_buf)
 	{
 		printf("Failed to allocate memory \n");
