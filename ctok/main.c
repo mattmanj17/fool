@@ -122,9 +122,13 @@ static int Len_line_break(const char * str)
 	return 0;
 }
 
-static int Len_leading_whitespace(const char * str)
+static int Len_leading_whitespace(
+	const char * str, 
+	int * line_breaks,
+	const char ** new_start_of_line)
 {
 	const char * begin = str;
+	*line_breaks = 0;
 
 	while (true)
 	{
@@ -141,19 +145,26 @@ static int Len_leading_whitespace(const char * str)
 		else
 		{
 			str += len_line_break;
+			*line_breaks += 1;
+			*new_start_of_line = str;
 		}
 	}
 }
 
 
 
-static int Len_leading_block_comment(const char * str)
+static int Len_leading_block_comment(
+	const char * str, 
+	int * line_breaks,
+	const char ** new_start_of_line)
 {
 	if (str[0] != '/' || str[1] != '*')
 		return 0;
 
 	const char * begin = str;
 	str += 2;
+
+	*line_breaks = 0;
 
 	while (true)
 	{
@@ -167,6 +178,8 @@ static int Len_leading_block_comment(const char * str)
 		if (len_line_break)
 		{
 			str += len_line_break;
+			*line_breaks += 1;
+			*new_start_of_line = str;
 			continue;
 		}
 
@@ -546,12 +559,15 @@ static int Len_leading_punct(const char * str)
 
 // BUG it would be better if we did not do any backtracking...
 
-static int Len_leading_token(const char * str)
+static int Len_leading_token(
+	const char * str, 
+	int * line_breaks,
+	const char ** new_start_of_line)
 {
-	int len = Len_leading_whitespace(str);
+	int len = Len_leading_whitespace(str, line_breaks, new_start_of_line);
 	if (len) return len;
 
-	len = Len_leading_block_comment(str);
+	len = Len_leading_block_comment(str, line_breaks, new_start_of_line);
 	if (len) return len;
 
 	len = Len_leading_line_comment(str);
@@ -608,54 +624,11 @@ static void Clean_and_print_ch(char ch)
 		printf("\\x%02hhx", ch);
 }
 
-static bool Try_compute_location_in_file(
-	const char * file_start, 
-	const char * loc,
-	int * p_line_number,
-	int * p_loc_in_line)
-{
-	int line_number = 1;
-	int loc_in_line = 1;
-
-	while (file_start < loc)
-	{
-		if (!file_start[0])
-			break;
-
-		int len_line_break = Len_line_break(file_start);
-		if (len_line_break)
-		{
-			file_start += len_line_break;
-			loc_in_line = 1;
-			++line_number;
-		}
-		else
-		{
-			++loc_in_line;
-			++file_start;
-		}
-	}
-
-	bool reached_loc = file_start == loc;
-
-	if (file_start == loc)
-	{
-		*p_line_number = line_number;
-		*p_loc_in_line = loc_in_line;
-	}
-	else
-	{
-		*p_line_number = -1;
-		*p_loc_in_line = -1;
-	}
-
-	return reached_loc;
-}
-
 static void Print_token(
-	const char * file_start,
 	const char * tok_start, 
-	int tok_len)
+	int tok_len,
+	int line_number,
+	int loc_in_line)
 {
 	printf("\"");
 	for (int i = 0; i < tok_len; ++i)
@@ -663,14 +636,6 @@ static void Print_token(
 		Clean_and_print_ch(tok_start[i]);
 	}
 	printf("\"");
-
-	int line_number;
-	int loc_in_line;
-	Try_compute_location_in_file(
-		file_start, 
-		tok_start,
-		&line_number,
-		&loc_in_line);
 
 	printf(
 		" %d:%d\n",
@@ -680,20 +645,31 @@ static void Print_token(
 
 static void Print_toks_in_str(const char * str)
 {
-	const char * begin = str;
+	int line_number = 1;
+	const char * start_of_line = str;
 
 	while (str[0])
 	{
-		int len = Len_leading_token(str);
+		int line_breaks;
+		const char * new_start_of_line;
+		int len = Len_leading_token(str, &line_breaks, &new_start_of_line);
 		if (!len)
 		{
 			printf("Lex error\n");
 			return;
 		}
 
-		Print_token(begin, str, len);
+		int loc_in_line = (int)(str - start_of_line + 1);
+
+		Print_token(str, len, line_number, loc_in_line);
 
 		str += len;
+
+		if (line_breaks)
+		{
+			line_number += line_breaks;
+			start_of_line = new_start_of_line;
+		}
 	}
 }
 
