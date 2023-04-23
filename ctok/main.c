@@ -95,7 +95,7 @@ static int Len_line_break(const char * str)
 
 static int Len_leading_line_break_or_space(
 	const char * str, 
-	int * line_breaks,
+	int * line_number,
 	temp_start_of_line_* tsol)
 {
 	int len_ws = Len_leading_horizontal_whitespace(str);
@@ -105,7 +105,7 @@ static int Len_leading_line_break_or_space(
 	int len_break = Len_line_break(str);
 	if (len_break)
 	{
-		*line_breaks += 1;
+		*line_number += 1;
 		tsol->start_of_line = str + len_break;
 		return len_break;
 	}
@@ -115,7 +115,7 @@ static int Len_leading_line_break_or_space(
 
 static int Len_leading_line_breaks(
 	const char * str, 
-	int * line_breaks,
+	int * line_number,
 	temp_start_of_line_* tsol)
 {
 	const char * begin = str;
@@ -124,12 +124,12 @@ static int Len_leading_line_breaks(
 	if (str == begin)
 		return 0;
 	
-	*line_breaks = 1;
+	*line_number += 1;
 	tsol->start_of_line = str;
 
 	while (true)
 	{
-		int len = Len_leading_line_break_or_space(str, line_breaks, tsol);
+		int len = Len_leading_line_break_or_space(str, line_number, tsol);
 		if (!len)
 			break;
 
@@ -143,12 +143,10 @@ static int Len_leading_line_breaks(
 
 static int Len_rest_of_block_comment(
 	const char * str, 
-	int * line_breaks,
+	int * line_number,
 	temp_start_of_line_* tsol)
 {
 	const char * begin = str;
-
-	*line_breaks = 0;
 
 	while (true)
 	{
@@ -162,7 +160,7 @@ static int Len_rest_of_block_comment(
 		if (len_line_break)
 		{
 			str += len_line_break;
-			*line_breaks += 1;
+			*line_number += 1;
 			tsol->start_of_line = str;
 			continue;
 		}
@@ -353,11 +351,9 @@ static int Len_rest_of_id(const char * str)
 
 static int Len_leading_token(
 	const char * str, 
-	int * line_breaks,
+	int * line_number,
 	temp_start_of_line_* tsol)
 {
-	*line_breaks = 0;
-
 	char ch0 = str[0];
 	char ch1 = (ch0) ? str[1] : '\0'; 
 
@@ -374,7 +370,7 @@ static int Len_leading_token(
 
 	case '\r':
 	case '\n':
-		return Len_leading_line_breaks(str, line_breaks, tsol); // line breaks
+		return Len_leading_line_breaks(str, line_number, tsol); // line breaks
 
 	case '0': case '1': case '2': case '3': case '4':
 	case '5': case '6': case '7': case '8': case '9':
@@ -391,7 +387,7 @@ static int Len_leading_token(
 		switch (ch1)
 		{
 		case '*':
-			return 2 + Len_rest_of_block_comment(str + 2, line_breaks, tsol); // /*
+			return 2 + Len_rest_of_block_comment(str + 2, line_number, tsol); // /*
 		case '/':
 			return 2 + Len_rest_of_line_comment(str + 2); // //
 		case '=':
@@ -669,30 +665,24 @@ static void Print_token(
 static void Print_toks_in_str(const char * str)
 {
 	int line_number = 1;
-	const char * start_of_line = str;
+	temp_start_of_line_ tsol;
+	tsol.start_of_line = str;
 
 	while (str[0])
 	{
-		int line_breaks;
-		temp_start_of_line_ tsol;
-		int len = Len_leading_token(str, &line_breaks, &tsol);
+		int line_number_prev = line_number;
+		int loc_in_line = (int)(str - tsol.start_of_line + 1);
+
+		int len = Len_leading_token(str, &line_number, &tsol);
 		if (!len)
 		{
 			printf("Lex error\n");
 			return;
 		}
 
-		int loc_in_line = (int)(str - start_of_line + 1);
-
-		Print_token(str, len, line_number, loc_in_line);
+		Print_token(str, len, line_number_prev, loc_in_line);
 
 		str += len;
-
-		if (line_breaks)
-		{
-			line_number += line_breaks;
-			start_of_line = tsol.start_of_line;
-		}
 	}
 }
 
