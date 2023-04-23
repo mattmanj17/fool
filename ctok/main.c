@@ -204,26 +204,7 @@ static int Len_leading_line_comment(const char * str)
 
 
 
-static int Length_of_str_encoding_prefix(const char * str)
-{
-	if (str[0] == 'u')
-	{
-		if (str[1] == '8')
-			return 2;
-
-		return 1;
-	}
-
-	if (str[0] == 'U')
-		return 1;
-
-	if (str[0] == 'L')
-		return 1;
-
-	return 0;
-}
-
-static int Len_leading_str_lit(const char * str)
+static int Len_rest_of_str_lit(char ch_sential, const char * str)
 {
 	//??? TODO support utf8 chars? or do we get that for free?
 	//  should probably at least check for mal-formed utf8, instead
@@ -231,16 +212,11 @@ static int Len_leading_str_lit(const char * str)
 
 	const char * begin = str;
 
-	str += Length_of_str_encoding_prefix(str);
-
-	if (str[0] != '"')
-		return 0; // we only call this if we see a '"' ...
-
-	++str;
-
 	while (true)
 	{
 		char ch0 = str[0];
+
+		// In raw lexing mode, we accept string/char literals without the closing quote
 
 		if (ch0 == '\0')
 			break;
@@ -250,60 +226,17 @@ static int Len_leading_str_lit(const char * str)
 
 		++str;
 
-		if (ch0 == '"')
+		if (ch0 == ch_sential)
 			break;
 
 		if (ch0 == '\\')
 		{
 			// In raw lexing mode, the only escapes
-			//  that matters are '\"' and '\\'. Otherwise, we just
+			//  that matters are '\"', '\'', and '\\'. Otherwise, we just
 			//  'allow '\\' in strings like a normal char,
 			//  and wait till parsing/etc to validate escapes
 
-			if (str[0] == '"' || str[0] == '\\')
-			{
-				++str;
-			}
-		}
-	}
-
-	return (int)(str - begin);
-}
-
-
-
-// BUG almost a duplicate of Len_leading_str_lit...
-
-static int Len_leading_char_lit(const char * str)
-{
-	const char * begin = str;
-
-	if (str[0] == 'L')
-		++str;
-
-	if (str[0] != '\'')
-		return 0; // we only ever call this if we saw a '\''
-
-	++str;
-
-	while (true)
-	{
-		char ch0 = str[0];
-
-		if (ch0 == '\0')
-			break;
-
-		if (Is_line_break(ch0))
-			break;
-
-		++str;
-
-		if (ch0 == '\'')
-			break;
-
-		if (ch0 == '\\')
-		{
-			if (str[0] == '\'' || str[0] == '\\')
+			if (str[0] == ch_sential || str[0] == '\\')
 			{
 				++str;
 			}
@@ -480,30 +413,30 @@ static int Len_leading_token(
 
 	case 'u':
 		if (ch1 == '8' && str[2] == '"')
-			return Len_leading_str_lit(str); // u8""
+			return 3 + Len_rest_of_str_lit('"', str + 3); // u8""
 		return Len_leading_id(str); // identifier
 
 	case 'U':
 		if (ch1 == '"')
-			return Len_leading_str_lit(str); // U""
+			return 2 + Len_rest_of_str_lit('"', str + 2); // U""
 		return Len_leading_id(str); // identifier
 
 	case 'L':
 		switch (ch1)
 		{
 		case '"':
-			return Len_leading_str_lit(str); // L""
+			return 2 + Len_rest_of_str_lit('"', str + 2); // L""
 		case '\'':
-			return Len_leading_char_lit(str); // L''
+			return 2 + Len_rest_of_str_lit('\'', str + 2); // L''
 		default:
 			return Len_leading_id(str); // identifier
 		}
 
 	case '"':
-		return Len_leading_str_lit(str); // ""
+		return 1 + Len_rest_of_str_lit('"', str + 1); // ""
 
 	case '\'':
-		return Len_leading_char_lit(str); // ''
+		return 1 + Len_rest_of_str_lit('\'', str + 1); // ''
 
 	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
 	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
