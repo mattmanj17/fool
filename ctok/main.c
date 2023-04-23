@@ -3,6 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h> // for calloc
 
+// !!!!!!!!!! temp while refactoring
+
+typedef struct
+{
+	const char * start_of_line;
+} temp_start_of_line_;
+
+// !!!!!!!!!!
 
 
 static bool Is_horizontal_whitespace(char ch)
@@ -88,7 +96,7 @@ static int Len_line_break(const char * str)
 static int Len_leading_line_break_or_space(
 	const char * str, 
 	int * line_breaks,
-	const char ** new_start_of_line)
+	temp_start_of_line_* tsol)
 {
 	int len_ws = Len_leading_horizontal_whitespace(str);
 	if (len_ws)
@@ -98,7 +106,7 @@ static int Len_leading_line_break_or_space(
 	if (len_break)
 	{
 		*line_breaks += 1;
-		*new_start_of_line = str + len_break;
+		tsol->start_of_line = str + len_break;
 		return len_break;
 	}
 
@@ -108,7 +116,7 @@ static int Len_leading_line_break_or_space(
 static int Len_leading_line_breaks(
 	const char * str, 
 	int * line_breaks,
-	const char ** new_start_of_line)
+	temp_start_of_line_* tsol)
 {
 	const char * begin = str;
 	str += Len_line_break(str);
@@ -117,11 +125,11 @@ static int Len_leading_line_breaks(
 		return 0;
 	
 	*line_breaks = 1;
-	*new_start_of_line = str;
+	tsol->start_of_line = str;
 
 	while (true)
 	{
-		int len = Len_leading_line_break_or_space(str, line_breaks, new_start_of_line);
+		int len = Len_leading_line_break_or_space(str, line_breaks, tsol);
 		if (!len)
 			break;
 
@@ -136,7 +144,7 @@ static int Len_leading_line_breaks(
 static int Len_leading_block_comment(
 	const char * str, 
 	int * line_breaks,
-	const char ** new_start_of_line)
+	temp_start_of_line_* tsol)
 {
 	if (str[0] != '/' || str[1] != '*')
 		return 0;
@@ -159,7 +167,7 @@ static int Len_leading_block_comment(
 		{
 			str += len_line_break;
 			*line_breaks += 1;
-			*new_start_of_line = str;
+			tsol->start_of_line = str;
 			continue;
 		}
 
@@ -355,57 +363,41 @@ static int Len_leading_char_lit(const char * str)
 	[0-9a-zA-Z_] OR a "universal character name"
 */
 
-static int Len_pp_num_start(const char * str)
+// Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
+// 'rest_of_pp_num' is equivalent to pp_num_continue*
+
+static int Len_rest_of_pp_num(const char * str)
 {
-	if (Is_digit(str[0]))
-		return 1;
-
-	if (str[0] == '.' && Is_digit(str[1]))
-		return 2;
-	
-	return 0;
-}
-
-static bool Starts_pp_num_sign(char ch)
-{
-	return ch == 'e' || ch == 'E' || ch == 'p' || ch == 'P';
-}
-
-static bool Is_sign(char ch)
-{
-	return ch == '-' || ch == '+';
-}
-
-static int Len_pp_num_continue(const char * str)
-{
-	if (str[0] == '.')
-		return 1;
-
-	if (Starts_pp_num_sign(str[0]) && Is_sign(str[1]))
-		return 2;
-
-	if (Extends_id(str[0]))
-		return 1;
-	
-	return 0;
-}
-
-static int Len_leading_pp_num(const char * str)
-{
-	int len_start = Len_pp_num_start(str);
-	if (!len_start)
-		return 0;
-
 	const char * begin = str;
-	str += len_start;
 
 	while (true)
 	{
-		int len_continue = Len_pp_num_continue(str);
-		if (!len_continue)
-			break;
+		char ch0 = str[0];
 
-		str += len_continue;
+		if (ch0 == '.')
+		{
+			++str;
+		}
+		else if (ch0 == 'e' || ch0 == 'E' || ch0 == 'p' || ch0 == 'P')
+		{
+			char ch1 = str[1];
+			if (ch1 == '-' || ch1 == '+')
+			{
+				str += 2;
+			}
+			else
+			{
+				++str;
+			}
+		}
+		else if (Extends_id(ch0))
+		{
+			++str;
+		}
+		else
+		{
+			break;
+		}
 	}
 
 	return (int)(str - begin);
@@ -440,7 +432,7 @@ static int Len_leading_id(const char * str)
 static int Len_leading_token(
 	const char * str, 
 	int * line_breaks,
-	const char ** new_start_of_line)
+	temp_start_of_line_* tsol)
 {
 	*line_breaks = 0;
 
@@ -460,15 +452,15 @@ static int Len_leading_token(
 
 	case '\r':
 	case '\n':
-		return Len_leading_line_breaks(str, line_breaks, new_start_of_line); // line breaks
+		return Len_leading_line_breaks(str, line_breaks, tsol); // line breaks
 
 	case '0': case '1': case '2': case '3': case '4':
 	case '5': case '6': case '7': case '8': case '9':
-		return Len_leading_pp_num(str); // pp_num
+		return 1 + Len_rest_of_pp_num(str + 1); // pp_num
 
 	case '.':
 		if (Is_digit(ch1))
-			return Len_leading_pp_num(str); // pp_num
+			return 2 + Len_rest_of_pp_num(str + 2); // pp_num
 		if (ch1 == '.' && str[2] == '.')
 			return 3; // ...
 		return 1; // .
@@ -477,7 +469,7 @@ static int Len_leading_token(
 		switch (ch1)
 		{
 		case '*':
-			return Len_leading_block_comment(str, line_breaks, new_start_of_line); // /*
+			return Len_leading_block_comment(str, line_breaks, tsol); // /*
 		case '/':
 			return Len_leading_line_comment(str); // //
 		case '=':
@@ -760,8 +752,8 @@ static void Print_toks_in_str(const char * str)
 	while (str[0])
 	{
 		int line_breaks;
-		const char * new_start_of_line;
-		int len = Len_leading_token(str, &line_breaks, &new_start_of_line);
+		temp_start_of_line_ tsol;
+		int len = Len_leading_token(str, &line_breaks, &tsol);
 		if (!len)
 		{
 			printf("Lex error\n");
@@ -777,7 +769,7 @@ static void Print_toks_in_str(const char * str)
 		if (line_breaks)
 		{
 			line_number += line_breaks;
-			start_of_line = new_start_of_line;
+			start_of_line = tsol.start_of_line;
 		}
 	}
 }
