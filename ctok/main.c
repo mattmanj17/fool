@@ -338,13 +338,10 @@ static int Len_rest_of_pp_num(const char * str)
 
 
 
-static int Len_leading_id(const char * str)
+static int Len_rest_of_id(const char * str)
 {
 	//??? todo add support for universal-character-names
 	//??? todo support utf8 in ids
-
-	if (!Can_start_id(str[0]))
-		return 0;
 
 	int len = 0;
 
@@ -414,12 +411,12 @@ static int Len_leading_token(
 	case 'u':
 		if (ch1 == '8' && str[2] == '"')
 			return 3 + Len_rest_of_str_lit('"', str + 3); // u8""
-		return Len_leading_id(str); // identifier
+		return 1 + Len_rest_of_id(str + 1); // identifier
 
 	case 'U':
 		if (ch1 == '"')
 			return 2 + Len_rest_of_str_lit('"', str + 2); // U""
-		return Len_leading_id(str); // identifier
+		return 1 + Len_rest_of_id(str + 1); // identifier
 
 	case 'L':
 		switch (ch1)
@@ -429,7 +426,7 @@ static int Len_leading_token(
 		case '\'':
 			return 2 + Len_rest_of_str_lit('\'', str + 2); // L''
 		default:
-			return Len_leading_id(str); // identifier
+			return 1 + Len_rest_of_id(str + 1); // identifier
 		}
 
 	case '"':
@@ -448,7 +445,7 @@ static int Len_leading_token(
 	case 'V': case 'W': case 'X': case 'Y': case 'Z':
 	case '_':
 	case '$': // $ allowed in ids as an extension :/
-		return Len_leading_id(str); // identifier
+		return 1 + Len_rest_of_id(str + 1); // identifier
 
 	case '%':
 		switch (ch1)
