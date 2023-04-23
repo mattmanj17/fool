@@ -253,7 +253,11 @@ static int Len_leading_line_comment(const char * str)
 
 static int Length_of_escape(const char * str) //??? bug, this starts AFTER the leading \, which could be confusing... also do not love the name
 {
-	const char * simple_escapes = "abfnrtv'\"\\?";
+	const char * simple_escapes = 
+		"abfnrtv'\"\\?"
+		"eE"	// gcc extension, escape
+		"({[%"; // gcc extension
+		
 
 	if (Find_in_str(str[0], simple_escapes))
 		return 1;
@@ -530,7 +534,7 @@ static int Len_leading_id(const char * str)
 
 static const char * punct_4[]
 {
-	"%:%:",
+	"%:%:", //??? does this imply 4 chars of lookahead???
 
 	"\0",
 };
@@ -555,6 +559,13 @@ static const char * punct_1[]
 {
 	"!", "#", "%", "&", "(", ")", "*", "+", ",", "-", ".", "/", ":", ";", 
 	"<", "=", ">", "?", "[", "]", "^", "{", "|", "}", "~",
+
+	"@", // can run into these in if 0 blocks :/ ... should maybe move this handling somewhere else...
+
+	// maybe we just do not even have a punct_1, and we just say that if any other chars make it
+	//  to this point, we return them as a 1 char length token
+
+	// would need to handle utf8, though
 
 	"\0",
 };
@@ -612,6 +623,8 @@ static int Len_leading_punct(const char * str)
 
 // BUG it would be better if we did not do any backtracking...
 
+// BUG re write this as a top level switch on ch0, makes things clearer
+
 static int Len_leading_token(
 	const char * str, 
 	int * line_breaks,
@@ -619,32 +632,45 @@ static int Len_leading_token(
 {
 	*line_breaks = 0;
 
-	int len = Len_leading_horizontal_whitespace(str);
+	int len = Len_leading_horizontal_whitespace(str); // ' ' | '\t' | '\f' | '\v'
 	if (len) return len;
 
-	len = Len_leading_line_breaks(str, line_breaks, new_start_of_line);
+	len = Len_leading_line_breaks(str, line_breaks, new_start_of_line); // '\r' | '\n'
 	if (len) return len;
 
-	len = Len_leading_block_comment(str, line_breaks, new_start_of_line);
+	len = Len_leading_block_comment(str, line_breaks, new_start_of_line); // '/*'
 	if (len) return len;
 
-	len = Len_leading_line_comment(str);
+	len = Len_leading_line_comment(str); // '//'
 	if (len) return len;
 
-	len = Len_leading_str_lit(str);
+	// FIXME Len_leading_str_lit needs to not fail...
+	len = Len_leading_str_lit(str); // ('u8'|'U'|'L')? '"' //??? techincally we need 3 chars of look ahead to detect u8" ???
 	if (len) return len;
 
-	len = Len_leading_char_lit(str);
+	// FIXME Len_leading_char_lit needs to not fail...
+	len = Len_leading_char_lit(str); // 'L'? '\''
 	if (len) return len;
 
-	len = Len_leading_pp_num(str);
+	len = Len_leading_pp_num(str); // '.'? [0-9]
 	if (len) return len;
 
-	len = Len_leading_id(str);
+	len = Len_leading_id(str); // Can_start_id
 	if (len) return len;
 
-	len = Len_leading_punct(str);
+	len = Len_leading_punct(str); // various...
 	if (len) return len;
+
+	// if we get to this point, we probably have one of the following chars
+
+	// "`" ???
+	// stray "\\" can cause problems... which happens a lot when we are not handling line continuations...
+	// DEL , that is, 0b01111111
+	// most things below 0x20
+	// anything > 0x7f (utf8 stuff)
+
+	// I think that, technically, during raw preprocesor lexing, these will just get returned
+	//  and single character tokens?
 
 	return 0;
 }
@@ -652,6 +678,9 @@ static int Len_leading_token(
 
 static void Clean_and_print_ch(char ch)
 {
+	// everything that can be put in a string literal without escaping.
+	// Also does not include whitespace, so that we can split the output on spaces
+
 	const char * good_ch = 
 		"0123456789"
 		"abcdefghijklmnopqrstuvwxyz"
@@ -733,61 +762,56 @@ static void Print_toks_in_str(const char * str)
 
 
 
-static char * Try_read_file_to_buffer(FILE * file, char * buf, int len_buf)
+static char * Try_read_file_to_buffer(FILE * file)
 {
 	int err = fseek(file, 0, SEEK_END);
 	if (err)
 		return NULL;
 
 	long len_file = ftell(file);
-	if (len_file < 0 || len_file >= len_buf)
+	if (len_file < 0)
 		return NULL;
 
 	err = fseek(file, 0, SEEK_SET);
 	if (err)
 		return NULL;
 
+	char * buf = (char *)calloc((size_t)(len_file + 1), 1);
+	if (!buf)
+		return NULL;
+
 	size_t bytes_read = fread(buf, 1, (size_t)len_file, file);
 	if (bytes_read != (size_t)len_file)
 		return NULL;
 
-	return buf + len_file;
+	return buf;
 }
 
-static char * Try_read_file_at_path_to_buffer(const char * fpath, char * buf, int len_buf)
+static char * Try_read_file_at_path_to_buffer(const char * fpath)
 {
 	FILE * file = fopen(fpath, "rb");
 	if (!file)
 		return NULL;
 
-	char * end = Try_read_file_to_buffer(file, buf, len_buf);
+	char * buf = Try_read_file_to_buffer(file);
 
 	fclose(file); // BUG (matthewd) ignoring return value?
 
-	return end;
+	return buf;
 }
 
 
 
 int main(int argc, char *argv[])
 {
-	const int len_file_buf = 0x100000;
-
 	if (argc != 2)
 	{
 		printf("wrong number of arguments, expect a single file name\n");
 		return 1;
 	}
 
-	char * file_buf = (char *)calloc((size_t)len_file_buf, 1);
+	char * file_buf = Try_read_file_at_path_to_buffer(argv[1]);
 	if (!file_buf)
-	{
-		printf("Failed to allocate memory \n");
-		return 1;
-	}
-
-	char * end = Try_read_file_at_path_to_buffer(argv[1], file_buf, len_file_buf);
-	if (!end)
 	{
 		printf("Failed to read file '%s'.\n", argv[1]);
 		return 1;
