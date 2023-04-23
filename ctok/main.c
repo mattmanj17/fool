@@ -532,99 +532,6 @@ static int Len_leading_id(const char * str)
 
 
 
-static const char * punct_4[]
-{
-	"%:%:", //??? does this imply 4 chars of lookahead???
-
-	"\0",
-};
-
-static const char * punct_3[]
-{
-	"...", "<<=", ">>=",
-
-	"\0",
-};
-
-static const char * punct_2[]
-{
-	"!=", "##", "%:", "%=", "%>", "&&", "&=", "*=", "++", "+=", "--", "-=", 
-	"->", "/=", ":>", "<%", "<:", "<<", "<=", "==", ">=", ">>", "^=", "|=", 
-	"||",
-
-	"\0",
-};
-
-static const char * punct_1[]
-{
-	"!", "#", "%", "&", "(", ")", "*", "+", ",", "-", ".", "/", ":", ";", 
-	"<", "=", ">", "?", "[", "]", "^", "{", "|", "}", "~",
-
-	"@", // can run into these in if 0 blocks :/ ... should maybe move this handling somewhere else...
-
-	// maybe we just do not even have a punct_1, and we just say that if any other chars make it
-	//  to this point, we return them as a 1 char length token
-
-	// would need to handle utf8, though
-
-	"\0",
-};
-
-static const char ** punctuation[]
-{
-	punct_1,
-	punct_2,
-	punct_3,
-	punct_4,
-};
-
-static bool First_n_ch_equal(const char * str0, const char * str1, int len)
-{
-	for (int i = 0; i < len; ++i)
-	{
-		if (!str0[i])
-			return false;
-
-		if (!str1[i])
-			return false;
-
-		if (str0[i] != str1[i])
-			return false;
-	}
-
-	return true;
-}
-
-static int Len_leading_punct(const char * str)
-{
-	for (int len = 4; len > 0; --len)
-	{
-		int i = len - 1;
-		const char ** punct_of_len = punctuation[i];
-
-		while (true)
-		{
-			const char * punct = *punct_of_len;
-			if (!punct[0])
-				break;
-
-			if (First_n_ch_equal(str, punct, len))
-			{
-				return (int)len;
-			}
-
-			++punct_of_len;
-		}
-	}
-
-	return 0;
-}
-
-
-// BUG it would be better if we did not do any backtracking...
-
-// BUG re write this as a top level switch on ch0, makes things clearer
-
 static int Len_leading_token(
 	const char * str, 
 	int * line_breaks,
@@ -632,45 +539,234 @@ static int Len_leading_token(
 {
 	*line_breaks = 0;
 
-	int len = Len_leading_horizontal_whitespace(str); // ' ' | '\t' | '\f' | '\v'
-	if (len) return len;
+	char ch0 = str[0];
+	char ch1 = (ch0) ? str[1] : '\0'; 
 
-	len = Len_leading_line_breaks(str, line_breaks, new_start_of_line); // '\r' | '\n'
-	if (len) return len;
+	switch (ch0)
+	{
+	case '\0':
+		return 0; // EOF
 
-	len = Len_leading_block_comment(str, line_breaks, new_start_of_line); // '/*'
-	if (len) return len;
+	case ' ':
+	case '\t':
+	case '\f':
+	case '\v':
+		return Len_leading_horizontal_whitespace(str); // whitespace
 
-	len = Len_leading_line_comment(str); // '//'
-	if (len) return len;
+	case '\r':
+	case '\n':
+		return Len_leading_line_breaks(str, line_breaks, new_start_of_line); // line breaks
 
-	// FIXME Len_leading_str_lit needs to not fail...
-	len = Len_leading_str_lit(str); // ('u8'|'U'|'L')? '"' //??? techincally we need 3 chars of look ahead to detect u8" ???
-	if (len) return len;
+	case '0': case '1': case '2': case '3': case '4':
+	case '5': case '6': case '7': case '8': case '9':
+		return Len_leading_pp_num(str); // pp_num
 
-	// FIXME Len_leading_char_lit needs to not fail...
-	len = Len_leading_char_lit(str); // 'L'? '\''
-	if (len) return len;
+	case '.':
+		if (Is_digit(ch1))
+			return Len_leading_pp_num(str); // pp_num
+		if (ch1 == '.' && str[2] == '.')
+			return 3; // ...
+		return 1; // .
 
-	len = Len_leading_pp_num(str); // '.'? [0-9]
-	if (len) return len;
+	case '/':
+		switch (ch1)
+		{
+		case '*':
+			return Len_leading_block_comment(str, line_breaks, new_start_of_line); // /*
+		case '/':
+			return Len_leading_line_comment(str); // //
+		case '=':
+			return 2; // /=
+		default:
+			return 1; // /
+		}
 
-	len = Len_leading_id(str); // Can_start_id
-	if (len) return len;
+	case 'u':
+		if (ch1 == '8' && str[2] == '"')
+			return Len_leading_str_lit(str); // u8""
+		return Len_leading_id(str); // identifier
 
-	len = Len_leading_punct(str); // various...
-	if (len) return len;
+	case 'U':
+		if (ch1 == '"')
+			return Len_leading_str_lit(str); // U""
+		return Len_leading_id(str); // identifier
 
-	// if we get to this point, we probably have one of the following chars
+	case 'L':
+		switch (ch1)
+		{
+		case '"':
+			return Len_leading_str_lit(str); // L""
+		case '\'':
+			return Len_leading_char_lit(str); // L''
+		default:
+			return Len_leading_id(str); // identifier
+		}
 
-	// "`" ???
-	// stray "\\" can cause problems... which happens a lot when we are not handling line continuations...
-	// DEL , that is, 0b01111111
-	// most things below 0x20
-	// anything > 0x7f (utf8 stuff)
+	case '"':
+		return Len_leading_str_lit(str); // ""
 
-	// I think that, technically, during raw preprocesor lexing, these will just get returned
-	//  and single character tokens?
+	case '\'':
+		return Len_leading_char_lit(str); // ''
+
+	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
+	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
+	case 'o': case 'p': case 'q': case 'r': case 's': case 't': /* 'u' */
+	case 'v': case 'w': case 'x': case 'y': case 'z':
+	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
+	case 'H': case 'I': case 'J': case 'K': /* 'L' */ case 'M': case 'N':
+	case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': /* 'U' */
+	case 'V': case 'W': case 'X': case 'Y': case 'Z':
+	case '_':
+	case '$': // $ allowed in ids as an extension :/
+		return Len_leading_id(str); // identifier
+
+	case '%':
+		switch (ch1)
+		{
+		case ':':
+			if (str[2] == '%' && str[3] == ':')
+				return 4; // %:%:
+			else
+				return 2; // %:
+		case '=':
+			return 2; // %=
+		case '>':
+			return 2; // %>
+		default:
+			return 1; // %
+		}
+
+	case '<':
+		switch (ch1)
+		{
+		case '<':
+			if (str[2] == '=')
+				return 3; // <<=
+			else
+				return 2; // <<
+		case '%':
+			return 2; // <%
+		case ':':
+			return 2; // <:
+		case '=':
+			return 2; // <=
+		default:
+			return 1; // <
+		}
+	case '>':
+		switch (ch1)
+		{
+		case '>':
+			if (str[2] == '=')
+				return 3; // >>=
+			else
+				return 2; // >>
+		case '=':
+			return 2; // >=
+		default:
+			return 1; // >
+		}
+	case '!':
+		if (ch1 == '=')
+			return 2; // !=
+		return 1; // !
+	case '#':
+		if (ch1 == '#')
+			return 2; // ##
+		return 1; // #
+	case '&':
+		switch (ch1)
+		{
+		case '&':
+			return 2; // &&
+		case '=':
+			return 2; // &=
+		default:
+			return 1; // &
+		}
+	case '*':
+		if (ch1 == '=')
+			return 2; // *=
+		return 1; // *
+	case '+':
+		switch (ch1)
+		{
+		case '+':
+			return 2; // ++
+		case '=':
+			return 2; // +=
+		default:
+			return 1; // +
+		}
+	case '-':
+		switch (ch1)
+		{
+		case '>':
+			return 2; // ->
+		case '-':
+			return 2; // --
+		case '=':
+			return 2; // -=
+		default:
+			return 1; // -
+		}
+	case ':':
+		if (ch1 == '>')
+			return 2; // :>
+		return 1; // :
+	case '=':
+		if (ch1 == '=')
+			return 2; // ==
+		return 1; // =
+	case '^':
+		if (ch1 == '=')
+			return 2; // ^=
+		return 1; // ^
+	case '|':
+		switch (ch1)
+		{
+		case '|':
+			return 2; // ||
+		case '=':
+			return 2; // |=
+		default:
+			return 1; // |
+		}
+	case '(':
+		return 1; // (
+	case ')':
+		return 1; // )
+	case ',':
+		return 1; // ,
+	case ';':
+		return 1; // ;
+	case '?':
+		return 1; // ?
+	case '[':
+		return 1; // [
+	case ']':
+		return 1; // ]
+	case '{':
+		return 1; // {
+	case '}':
+		return 1; // }
+	case '~':
+		return 1; // ~
+
+	case '`':
+	case '@':
+		return 1; // error, bad punct
+
+	case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07:
+	case 0x08: /* '\t' */ /* '\n' */ /* '\v' */ /* '\f' */ /* '\r' */ case 0x0E:
+	case 0x0F: case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15:
+	case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C:
+	case 0x1D: case 0x1E: case 0x1F:
+	case 0x7f:
+		return 1; // error, ctrl char
+	}
+
+	// (ch0 > 0x7f) || (ch0 == '\\')
 
 	return 0;
 }
