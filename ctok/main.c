@@ -141,16 +141,12 @@ static int Len_leading_line_breaks(
 
 
 
-static int Len_leading_block_comment(
+static int Len_rest_of_block_comment(
 	const char * str, 
 	int * line_breaks,
 	temp_start_of_line_* tsol)
 {
-	if (str[0] != '/' || str[1] != '*')
-		return 0;
-
 	const char * begin = str;
-	str += 2;
 
 	*line_breaks = 0;
 
@@ -179,13 +175,9 @@ static int Len_leading_block_comment(
 
 
 
-static int Len_leading_line_comment(const char * str)
+static int Len_rest_of_comment(const char * str)
 {
-	if (str[0] != '/' || str[1] != '/')
-		return 0;
-
 	const char * begin = str;
-	str += 2;
 
 	while (true)
 	{
@@ -399,9 +391,9 @@ static int Len_leading_token(
 		switch (ch1)
 		{
 		case '*':
-			return Len_leading_block_comment(str, line_breaks, tsol); // /*
+			return 2 + Len_rest_of_block_comment(str + 2, line_breaks, tsol); // /*
 		case '/':
-			return Len_leading_line_comment(str); // //
+			return 2 + Len_rest_of_comment(str + 2); // //
 		case '=':
 			return 2; // /=
 		default:
