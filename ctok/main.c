@@ -5,24 +5,6 @@
 
 
 
-static const char * Find_in_str(
-	char ch, 
-	const char * str)
-{
-	while (true)
-	{
-		if (!str[0])
-			break;
-
-		if (str[0] == ch)
-			return str;
-
-		++str;
-	}
-
-	return NULL;
-}
-
 static bool Is_horizontal_whitespace(char ch)
 {
 	return ch == ' ' || ch == '\t' || ch == '\f' || ch == '\v';
@@ -35,68 +17,31 @@ static bool Is_line_break(char ch)
 
 static bool Is_digit(char ch)
 {
-	return Find_in_str(ch, "0123456789") != NULL;
-}
-
-static bool Is_hex(char ch)
-{
-	return Find_in_str(
-			ch, 
-			"0123456789"
-			"abcdef"
-			"ABCDEF") != NULL;
-}
-
-static bool Is_octal(char ch)
-{
-	return Find_in_str(ch, "01234567") != NULL;
+	ch -= '0';
+	return ch >= 0 && ch < 10;
 }
 
 static bool Can_start_id(char ch)
 {
-	return Find_in_str(
-			ch,
-			"$" // :/
-			"_"
-			"abcdefghijklmnopqrstuvwxyz"
-			"ABCDEFGHIJKLMNOPQRSTUVWXYZ") != NULL;
+	if (ch == '$') // allowed in ids as an extention :/
+		return true;
+
+	if (ch == '_')
+		return true;
+
+	// make lower case
+
+	ch |= 0x20;
+
+	// Check if letter
+
+	ch -= 'a';
+	return ch >= 0 && ch < 26;
 }
 
 static bool Extends_id(char ch)
 {
 	return Is_digit(ch) || Can_start_id(ch);
-}
-
-static int Count_hex(const char * str)
-{
-	int len = 0;
-
-	while (str[0])
-	{
-		if (!Is_hex(str[0]))
-			break;
-
-		++str;
-		++len;
-	}
-
-	return len;
-}
-
-static int Count_octal(const char * str)
-{
-	int len = 0;
-
-	while (str[0])
-	{
-		if (!Is_octal(str[0]))
-			break;
-
-		++str;
-		++len;
-	}
-
-	return len;
 }
 
 
@@ -251,47 +196,6 @@ static int Len_leading_line_comment(const char * str)
 
 
 
-static int Length_of_escape(const char * str) //??? bug, this starts AFTER the leading \, which could be confusing... also do not love the name
-{
-	const char * simple_escapes = 
-		"abfnrtv'\"\\?"
-		"eE"	// gcc extension, escape
-		"({[%"; // gcc extension
-		
-
-	if (Find_in_str(str[0], simple_escapes))
-		return 1;
-
-	if (Is_octal(str[0]))
-	{
-		int len_octal = Count_octal(str);
-		if (len_octal > 3)
-			return 3;
-
-		return len_octal;
-	}
-
-	if (str[0] == 'x' || str[0] == 'X')
-	{
-		++str;
-		return Count_hex(str) + 1;
-	}
-
-	if (str[0] == 'u' || str[0] == 'U')
-	{
-		int len_expected = (str[0] == 'u') ? 4 : 8;
-
-		++str;
-		int len_hex = Count_hex(str);
-		if (len_hex != len_expected)
-			return 0;
-
-		return len_expected + 1;
-	}
-
-	return 0;
-}
-
 static int Length_of_str_encoding_prefix(const char * str)
 {
 	if (str[0] == 'u')
@@ -311,7 +215,7 @@ static int Length_of_str_encoding_prefix(const char * str)
 	return 0;
 }
 
-static int Len_leading_str_lit(const char * str) //??? this function is a little long
+static int Len_leading_str_lit(const char * str)
 {
 	//??? TODO support utf8 chars? or do we get that for free?
 	//  should probably at least check for mal-formed utf8, instead
@@ -322,7 +226,7 @@ static int Len_leading_str_lit(const char * str) //??? this function is a little
 	str += Length_of_str_encoding_prefix(str);
 
 	if (str[0] != '"')
-		return 0;
+		return 0; // we only call this if we see a '"' ...
 
 	++str;
 
@@ -330,8 +234,11 @@ static int Len_leading_str_lit(const char * str) //??? this function is a little
 	{
 		char ch0 = str[0];
 
-		if (str[0] == '\0')
-			return 0;
+		if (ch0 == '\0')
+			break;
+
+		if (Is_line_break(ch0))
+			break;
 
 		++str;
 
@@ -340,15 +247,16 @@ static int Len_leading_str_lit(const char * str) //??? this function is a little
 
 		if (ch0 == '\\')
 		{
-			int len_esc = Length_of_escape(str);
-			if (len_esc == 0)
-				return 0;
+			// In raw lexing mode, the only escape
+			//  that matters is '\"'. Otherwise, we just
+			//  'allow '\\' in strings like a normal char,
+			//  and wait till parsing/etc to validate escapes
 
-			str += len_esc;
+			if (str[0] == '"')
+			{
+				++str;
+			}
 		}
-
-		if (Find_in_str(ch0, "\r\n"))
-			return 0;
 	}
 
 	return (int)(str - begin);
@@ -356,7 +264,9 @@ static int Len_leading_str_lit(const char * str) //??? this function is a little
 
 
 
-static int Len_leading_char_lit(const char * str) //??? this fucntion is a little long
+// BUG almost a duplicate of Len_leading_str_lit...
+
+static int Len_leading_char_lit(const char * str)
 {
 	const char * begin = str;
 
@@ -364,38 +274,33 @@ static int Len_leading_char_lit(const char * str) //??? this fucntion is a littl
 		++str;
 
 	if (str[0] != '\'')
-		return 0;
+		return 0; // we only ever call this if we saw a '\''
 
 	++str;
 
-	//??? deciding NOT to handle multi char literals...
-	//  but if I start throwing weird test files at this, I bet I
-	//  will need to support them...
-
-	//??? TODO support utf8 chars?
-
-	char ch_body_0 = str[0];
-	if (ch_body_0 == '\0')
-		return 0;
-
-	if (Find_in_str(ch_body_0, "\'\r\n"))
-		return 0;
-
-	++str;
-
-	if (ch_body_0 == '\\')
+	while (true)
 	{
-		int len_esc = Length_of_escape(str);
-		if (len_esc == 0)
-			return 0;
+		char ch0 = str[0];
 
-		str += len_esc;
+		if (ch0 == '\0')
+			break;
+
+		if (Is_line_break(ch0))
+			break;
+
+		++str;
+
+		if (ch0 == '\'')
+			break;
+
+		if (ch0 == '\\')
+		{
+			if (str[0] == '\'')
+			{
+				++str;
+			}
+		}
 	}
-
-	if (str[0] != '\'')
-		return 0;
-
-	++str;
 
 	return (int)(str - begin);
 }
@@ -774,37 +679,58 @@ static int Len_leading_token(
 
 static void Clean_and_print_ch(char ch)
 {
-	// everything that can be put in a string literal without escaping.
-	// Also does not include whitespace, so that we can split the output on spaces
+	// NOTE we print ' ' as \x20 so that we can split output on spaces
 
-	const char * good_ch = 
-		"0123456789"
-		"abcdefghijklmnopqrstuvwxyz"
-		"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-		"!#$%&'()*+,-./:;<=>?@[]^_`{|}~";
-
-	if (Find_in_str(ch, good_ch))
+	switch (ch)
+	{
+	case '0': case '1': case '2': case '3': case '4':
+	case '5': case '6': case '7': case '8': case '9':
+	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
+	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
+	case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+	case 'v': case 'w': case 'x': case 'y': case 'z':
+	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
+	case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
+	case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
+	case 'V': case 'W': case 'X': case 'Y': case 'Z':
+	case '_': case '$':
+	case '!': case '#': case '%': case '&': case '\'': case '(': case ')': 
+	case '*': case '+': case ',': case '-': case '.': case '/': case ':': 
+	case ';': case '<': case '=': case '>': case '?': case '@': case '[': 
+	case ']': case '^': case '`': case '{': case '|': case '}': case '~':
 		putchar(ch);
-	else if (ch == '\a') 
-        printf("\\a");
-    else if (ch == '\b') 
-        printf("\\b");
-    else if (ch == '\f') 
-        printf("\\f");
-    else if (ch == '\n') 
-        printf("\\n");
-    else if (ch == '\r') 
-        printf("\\r");
-    else if (ch == '\t') 
-        printf("\\t");
-    else if (ch == '\v') 
-        printf("\\v");
-    else if (ch == '"') 
-        printf("\\\"");
-    else if (ch == '\\') 
-        printf("\\\\");
-	else
+		break;
+	case '\a':
+		printf("\\a");
+		break;
+	case '\b':
+		printf("\\b");
+		break;
+	case '\f':
+		printf("\\f");
+		break;
+	case '\n':
+		printf("\\n");
+		break;
+	case '\r':
+		printf("\\r");
+		break;
+	case '\t':
+		printf("\\t");
+		break;
+	case '\v':
+		printf("\\v");
+		break;
+	case '"':
+		printf("\\\"");
+		break;
+	case '\\':
+		printf("\\\\");
+		break;
+	default:
 		printf("\\x%02hhx", ch);
+		break;
+	}
 }
 
 static void Print_token(
