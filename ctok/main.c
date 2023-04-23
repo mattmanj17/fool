@@ -247,12 +247,12 @@ static int Len_leading_str_lit(const char * str)
 
 		if (ch0 == '\\')
 		{
-			// In raw lexing mode, the only escape
-			//  that matters is '\"'. Otherwise, we just
+			// In raw lexing mode, the only escapes
+			//  that matters are '\"' and '\\'. Otherwise, we just
 			//  'allow '\\' in strings like a normal char,
 			//  and wait till parsing/etc to validate escapes
 
-			if (str[0] == '"')
+			if (str[0] == '"' || str[0] == '\\')
 			{
 				++str;
 			}
@@ -295,7 +295,7 @@ static int Len_leading_char_lit(const char * str)
 
 		if (ch0 == '\\')
 		{
-			if (str[0] == '\'')
+			if (str[0] == '\'' || str[0] == '\\')
 			{
 				++str;
 			}
