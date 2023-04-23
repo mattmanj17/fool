@@ -55,7 +55,8 @@ static bool Is_octal(char ch)
 static bool Can_start_id(char ch)
 {
 	return Find_in_str(
-			ch, 
+			ch,
+			"$" // :/
 			"_"
 			"abcdefghijklmnopqrstuvwxyz"
 			"ABCDEFGHIJKLMNOPQRSTUVWXYZ") != NULL;
@@ -261,7 +262,7 @@ static int Length_of_escape(const char * str) //??? bug, this starts AFTER the l
 	{
 		int len_octal = Count_octal(str);
 		if (len_octal > 3)
-			return 0;
+			return 3;
 
 		return len_octal;
 	}
