@@ -175,7 +175,7 @@ static int Len_rest_of_block_comment(
 
 
 
-static int Len_rest_of_comment(const char * str)
+static int Len_rest_of_line_comment(const char * str)
 {
 	const char * begin = str;
 
@@ -393,7 +393,7 @@ static int Len_leading_token(
 		case '*':
 			return 2 + Len_rest_of_block_comment(str + 2, line_breaks, tsol); // /*
 		case '/':
-			return 2 + Len_rest_of_comment(str + 2); // //
+			return 2 + Len_rest_of_line_comment(str + 2); // //
 		case '=':
 			return 2; // /=
 		default:
