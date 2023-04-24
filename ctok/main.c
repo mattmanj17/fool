@@ -3,14 +3,13 @@
 #include <stdio.h>
 #include <stdlib.h> // for calloc
 
-// !!!!!!!!!! temp while refactoring
-
 typedef struct
 {
-	const char * start_of_line;
-} temp_start_of_line_;
-
-// !!!!!!!!!!
+	const char * str;
+	const char * line_start;
+	int line;
+	int _padding;
+} input_t;
 
 
 static bool Is_horizontal_whitespace(char ch)
@@ -54,17 +53,14 @@ static bool Extends_id(char ch)
 
 
 
-static int Len_leading_horizontal_whitespace(
-	const char * str)
+static void Skip_leading_horizontal_whitespace(input_t * input)
 {
-	const char * begin = str;
-
 	while (true)
 	{
-		if (!Is_horizontal_whitespace(str[0]))
-			return (int)(str - begin);
+		if (!Is_horizontal_whitespace(input->str[0]))
+			return;
 
-		++str;
+		++input->str;
 	}
 }
 
@@ -93,118 +89,91 @@ static int Len_line_break(const char * str)
 //  but merges all adjacent lines breaks/white space after a line break into
 //  one token... this goo is to match that
 
-static int Len_leading_line_break_or_space(
-	const char * str, 
-	int * line_number,
-	temp_start_of_line_* tsol)
+static void Skip_leading_line_break_or_space(input_t * input)
 {
-	int len_ws = Len_leading_horizontal_whitespace(str);
-	if (len_ws)
-		return len_ws;
+	if (Is_horizontal_whitespace(input->str[0]))
+	{
+		Skip_leading_horizontal_whitespace(input);
+		return;
+	}
 
-	int len_break = Len_line_break(str);
+	int len_break = Len_line_break(input->str);
 	if (len_break)
 	{
-		*line_number += 1;
-		tsol->start_of_line = str + len_break;
-		return len_break;
+		input->line += 1;
+		input->str += len_break;
+		input->line_start = input->str;
 	}
-
-	return 0;
 }
 
-static int Len_leading_line_breaks(
-	const char * str, 
-	int * line_number,
-	temp_start_of_line_* tsol)
+static void Skip_leading_line_breaks(input_t * input)
 {
-	const char * begin = str;
-	str += Len_line_break(str);
+	if (!Is_line_break(input->str[0]))
+		return;
 
-	if (str == begin)
-		return 0;
-	
-	*line_number += 1;
-	tsol->start_of_line = str;
+	input->str += Len_line_break(input->str);
+	input->line += 1;
+	input->line_start = input->str;
 
-	while (true)
+	while (Is_line_break(input->str[0]) || Is_horizontal_whitespace(input->str[0]))
 	{
-		int len = Len_leading_line_break_or_space(str, line_number, tsol);
-		if (!len)
-			break;
-
-		str += len;
+		Skip_leading_line_break_or_space(input);
 	}
-		
-	return (int)(str - begin);
 }
 
 
 
-static int Len_rest_of_block_comment(
-	const char * str, 
-	int * line_number,
-	temp_start_of_line_* tsol)
+static void Skip_rest_of_block_comment(input_t * input)
 {
-	const char * begin = str;
-
 	while (true)
 	{
-		if (str[0] == '*' && str[1] == '/')
+		if (input->str[0] == '*' && input->str[1] == '/')
 		{
-			str += 2;
+			input->str += 2;
 			break;
 		}
 
-		int len_line_break = Len_line_break(str);
+		int len_line_break = Len_line_break(input->str);
 		if (len_line_break)
 		{
-			str += len_line_break;
-			*line_number += 1;
-			tsol->start_of_line = str;
+			input->str += len_line_break;
+			input->line += 1;
+			input->line_start = input->str;
 			continue;
 		}
 
-		++str;
+		++input->str;
 	}
-
-	return (int)(str - begin);
 }
 
 
 
-static int Len_rest_of_line_comment(const char * str)
+static void Skip_rest_of_line_comment(input_t * input)
 {
-	const char * begin = str;
-
 	while (true)
 	{
-		char ch = str[0];
+		char ch = input->str[0];
 		if (!ch)
 			break;
 
 		if (Is_line_break(ch))
 			break;
 
-		++str;
+		++input->str;
 	}
-
-	return (int)(str - begin);
 }
 
 
 
-static int Len_rest_of_str_lit(char ch_sential, const char * str)
+static void Skip_rest_of_str_lit(char ch_sential, input_t * input)
 {
 	//??? TODO support utf8 chars? or do we get that for free?
 	//  should probably at least check for mal-formed utf8, instead
 	//  of just accepting all the bytes between the quotes
 
-	const char * begin = str;
-
 	while (true)
 	{
-		char ch0 = str[0];
+		char ch0 = input->str[0];
 
 		// In raw lexing mode, we accept string/char literals without the closing quote
 
@@ -214,7 +183,7 @@ static int Len_rest_of_str_lit(char ch_sential, const char * str)
 		if (Is_line_break(ch0))
 			break;
 
-		++str;
+		++input->str;
 
 		if (ch0 == ch_sential)
 			break;
@@ -226,14 +195,12 @@ static int Len_rest_of_str_lit(char ch_sential, const char * str)
 			//  'allow '\\' in strings like a normal char,
 			//  and wait till parsing/etc to validate escapes
 
-			if (str[0] == ch_sential || str[0] == '\\')
+			if (input->str[0] == ch_sential || input->str[0] == '\\')
 			{
-				++str;
+				++input->str;
 			}
 		}
 	}
-
-	return (int)(str - begin);
 }
 
 
@@ -289,139 +256,182 @@ static int Len_rest_of_str_lit(char ch_sential, const char * str)
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 // 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-static int Len_rest_of_pp_num(const char * str)
+static void Skip_rest_of_pp_num(input_t * input)
 {
-	const char * begin = str;
-
 	while (true)
 	{
-		char ch0 = str[0];
+		char ch0 = input->str[0];
 
 		if (ch0 == '.')
 		{
-			++str;
+			++input->str;
 		}
 		else if (ch0 == 'e' || ch0 == 'E' || ch0 == 'p' || ch0 == 'P')
 		{
-			char ch1 = str[1];
+			char ch1 = input->str[1];
 			if (ch1 == '-' || ch1 == '+')
 			{
-				str += 2;
+				input->str += 2;
 			}
 			else
 			{
-				++str;
+				++input->str;
 			}
 		}
 		else if (Extends_id(ch0))
 		{
-			++str;
+			++input->str;
 		}
 		else
 		{
 			break;
 		}
 	}
-
-	return (int)(str - begin);
 }
 
 
 
-static int Len_rest_of_id(const char * str)
+static void Skip_rest_of_id(input_t * input)
 {
 	//??? todo add support for universal-character-names
 	//??? todo support utf8 in ids
 
-	int len = 0;
-
-	while (str[0])
+	while (input->str[0])
 	{
-		if (!Extends_id(str[0]))
+		if (!Extends_id(input->str[0]))
 			break;
 
-		++str;
-		++len;
+		++input->str;
 	}
-
-	return len;
 }
 
 
 
-static int Len_leading_token(
-	const char * str, 
-	int * line_number,
-	temp_start_of_line_* tsol)
+static void Skip_leading_token(input_t * input)
 {
-	char ch0 = str[0];
-	char ch1 = (ch0) ? str[1] : '\0'; 
+	char ch0 = input->str[0];
+	char ch1 = (ch0) ? input->str[1] : '\0'; 
 
 	switch (ch0)
 	{
 	case '\0':
-		return 0; // EOF
+		return;
 
 	case ' ':
 	case '\t':
 	case '\f':
 	case '\v':
-		return Len_leading_horizontal_whitespace(str); // whitespace
+		Skip_leading_horizontal_whitespace(input);
+		return;
 
 	case '\r':
 	case '\n':
-		return Len_leading_line_breaks(str, line_number, tsol); // line breaks
+		Skip_leading_line_breaks(input);
+		return;
 
 	case '0': case '1': case '2': case '3': case '4':
 	case '5': case '6': case '7': case '8': case '9':
-		return 1 + Len_rest_of_pp_num(str + 1); // pp_num
+		++input->str;
+		Skip_rest_of_pp_num(input);
+		return;
 
 	case '.':
 		if (Is_digit(ch1))
-			return 2 + Len_rest_of_pp_num(str + 2); // pp_num
-		if (ch1 == '.' && str[2] == '.')
-			return 3; // ...
-		return 1; // .
+		{
+			input->str += 2;
+			Skip_rest_of_pp_num(input);
+			return;
+		}
+		else if (ch1 == '.' && input->str[2] == '.')
+		{
+			input->str += 3;
+			return;
+		}
+		else
+		{
+			++input->str;
+			return;
+		}
 
 	case '/':
 		switch (ch1)
 		{
 		case '*':
-			return 2 + Len_rest_of_block_comment(str + 2, line_number, tsol); // /*
+			input->str += 2;
+			Skip_rest_of_block_comment(input);
+			return;
 		case '/':
-			return 2 + Len_rest_of_line_comment(str + 2); // //
+			input->str += 2;
+			Skip_rest_of_line_comment(input);
+			return;
 		case '=':
-			return 2; // /=
+			input->str += 2;
+			return;
 		default:
-			return 1; // /
+			++input->str;
+			return;
 		}
 
 	case 'u':
-		if (ch1 == '8' && str[2] == '"')
-			return 3 + Len_rest_of_str_lit('"', str + 3); // u8""
-		return 1 + Len_rest_of_id(str + 1); // identifier
+		if (ch1 == '8' && input->str[2] == '"')
+		{
+			input->str += 3;
+			Skip_rest_of_str_lit('"', input);
+			return;
+		}
+		else
+		{
+			input->str += 1;
+			Skip_rest_of_id(input);
+			return;
+		}
 
 	case 'U':
 		if (ch1 == '"')
-			return 2 + Len_rest_of_str_lit('"', str + 2); // U""
-		return 1 + Len_rest_of_id(str + 1); // identifier
+		{
+			input->str += 2;
+			Skip_rest_of_str_lit('"', input);
+			return;
+		}
+		else
+		{
+			input->str += 1;
+			Skip_rest_of_id(input);
+			return;
+		}
 
 	case 'L':
 		switch (ch1)
 		{
 		case '"':
-			return 2 + Len_rest_of_str_lit('"', str + 2); // L""
+			{
+				input->str += 2;
+				Skip_rest_of_str_lit('"', input);
+				return;
+			}
 		case '\'':
-			return 2 + Len_rest_of_str_lit('\'', str + 2); // L''
+			{
+				input->str += 2;
+				Skip_rest_of_str_lit('\'', input);
+				return;
+			}
 		default:
-			return 1 + Len_rest_of_id(str + 1); // identifier
+			{
+				input->str += 1;
+				Skip_rest_of_id(input);
+				return;
+			}
 		}
 
 	case '"':
-		return 1 + Len_rest_of_str_lit('"', str + 1); // ""
+		input->str += 1;
+		Skip_rest_of_str_lit('"', input);
+		return;
 
 	case '\'':
-		return 1 + Len_rest_of_str_lit('\'', str + 1); // ''
+		input->str += 1;
+		Skip_rest_of_str_lit('\'', input);
+		return;
 
 	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
 	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
@@ -433,144 +443,240 @@ static int Len_leading_token(
 	case 'V': case 'W': case 'X': case 'Y': case 'Z':
 	case '_':
 	case '$': // $ allowed in ids as an extension :/
-		return 1 + Len_rest_of_id(str + 1); // identifier
+		input->str += 1;
+		Skip_rest_of_id(input);
+		return;
 
 	case '%':
 		switch (ch1)
 		{
 		case ':':
-			if (str[2] == '%' && str[3] == ':')
-				return 4; // %:%:
+			if (input->str[2] == '%' && input->str[3] == ':')
+			{
+				input->str += 4;
+				return;
+			}
 			else
-				return 2; // %:
+			{
+				input->str += 2;
+				return;
+			}
 		case '=':
-			return 2; // %=
+			input->str += 2;
+			return;
 		case '>':
-			return 2; // %>
+			input->str += 2;
+			return;
 		default:
-			return 1; // %
+			input->str += 1;
+			return;
 		}
 
 	case '<':
 		switch (ch1)
 		{
 		case '<':
-			if (str[2] == '=')
-				return 3; // <<=
+			if (input->str[2] == '=')
+			{
+				input->str += 3;
+				return;
+			}
 			else
-				return 2; // <<
+			{
+				input->str += 2;
+				return;
+			}
 		case '%':
-			return 2; // <%
+			input->str += 2;
+			return;
 		case ':':
-			return 2; // <:
+			input->str += 2;
+			return;
 		case '=':
-			return 2; // <=
+			input->str += 2;
+			return;
 		default:
-			return 1; // <
+			input->str += 1;
+			return;
 		}
 	case '>':
 		switch (ch1)
 		{
 		case '>':
-			if (str[2] == '=')
-				return 3; // >>=
+			if (input->str[2] == '=')
+			{
+				input->str += 3;
+				return;
+			}
 			else
-				return 2; // >>
+			{
+				input->str += 2;
+				return;
+			}
 		case '=':
-			return 2; // >=
+			input->str += 2;
+			return;
 		default:
-			return 1; // >
+			input->str += 1;
+			return;
 		}
+		return;
 	case '!':
 		if (ch1 == '=')
-			return 2; // !=
-		return 1; // !
+		{
+			input->str += 2;
+			return;
+		}
+		else
+		{
+			input->str += 1;
+			return;
+		}
 	case '#':
 		if (ch1 == '#')
-			return 2; // ##
-		return 1; // #
+		{
+			input->str += 2;
+			return;
+		}
+		else
+		{
+			input->str += 1;
+			return;
+		}
 	case '&':
 		switch (ch1)
 		{
 		case '&':
-			return 2; // &&
+			input->str += 2;
+			return;
 		case '=':
-			return 2; // &=
+			input->str += 2;
+			return;
 		default:
-			return 1; // &
+			input->str += 1;
+			return;
 		}
 	case '*':
 		if (ch1 == '=')
-			return 2; // *=
-		return 1; // *
+		{
+			input->str += 2;
+			return;
+		}
+		else
+		{
+			input->str += 1;
+			return;
+		}
 	case '+':
 		switch (ch1)
 		{
 		case '+':
-			return 2; // ++
+			input->str += 2;
+			return;
 		case '=':
-			return 2; // +=
+			input->str += 2;
+			return;
 		default:
-			return 1; // +
+			input->str += 1;
+			return;
 		}
 	case '-':
 		switch (ch1)
 		{
 		case '>':
-			return 2; // ->
+			input->str += 2;
+			return;
 		case '-':
-			return 2; // --
+			input->str += 2;
+			return;
 		case '=':
-			return 2; // -=
+			input->str += 2;
+			return;
 		default:
-			return 1; // -
+			input->str += 1;
+			return;
 		}
 	case ':':
 		if (ch1 == '>')
-			return 2; // :>
-		return 1; // :
+		{
+			input->str += 2;
+			return;
+		}
+		else
+		{
+			input->str += 1;
+			return;
+		}
 	case '=':
 		if (ch1 == '=')
-			return 2; // ==
-		return 1; // =
+		{
+			input->str += 2;
+			return;
+		}
+		else
+		{
+			input->str += 1;
+			return;
+		}
 	case '^':
 		if (ch1 == '=')
-			return 2; // ^=
-		return 1; // ^
+		{
+			input->str += 2;
+			return;
+		}
+		else
+		{
+			input->str += 1;
+			return;
+		}
 	case '|':
 		switch (ch1)
 		{
 		case '|':
-			return 2; // ||
+			input->str += 2;
+			return;
 		case '=':
-			return 2; // |=
+			input->str += 2;
+			return;
 		default:
-			return 1; // |
+			input->str += 1;
+			return;
 		}
 	case '(':
-		return 1; // (
+		input->str += 1;
+		return;
 	case ')':
-		return 1; // )
+		input->str += 1;
+		return;
 	case ',':
-		return 1; // ,
+		input->str += 1;
+		return;
 	case ';':
-		return 1; // ;
+		input->str += 1;
+		return;
 	case '?':
-		return 1; // ?
+		input->str += 1;
+		return;
 	case '[':
-		return 1; // [
+		input->str += 1;
+		return;
 	case ']':
-		return 1; // ]
+		input->str += 1;
+		return;
 	case '{':
-		return 1; // {
+		input->str += 1;
+		return;
 	case '}':
-		return 1; // }
+		input->str += 1;
+		return;
 	case '~':
-		return 1; // ~
+		input->str += 1;
+		return;
 
 	case '`':
 	case '@':
-		return 1; // error, bad punct
+		input->str += 1; // error, bad punct
+		return;
 
 	case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07:
 	case 0x08: /* '\t' */ /* '\n' */ /* '\v' */ /* '\f' */ /* '\r' */ case 0x0E:
@@ -578,12 +684,11 @@ static int Len_leading_token(
 	case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C:
 	case 0x1D: case 0x1E: case 0x1F:
 	case 0x7f:
-		return 1; // error, ctrl char
+		input->str += 1; // error, ctrl char
+		return;
 	}
 
 	// (ch0 > 0x7f) || (ch0 == '\\')
-
-	return 0;
 }
 
 
@@ -662,27 +767,31 @@ static void Print_token(
 		loc_in_line);
 }
 
-static void Print_toks_in_str(const char * str)
+static void Print_toks_in_str(const char * str_)
 {
-	int line_number = 1;
-	temp_start_of_line_ tsol;
-	tsol.start_of_line = str;
+	input_t input;
+	input.str = str_;
+	input.line_start = str_;
+	input.line = 1;
 
-	while (str[0])
+	while (input.str[0])
 	{
-		int line_number_prev = line_number;
-		int loc_in_line = (int)(str - tsol.start_of_line + 1);
+		const char * token_start = input.str;
+		int line_prev = input.line;
+		int loc_in_line = (int)(input.str - input.line_start + 1);
 
-		int len = Len_leading_token(str, &line_number, &tsol);
-		if (!len)
+		Skip_leading_token(&input);
+		if (input.str == token_start)
 		{
 			printf("Lex error\n");
 			return;
 		}
 
-		Print_token(str, len, line_number_prev, loc_in_line);
-
-		str += len;
+		Print_token(
+			token_start, 
+			(int)(input.str - token_start), 
+			line_prev, 
+			loc_in_line);
 	}
 }
 
