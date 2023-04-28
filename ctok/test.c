@@ -168,7 +168,7 @@ void Try_dump_loose_cases_to_file(
 	Try_dump_loose_cases(
 		num_cases, 
 		token_positions, 
-		token_position_lengths, 
+		token_position_lengths,
 		inputs, 
 		input_lengths, 
 		&size, 
