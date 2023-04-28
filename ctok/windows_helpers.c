@@ -55,16 +55,6 @@ void Display_error_box_and_exit(const char * msg, uint32_t exit_code)
 	exit((int)exit_code);
 }
 
-typedef bool (*walk_dir_callback)(
-	const char * root_dir, 
-	const char * this_dir, 
-	const char * full_path);
-
-typedef void (*walk_file_callback)(
-	const char * root_dir, 
-	const char * this_file, 
-	const char * full_path);
-
 void Walk_dir(
 	const char * dir, 
 	walk_dir_callback dir_callback,
@@ -84,8 +74,11 @@ void Walk_dir(
 		return;
 	}
 
-	WC_StringCchCopyA(szDir, WC_MAX_PATH, dir);
-	WC_StringCchCopyA(szDir, WC_MAX_PATH, "\\*");
+	if (!WC_PathCombineA(szDir, dir, "*"))
+	{
+		Display_error_box_and_exit("error from PathCombineA", dwError);
+		return;
+	}
 
 	hFind = WC_FindFirstFileA(szDir, &ffd);
 
@@ -107,7 +100,11 @@ void Walk_dir(
 
 			char buffer[WC_MAX_PATH];
 
-			(void) WC_PathCombineA(buffer, dir, ffd.cFileName);
+			if (!WC_PathCombineA(buffer, dir, ffd.cFileName))
+			{
+				Display_error_box_and_exit("error from PathCombineA", dwError);
+				return;
+			}
 
 			if (!dir_callback(dir, ffd.cFileName, buffer))
 				continue;
@@ -118,7 +115,11 @@ void Walk_dir(
 		{
 			char buffer[WC_MAX_PATH];
 
-			(void) WC_PathCombineA(buffer, dir, ffd.cFileName);
+			if (!WC_PathCombineA(buffer, dir, ffd.cFileName))
+			{
+				Display_error_box_and_exit("error from PathCombineA", dwError);
+				return;
+			}
 
 			file_callback(dir, ffd.cFileName, buffer);
 		}
