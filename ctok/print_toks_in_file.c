@@ -65,7 +65,7 @@ static void Clean_and_print_ch(char ch)
 	}
 }
 
-static void Print_token(
+void Print_token(
 	const char * tok_start, 
 	int tok_len,
 	int line_number,
@@ -94,8 +94,8 @@ static void Print_toks_in_str(const char * str_)
 	while (input.str[0])
 	{
 		const char * token_start = input.str;
-		int line_prev = input.line;
-		int loc_in_line = (int)(input.str - input.line_start + 1);
+		//int line_prev = input.line;
+		//int loc_in_line = (int)(input.str - input.line_start + 1);
 
 		Skip_leading_token(&input);
 		if (input.str == token_start)
@@ -104,13 +104,15 @@ static void Print_toks_in_str(const char * str_)
 			return;
 		}
 
-		Print_token(
+		/*Print_token(
 			token_start, 
 			(int)(input.str - token_start), 
 			line_prev, 
-			loc_in_line);
+			loc_in_line);*/
 
 		int len_lead = Len_leading_token(token_start);
+
+		printf("%d\n", len_lead);
 
 		if ((int)(input.str - token_start) != len_lead)
 		{
