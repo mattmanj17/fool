@@ -316,7 +316,7 @@ static LEX_STATE Next_state(LEX_STATE cur_state, char ch)
 			return LEX_STATE_IN_CHAR_LIT;
 		}
 
-	case LEX_STATE_PERCENT:	 // need to munge if %:
+	case LEX_STATE_PERCENT:
 		switch (ch)
 		{
 		case ':': case '=': case '>':
@@ -434,21 +434,45 @@ int Len_leading_token(const char * str)
 		if (next_state == LEX_STATE_EXIT)
 			break;
 
-		state = next_state;
-
 		++str;
+
+		if (next_state == LEX_STATE_DELAY_EXIT)
+			break;
+
+		state = next_state;
 		ch = str[0];
 	}
 
-	if (state == LEX_STATE_DOT && ch == '.')
+#pragma warning(push)
+#pragma warning(disable : 4061)
+	switch (state)
 	{
-		// Handle '...' token
+	case LEX_STATE_PERCENT:
+		{
+			// Handle '%:%:' token
 
-		//??? needs to handle \\\n
+			//??? needs to handle \\\n
 
-		if (str[1] == '.')
-			return 3;
+			if (ch == ':' && str[1] == '%' && str[2] == ':')
+				return 4;
+		}
+		break;
+
+	case LEX_STATE_DOT:
+		{
+			// Handle '...' token
+
+			//??? needs to handle \\\n
+
+			if (ch == '.' && str[1] == '.')
+				return 3;
+		}
+		break;
+
+	default:
+		break;
 	}
+#pragma warning(pop)
 
 	return (int)(str - str_begin);
 }
