@@ -3,7 +3,6 @@
 #include <stdlib.h>
 
 #include "lex.h"
-#include "lex_state.h"
 #include "file.h"
 
 
@@ -110,15 +109,7 @@ static void Print_toks_in_str(const char * str_)
 			line_prev, 
 			loc_in_line);*/
 
-		int len_lead = Len_leading_token(token_start);
-
-		printf("%d\n", len_lead);
-
-		if ((int)(input.str - token_start) != len_lead)
-		{
-			printf("ERROR\n");
-			exit(1);
-		}
+		printf("%d\n", (int)(input.str - token_start));
 	}
 }
 
