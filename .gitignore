@@ -5,3 +5,7 @@
 
 .vs/
 x64/
+Intel® VTune™ Profiler Results/
+GPUCache/
+
+debug.log
