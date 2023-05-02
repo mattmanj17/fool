@@ -1,7 +1,5 @@
 
-#include <stdio.h>
-
-typedef enum
+typedef enum // see ch_map for which chars are in which class
 {
 	CH_one_ch_tok,
 	CH_bslash,
@@ -31,146 +29,6 @@ typedef enum
 	CH_space,
 	CH_id_no_digit_no_eEpP,
 } CH;
-
-CH ch_map[128] =
-{
-	CH_one_ch_tok,			// NUL
-	CH_one_ch_tok,			// SOH
-	CH_one_ch_tok,			// STX
-	CH_one_ch_tok,			// ETX
-	CH_one_ch_tok,			// EOT
-	CH_one_ch_tok,			// ENQ
-	CH_one_ch_tok,			// ACK
-	CH_one_ch_tok,			// BEL
-	CH_one_ch_tok,			// BS
-	CH_space,				// HT
-	CH_line_break,			// LF
-	CH_space,				// VT
-	CH_space,				// FF
-	CH_line_break,			// CR
-	CH_one_ch_tok,			// SO
-	CH_one_ch_tok,			// SI
-	CH_one_ch_tok,			// DLE
-	CH_one_ch_tok,			// DC1
-	CH_one_ch_tok,			// DC2
-	CH_one_ch_tok,			// DC3
-	CH_one_ch_tok,			// DC4
-	CH_one_ch_tok,			// NAK
-	CH_one_ch_tok,			// SYN
-	CH_one_ch_tok,			// ETB
-	CH_one_ch_tok,			// CAN
-	CH_one_ch_tok,			// EM
-	CH_one_ch_tok,			// SUB
-	CH_one_ch_tok,			// ESC
-	CH_one_ch_tok,			// FS
-	CH_one_ch_tok,			// GS
-	CH_one_ch_tok,			// RS
-	CH_one_ch_tok,			// US
-	CH_space,				// SP
-	CH_bang_or_caret,		// !
-	CH_dquote,				// "
-	CH_htag,				// #
-	CH_id_no_digit_no_eEpP,	// $ (allowed in ids as extension :/)
-	CH_percent,				// %
-	CH_amp,					// &
-	CH_squote,				// '
-	CH_one_ch_tok,			// (
-	CH_one_ch_tok,			// )
-	CH_star,				// *
-	CH_plus,				// +
-	CH_one_ch_tok,			// ,
-	CH_minus,				// -
-	CH_dot,					// .
-	CH_fslash,				// /
-	CH_012345679,			// 0
-	CH_012345679,			// 1
-	CH_012345679,			// 2
-	CH_012345679,			// 3
-	CH_012345679,			// 4
-	CH_012345679,			// 5
-	CH_012345679,			// 6
-	CH_012345679,			// 7
-	CH_8,					// 8
-	CH_012345679,			// 9
-	CH_colon,				// :
-	CH_one_ch_tok,			// ;
-	CH_lt,					// <
-	CH_eq,					// =
-	CH_gt,					// >
-	CH_one_ch_tok,			// ?
-	CH_one_ch_tok,			// @
-	CH_id_no_digit_no_eEpP,	// A
-	CH_id_no_digit_no_eEpP,	// B
-	CH_id_no_digit_no_eEpP,	// C
-	CH_id_no_digit_no_eEpP,	// D
-	CH_eEpP,				// E
-	CH_id_no_digit_no_eEpP,	// F
-	CH_id_no_digit_no_eEpP,	// G
-	CH_id_no_digit_no_eEpP,	// H
-	CH_id_no_digit_no_eEpP,	// I
-	CH_id_no_digit_no_eEpP,	// J
-	CH_id_no_digit_no_eEpP,	// K
-	CH_L,					// L
-	CH_id_no_digit_no_eEpP,	// M
-	CH_id_no_digit_no_eEpP,	// N
-	CH_id_no_digit_no_eEpP,	// O
-	CH_eEpP,				// P
-	CH_id_no_digit_no_eEpP,	// Q
-	CH_id_no_digit_no_eEpP,	// R
-	CH_id_no_digit_no_eEpP,	// S
-	CH_id_no_digit_no_eEpP,	// T
-	CH_U,					// U
-	CH_id_no_digit_no_eEpP,	// V
-	CH_id_no_digit_no_eEpP,	// W
-	CH_id_no_digit_no_eEpP,	// X
-	CH_id_no_digit_no_eEpP,	// Y
-	CH_id_no_digit_no_eEpP,	// Z
-	CH_one_ch_tok,			// [
-	CH_bslash,				// \ (back slash)
-	CH_one_ch_tok,			// ]
-	CH_bang_or_caret,		// ^
-	CH_id_no_digit_no_eEpP,	// _
-	CH_one_ch_tok,			// `
-	CH_id_no_digit_no_eEpP,	// a
-	CH_id_no_digit_no_eEpP,	// b
-	CH_id_no_digit_no_eEpP,	// c
-	CH_id_no_digit_no_eEpP,	// d
-	CH_eEpP,				// e
-	CH_id_no_digit_no_eEpP,	// f
-	CH_id_no_digit_no_eEpP,	// g
-	CH_id_no_digit_no_eEpP,	// h
-	CH_id_no_digit_no_eEpP,	// i
-	CH_id_no_digit_no_eEpP,	// j
-	CH_id_no_digit_no_eEpP,	// k
-	CH_id_no_digit_no_eEpP,	// l
-	CH_id_no_digit_no_eEpP,	// m
-	CH_id_no_digit_no_eEpP,	// n
-	CH_id_no_digit_no_eEpP,	// o
-	CH_eEpP,				// p
-	CH_id_no_digit_no_eEpP,	// q
-	CH_id_no_digit_no_eEpP,	// r
-	CH_id_no_digit_no_eEpP,	// s
-	CH_id_no_digit_no_eEpP,	// t
-	CH_u,					// u
-	CH_id_no_digit_no_eEpP,	// v
-	CH_id_no_digit_no_eEpP,	// w
-	CH_id_no_digit_no_eEpP,	// x
-	CH_id_no_digit_no_eEpP,	// y
-	CH_id_no_digit_no_eEpP,	// z
-	CH_one_ch_tok,			// {
-	CH_vbar,				// |
-	CH_one_ch_tok,			// }
-	CH_one_ch_tok,			// ~
-	CH_one_ch_tok,			// DEL
-};
-
-CH Classify_ch(char ch)
-{
-	if ((unsigned char)ch > 127)
-		return CH_one_ch_tok;
-
-	return ch_map[ch];
-}
 
 typedef enum 
 {
@@ -208,42 +66,247 @@ typedef enum
 	LEX_STATE_EXIT,						// no inc char in tok, done with tok
 } LEX_STATE;
 
-unsigned char tran_map[CH_id_no_digit_no_eEpP + 1][LEX_STATE_EQ_OR_EXIT + 1] =
+#define C_STATE (LEX_STATE_EQ_OR_EXIT + 1)
+
+static unsigned short ch_map_pre_multiplied[128] =
 {
-	{28,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29},
-	{28,29,29,29,29,29,29,7,7,9,29,29,29,14,13,16,15,29,29,29,29,29,29,29,29,29,29,29},
-	{27,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29},
-	{27,29,29,29,29,29,28,7,7,9,29,29,29,13,13,15,15,29,28,28,28,28,28,28,28,29,29,28},
-	{27,29,29,29,29,29,7,8,8,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29},
-	{26,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,28,28,29,29,29,29,29,29,29,29},
-	{25,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,28,29,29},
-	{24,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,28,29,29,29},
-	{23,29,29,29,3,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,28,29,29,29,29},
-	{22,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,28,29,29,29,29,29},
-	{21,29,29,29,3,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,28,29,29,29,29,29,29},
-	{20,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,28,29,27,28,29,29,29,29,28,29},
-	{19,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,27,29,29,29,29,29,29,29,29},
-	{18,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,28,29,29,29,29,29,29,29,29},
-	{17,29,29,4,4,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29},
-	{15,29,29,29,29,29,29,7,7,9,29,29,15,13,13,28,15,29,29,29,29,29,29,29,29,29,29,29},
-	{13,29,29,29,29,29,29,7,7,9,29,13,13,28,13,15,15,29,29,29,29,29,29,29,29,29,29,29},
-	{12,29,29,3,3,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29},
-	{11,29,29,3,3,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29},
-	{10,29,29,3,3,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29},
-	{6,29,29,29,29,29,9,7,28,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29},
-	{5,29,29,3,3,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29},
-	{3,29,29,3,3,3,29,7,7,9,11,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29},
-	{3,29,29,3,3,3,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29},
-	{2,29,2,29,29,29,29,7,7,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29},
-	{1,1,2,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29},
-	{17,29,29,3,3,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29}
+	C_STATE * CH_one_ch_tok,			// NUL
+	C_STATE * CH_one_ch_tok,			// SOH
+	C_STATE * CH_one_ch_tok,			// STX
+	C_STATE * CH_one_ch_tok,			// ETX
+	C_STATE * CH_one_ch_tok,			// EOT
+	C_STATE * CH_one_ch_tok,			// ENQ
+	C_STATE * CH_one_ch_tok,			// ACK
+	C_STATE * CH_one_ch_tok,			// BEL
+	C_STATE * CH_one_ch_tok,			// BS
+	C_STATE * CH_space,					// HT
+	C_STATE * CH_line_break,			// LF
+	C_STATE * CH_space,					// VT
+	C_STATE * CH_space,					// FF
+	C_STATE * CH_line_break,			// CR
+	C_STATE * CH_one_ch_tok,			// SO
+	C_STATE * CH_one_ch_tok,			// SI
+	C_STATE * CH_one_ch_tok,			// DLE
+	C_STATE * CH_one_ch_tok,			// DC1
+	C_STATE * CH_one_ch_tok,			// DC2
+	C_STATE * CH_one_ch_tok,			// DC3
+	C_STATE * CH_one_ch_tok,			// DC4
+	C_STATE * CH_one_ch_tok,			// NAK
+	C_STATE * CH_one_ch_tok,			// SYN
+	C_STATE * CH_one_ch_tok,			// ETB
+	C_STATE * CH_one_ch_tok,			// CAN
+	C_STATE * CH_one_ch_tok,			// EM
+	C_STATE * CH_one_ch_tok,			// SUB
+	C_STATE * CH_one_ch_tok,			// ESC
+	C_STATE * CH_one_ch_tok,			// FS
+	C_STATE * CH_one_ch_tok,			// GS
+	C_STATE * CH_one_ch_tok,			// RS
+	C_STATE * CH_one_ch_tok,			// US
+	C_STATE * CH_space,					// SP
+	C_STATE * CH_bang_or_caret,			// !
+	C_STATE * CH_dquote,				// "
+	C_STATE * CH_htag,					// #
+	C_STATE * CH_id_no_digit_no_eEpP,	// $ (allowed in ids as extension :/)
+	C_STATE * CH_percent,				// %
+	C_STATE * CH_amp,					// &
+	C_STATE * CH_squote,				// '
+	C_STATE * CH_one_ch_tok,			// (
+	C_STATE * CH_one_ch_tok,			// )
+	C_STATE * CH_star,					// *
+	C_STATE * CH_plus,					// +
+	C_STATE * CH_one_ch_tok,			// ,
+	C_STATE * CH_minus,					// -
+	C_STATE * CH_dot,					// .
+	C_STATE * CH_fslash,				// /
+	C_STATE * CH_012345679,				// 0
+	C_STATE * CH_012345679,				// 1
+	C_STATE * CH_012345679,				// 2
+	C_STATE * CH_012345679,				// 3
+	C_STATE * CH_012345679,				// 4
+	C_STATE * CH_012345679,				// 5
+	C_STATE * CH_012345679,				// 6
+	C_STATE * CH_012345679,				// 7
+	C_STATE * CH_8,						// 8
+	C_STATE * CH_012345679,				// 9
+	C_STATE * CH_colon,					// :
+	C_STATE * CH_one_ch_tok,			// ;
+	C_STATE * CH_lt,					// <
+	C_STATE * CH_eq,					// =
+	C_STATE * CH_gt,					// >
+	C_STATE * CH_one_ch_tok,			// ?
+	C_STATE * CH_one_ch_tok,			// @
+	C_STATE * CH_id_no_digit_no_eEpP,	// A
+	C_STATE * CH_id_no_digit_no_eEpP,	// B
+	C_STATE * CH_id_no_digit_no_eEpP,	// C
+	C_STATE * CH_id_no_digit_no_eEpP,	// D
+	C_STATE * CH_eEpP,					// E
+	C_STATE * CH_id_no_digit_no_eEpP,	// F
+	C_STATE * CH_id_no_digit_no_eEpP,	// G
+	C_STATE * CH_id_no_digit_no_eEpP,	// H
+	C_STATE * CH_id_no_digit_no_eEpP,	// I
+	C_STATE * CH_id_no_digit_no_eEpP,	// J
+	C_STATE * CH_id_no_digit_no_eEpP,	// K
+	C_STATE * CH_L,						// L
+	C_STATE * CH_id_no_digit_no_eEpP,	// M
+	C_STATE * CH_id_no_digit_no_eEpP,	// N
+	C_STATE * CH_id_no_digit_no_eEpP,	// O
+	C_STATE * CH_eEpP,					// P
+	C_STATE * CH_id_no_digit_no_eEpP,	// Q
+	C_STATE * CH_id_no_digit_no_eEpP,	// R
+	C_STATE * CH_id_no_digit_no_eEpP,	// S
+	C_STATE * CH_id_no_digit_no_eEpP,	// T
+	C_STATE * CH_U,						// U
+	C_STATE * CH_id_no_digit_no_eEpP,	// V
+	C_STATE * CH_id_no_digit_no_eEpP,	// W
+	C_STATE * CH_id_no_digit_no_eEpP,	// X
+	C_STATE * CH_id_no_digit_no_eEpP,	// Y
+	C_STATE * CH_id_no_digit_no_eEpP,	// Z
+	C_STATE * CH_one_ch_tok,			// [
+	C_STATE * CH_bslash,				// \ (back slash)
+	C_STATE * CH_one_ch_tok,			// ]
+	C_STATE * CH_bang_or_caret,			// ^
+	C_STATE * CH_id_no_digit_no_eEpP,	// _
+	C_STATE * CH_one_ch_tok,			// `
+	C_STATE * CH_id_no_digit_no_eEpP,	// a
+	C_STATE * CH_id_no_digit_no_eEpP,	// b
+	C_STATE * CH_id_no_digit_no_eEpP,	// c
+	C_STATE * CH_id_no_digit_no_eEpP,	// d
+	C_STATE * CH_eEpP,					// e
+	C_STATE * CH_id_no_digit_no_eEpP,	// f
+	C_STATE * CH_id_no_digit_no_eEpP,	// g
+	C_STATE * CH_id_no_digit_no_eEpP,	// h
+	C_STATE * CH_id_no_digit_no_eEpP,	// i
+	C_STATE * CH_id_no_digit_no_eEpP,	// j
+	C_STATE * CH_id_no_digit_no_eEpP,	// k
+	C_STATE * CH_id_no_digit_no_eEpP,	// l
+	C_STATE * CH_id_no_digit_no_eEpP,	// m
+	C_STATE * CH_id_no_digit_no_eEpP,	// n
+	C_STATE * CH_id_no_digit_no_eEpP,	// o
+	C_STATE * CH_eEpP,					// p
+	C_STATE * CH_id_no_digit_no_eEpP,	// q
+	C_STATE * CH_id_no_digit_no_eEpP,	// r
+	C_STATE * CH_id_no_digit_no_eEpP,	// s
+	C_STATE * CH_id_no_digit_no_eEpP,	// t
+	C_STATE * CH_u,						// u
+	C_STATE * CH_id_no_digit_no_eEpP,	// v
+	C_STATE * CH_id_no_digit_no_eEpP,	// w
+	C_STATE * CH_id_no_digit_no_eEpP,	// x
+	C_STATE * CH_id_no_digit_no_eEpP,	// y
+	C_STATE * CH_id_no_digit_no_eEpP,	// z
+	C_STATE * CH_one_ch_tok,			// {
+	C_STATE * CH_vbar,					// |
+	C_STATE * CH_one_ch_tok,			// }
+	C_STATE * CH_one_ch_tok,			// ~
+	C_STATE * CH_one_ch_tok,			// DEL
 };
 
-static LEX_STATE Next_state(LEX_STATE cur_state, CH ch)
+static unsigned short Classify_ch_pre_multiplied(char ch)
 {
-#if 1
-	return (LEX_STATE)tran_map[ch][cur_state];
-#else
+	if ((unsigned char)ch > 127)
+		return C_STATE * CH_one_ch_tok;
+
+	return ch_map_pre_multiplied[ch];
+}
+
+#define C_CH (CH_id_no_digit_no_eEpP + 1)
+
+static unsigned char tran_map[C_CH * C_STATE] =
+{
+	28,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29,
+	28,29,29,29,29,29,29,7,7,9,29,29,29,14,13,16,15,29,29,29,29,29,29,29,29,29,29,29,
+	27,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29,
+	27,29,29,29,29,29,28,7,7,9,29,29,29,13,13,15,15,29,28,28,28,28,28,28,28,29,29,28,
+	27,29,29,29,29,29,7,8,8,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29,
+	26,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,28,28,29,29,29,29,29,29,29,29,
+	25,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,28,29,29,
+	24,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,28,29,29,29,
+	23,29,29,29,3,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,28,29,29,29,29,
+	22,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,28,29,29,29,29,29,
+	21,29,29,29,3,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,28,29,29,29,29,29,29,
+	20,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,28,29,27,28,29,29,29,29,28,29,
+	19,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,27,29,29,29,29,29,29,29,29,
+	18,29,29,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,28,29,29,29,29,29,29,29,29,
+	17,29,29,4,4,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29,
+	15,29,29,29,29,29,29,7,7,9,29,29,15,13,13,28,15,29,29,29,29,29,29,29,29,29,29,29,
+	13,29,29,29,29,29,29,7,7,9,29,13,13,28,13,15,15,29,29,29,29,29,29,29,29,29,29,29,
+	12,29,29,3,3,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29,
+	11,29,29,3,3,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29,
+	10,29,29,3,3,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29,
+	6,29,29,29,29,29,9,7,28,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29,
+	5,29,29,3,3,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29,
+	3,29,29,3,3,3,29,7,7,9,11,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29,
+	3,29,29,3,3,3,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29,
+	2,29,2,29,29,29,29,7,7,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,29,
+	1,1,2,29,29,29,29,7,7,9,29,29,29,13,13,15,15,29,29,29,29,29,29,29,29,29,29,29,
+	17,29,29,3,3,29,29,7,7,9,17,17,17,13,13,15,15,17,29,29,29,29,29,29,29,29,29,29
+};
+
+static LEX_STATE Next_state(LEX_STATE cur_state, char ch)
+{
+	return (LEX_STATE)tran_map[Classify_ch_pre_multiplied(ch) + cur_state];
+}
+
+int Len_leading_token(const char * str)
+{
+	const char * str_begin = str;
+	LEX_STATE state = LEX_STATE_START;
+
+	char ch = str[0];
+
+	while (true)
+	{
+		if (ch == '\0')
+			break;
+
+		LEX_STATE next_state = Next_state(state, ch);
+
+		if (next_state == LEX_STATE_EXIT)
+			break;
+
+		++str;
+
+		if (next_state == LEX_STATE_DELAY_EXIT)
+			break;
+
+		state = next_state;
+		ch = str[0];
+	}
+
+	switch (state)
+	{
+	case LEX_STATE_PERCENT:
+		{
+			// Handle '%:%:' token
+
+			//??? needs to handle \\\n
+
+			if (ch == ':' && str[1] == '%' && str[2] == ':')
+				return 4;
+		}
+		break;
+
+	case LEX_STATE_DOT:
+		{
+			// Handle '...' token
+
+			//??? needs to handle \\\n
+
+			if (ch == '.' && str[1] == '.')
+				return 3;
+		}
+		break;
+
+	default:
+		break;
+	}
+
+	return (int)(str - str_begin);
+}
+
+////// slow version of Next_state, that we use to generate tran_map
+
+static LEX_STATE Next_state_slow(LEX_STATE cur_state, CH ch)
+{
 	switch (cur_state)
 	{
 	case LEX_STATE_START:
@@ -634,75 +697,18 @@ static LEX_STATE Next_state(LEX_STATE cur_state, CH ch)
 	default:
 		return LEX_STATE_EXIT;
 	}
-#endif
 }
 
-int Len_leading_token(const char * str)
-{
-	const char * str_begin = str;
-	LEX_STATE state = LEX_STATE_START;
-
-	char ch = str[0];
-
-	while (true)
-	{
-		if (ch == '\0')
-			break;
-
-		LEX_STATE next_state = Next_state(state, Classify_ch(ch));
-
-		if (next_state == LEX_STATE_EXIT)
-			break;
-
-		++str;
-
-		if (next_state == LEX_STATE_DELAY_EXIT)
-			break;
-
-		state = next_state;
-		ch = str[0];
-	}
-
-	switch (state)
-	{
-	case LEX_STATE_PERCENT:
-		{
-			// Handle '%:%:' token
-
-			//??? needs to handle \\\n
-
-			if (ch == ':' && str[1] == '%' && str[2] == ':')
-				return 4;
-		}
-		break;
-
-	case LEX_STATE_DOT:
-		{
-			// Handle '...' token
-
-			//??? needs to handle \\\n
-
-			if (ch == '.' && str[1] == '.')
-				return 3;
-		}
-		break;
-
-	default:
-		break;
-	}
-
-	return (int)(str - str_begin);
-}
+#include <stdio.h>
 
 void Print_trans(void)
 {
-	for (int i = 0; i <= CH_id_no_digit_no_eEpP; ++i)
+	for (int i = 0; i < C_CH; ++i)
 	{
-		printf("{");
-		for (int j = 0; j <= LEX_STATE_EQ_OR_EXIT; ++j)
+		for (int j = 0; j < C_STATE; ++j)
 		{
-			printf("%d,", Next_state((LEX_STATE)j, (CH)i));
+			printf("%d,", Next_state_slow((LEX_STATE)j, (CH)i));
 		}
-		printf("},\n");
+		printf("\n");
 	}
 }
