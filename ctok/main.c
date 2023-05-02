@@ -19,6 +19,9 @@ int main(int argc, char *argv[])
 	if (argc == 2)
 	{
 		Print_tokens_in_file(argv[1]);
+#if PROFILE_PRINT_TOK
+		printf("done profiling\n");
+#endif
 		return 0;
 	}
 

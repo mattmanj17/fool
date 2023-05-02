@@ -2,9 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "print_toks_in_file.h"
 #include "lex.h"
 #include "file.h"
-
 
 
 
@@ -109,9 +109,15 @@ static void Print_toks_in_str(const char * str_)
 			line_prev, 
 			loc_in_line);*/
 
+#if !PROFILE_PRINT_TOK
 		printf("%d\n", (int)(input.str - token_start));
+#endif
 	}
 }
+
+#if PROFILE_PRINT_TOK
+#include <windows.h>
+#endif
 
 void Print_tokens_in_file(const char * fpath)
 {
@@ -122,5 +128,24 @@ void Print_tokens_in_file(const char * fpath)
 		exit(1);
 	}
 
+#if PROFILE_PRINT_TOK
+	LARGE_INTEGER frequency, start_time, end_time;
+	double elapsed_time;
+
+	QueryPerformanceFrequency(&frequency);
+	QueryPerformanceCounter(&start_time);
+
+	for (int i = 0; i < 20000; ++i)
+	{
+		Print_toks_in_str(file_buf);
+	}
+
+	QueryPerformanceCounter(&end_time);
+
+	elapsed_time = (double)(end_time.QuadPart - start_time.QuadPart) / (double)frequency.QuadPart;
+
+	printf("Elapsed time: %f seconds\n", elapsed_time);
+#else
 	Print_toks_in_str(file_buf);
+#endif
 }
