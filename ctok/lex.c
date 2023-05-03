@@ -126,20 +126,25 @@ void Init_input(input_t * input, const char * str)
 	input->line = 1;
 }
 
+__declspec(noinline) char Peek_input_slow(input_t * input)
+{
+	int len_line_continue = Len_line_continues(input->str, NULL);
+	if (!len_line_continue)
+		return input->str[0];
+
+	return input->str[len_line_continue];
+}
+
 static char Peek_input(input_t * input)
 {
 	char ch = input->str[0];
 	if (ch != '\\')
 		return ch;
 
-	int len_line_continue = Len_line_continues(input->str, NULL);
-	if (!len_line_continue)
-		return ch;
-
-	return input->str[len_line_continue];
+	return Peek_input_slow(input);
 }
 
-static void Advance_input_slow(input_t * input)
+__declspec(noinline) static void Advance_input_slow(input_t * input)
 {
 	int num_lines;
 	int len_line_continue = Len_line_continues(input->str, &num_lines);
