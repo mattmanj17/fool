@@ -104,6 +104,7 @@ static void Print_toks_in_str(const char * str)
 			line_prev, 
 			loc_in_line);
 #else
+		(void) token_start;
 		(void) line_prev;
 		(void) loc_in_line;
 #endif

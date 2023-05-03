@@ -139,19 +139,8 @@ static char Peek_input(input_t * input)
 	return input->str[len_line_continue];
 }
 
-static void Advance_input(input_t * input)
+static void Advance_input_slow(input_t * input)
 {
-	char ch0 = input->str[0];
-
-	if (ch0 != '\\')
-	{
-		// NOTE you should not call Advance_input
-		//  if ch0 might be a line break...
-
-		++input->str;
-		return;
-	}
-
 	int num_lines;
 	int len_line_continue = Len_line_continues(input->str, &num_lines);
 	if (!len_line_continue)
@@ -169,6 +158,23 @@ static void Advance_input(input_t * input)
 		++input->str;
 	}
 }
+
+// Macro to make sure Advance_input is inlined
+
+// NOTE you should not call Advance_input
+//  if str[0] might be a line break...
+
+#define Advance_input(input) \
+	do { \
+		if ((input)->str[0] != '\\') \
+		{ \
+			++(input)->str; \
+		} \
+		else \
+		{ \
+			Advance_input_slow((input)); \
+		} \
+	} while(0)
 
 
 
