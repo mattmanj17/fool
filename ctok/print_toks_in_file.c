@@ -83,34 +83,29 @@ void Print_token(
 		loc_in_line);
 }
 
-static void Print_toks_in_str(const char * str_)
+static void Print_toks_in_str(const char * str)
 {
 	input_t input;
-	input.str = str_;
-	input.line_start = str_;
-	input.line = 1;
+	Init_input(&input, str);
 
-	while (input.str[0])
+	while (true)
 	{
 		const char * token_start = input.str;
-		//int line_prev = input.line;
-		//int loc_in_line = (int)(input.str - input.line_start + 1);
+		int line_prev = input.line;
+		int loc_in_line = (int)(input.str - input.line_start + 1);
 
-		Skip_leading_token(&input);
-		if (input.str == token_start)
-		{
-			printf("Lex error\n");
-			return;
-		}
-
-		/*Print_token(
-			token_start, 
-			(int)(input.str - token_start), 
-			line_prev, 
-			loc_in_line);*/
+		if (!Lex(&input))
+			break;
 
 #if !PROFILE_PRINT_TOK
-		printf("%d\n", (int)(input.str - token_start));
+		Print_token(
+			token_start,
+			(int)(input.str - token_start), 
+			line_prev, 
+			loc_in_line);
+#else
+		(void) line_prev;
+		(void) loc_in_line;
 #endif
 	}
 }
