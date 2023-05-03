@@ -216,59 +216,96 @@ static void Lex_after_vbar(input_t * input);
 
 bool Lex(input_t * input)
 {
-	char ch = Peek_input(input);
-	if (ch == '\0')
-		return false;
-
-	Advance_input(input);
-
+switch_on_str_0:
+	char ch = input->str[0];
 	switch (ch)
 	{
+	case '\\':
+		{
+			// Doing a bespoke version of Peek_input + Advance_input here.
+			//  This lets us handle '\\' in this top level switch,
+			//  AND means we only have to do "++input->str;" in
+			//  all the other cases.
+			//
+			// This is more opaque than I would like, but
+			//  the perf gain is worth it
+
+			int num_lines;
+			int len_line_continue = Len_line_continues(input->str, &num_lines);
+			if (len_line_continue)
+			{
+				input->str += len_line_continue;
+				input->line_start = input->str;
+				input->line += num_lines;
+
+				goto switch_on_str_0;
+			}
+			else
+			{
+				++input->str; // wrong, should handle UCNs
+				return true;
+			}
+		}
+
+	case '\0':
+		return false;
+
 	case ' ':
 	case '\t':
 	case '\f':
 	case '\v':
+		++input->str;
 		Skip_horizontal_white_space(&input->str);
 		return true;
 		
 	case '\r':
+		++input->str;
 		Lex_after_carriage_return(input);
 		return true;
 
 	case '\n':
+		++input->str;
 		Lex_after_line_break(input);
 		return true;
 
 	case '0': case '1': case '2': case '3': case '4':
 	case '5': case '6': case '7': case '8': case '9':
+		++input->str;
 		Lex_rest_of_ppnum(input);
 		return true;
 
 	case '.':
+		++input->str;
 		Lex_after_dot(input);
 		return true;
 
 	case '/':
+		++input->str;
 		Lex_after_fslash(input);
 		return true;
 
 	case 'u':
+		++input->str;
 		Lex_after_u(input);
 		return true;
 
 	case 'U':
+		++input->str;
 		Lex_after_U(input);
 		return true;
 
 	case 'L':
+		++input->str;
 		Lex_after_L(input);
 		return true;
 
 	case '"':
+		++input->str;
 		Lex_rest_of_str_lit('"', input);
 		return true;
 
 	case '\'':
+		++input->str;
 		Lex_rest_of_str_lit('\'', input);
 		return true;
 
@@ -282,85 +319,109 @@ bool Lex(input_t * input)
 	case 'V': case 'W': case 'X': case 'Y': case 'Z':
 	case '_':
 	case '$': // $ allowed in ids as an extension :/
+		++input->str;
 		Lex_rest_of_id(input);
 		return true;
 
 	case '%':
+		++input->str;
 		Lex_after_percent(input);
 		return true;
 
 	case '<':
+		++input->str;
 		Lex_after_lt(input);
 		return true;
 
 	case '>':
+		++input->str;
 		Lex_after_gt(input);
 		return true;
 
 	case '!':
+		++input->str;
 		Lex_after_bang(input);
 		return true;
 
 	case '#':
+		++input->str;
 		Lex_after_htag(input);
 		return true;
 
 	case '&':
+		++input->str;
 		Lex_after_amp(input);
 		return true;
 
 	case '*':
+		++input->str;
 		Lex_after_star(input);
 		return true;
 
 	case '+':
+		++input->str;
 		Lex_after_plus(input);
 		return true;
 
 	case '-':
+		++input->str;
 		Lex_after_minus(input);
 		return true;
 		
 	case ':':
+		++input->str;
 		Lex_after_colon(input);
 		return true;
 
 	case '=':
+		++input->str;
 		Lex_after_eq(input);
 		return true;
 
 	case '^':
+		++input->str;
 		Lex_after_caret(input);
 		return true;
 
 	case '|':
+		++input->str;
 		Lex_after_vbar(input);
 		return true;
 
 	case '(':
+		++input->str;
 		return true;
 	case ')':
+		++input->str;
 		return true;
 	case ',':
+		++input->str;
 		return true;
 	case ';':
+		++input->str;
 		return true;
 	case '?':
+		++input->str;
 		return true;
 	case '[':
+		++input->str;
 		return true;
 	case ']':
+		++input->str;
 		return true;
 	case '{':
+		++input->str;
 		return true;
 	case '}':
+		++input->str;
 		return true;
 	case '~':
+		++input->str;
 		return true;
 
 	case '`':
 	case '@':
-	case '\\': // wrong, should handle UCNs
+		++input->str;
 		return true;
 
 	case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07:
@@ -369,9 +430,11 @@ bool Lex(input_t * input)
 	case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C:
 	case 0x1D: case 0x1E: case 0x1F:
 	case 0x7f:
+		++input->str;
 		return true;
 
 	default: // wrong, should handle utf8
+		++input->str;
 		return true;
 	}
 }
