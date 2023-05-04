@@ -165,22 +165,19 @@ __declspec(noinline) static void Advance_input_slow(input_t * input)
 	}
 }
 
-// Macro to make sure Advance_input is inlined
-
 // NOTE you should not call Advance_input
-//  if str[0] might be a line break...
+//  if Peek_input(input) might be a line break...
 
-#define Advance_input(input) \
-	do { \
-		if ((input)->str[0] != '\\') \
-		{ \
-			++(input)->str; \
-		} \
-		else \
-		{ \
-			Advance_input_slow((input)); \
-		} \
-	} while(0)
+static void Advance_input(input_t * input)
+{
+	if (input->str[0] != '\\')
+	{
+		++input->str;
+		return;
+	}
+	
+	Advance_input_slow(input);
+}
 
 
 
