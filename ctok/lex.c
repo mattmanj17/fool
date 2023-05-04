@@ -127,7 +127,7 @@ void Init_input(input_t * input, const char * str)
 	input->line = 1;
 }
 
-__declspec(noinline) char Peek_input_slow(input_t * input)
+__declspec(noinline) static char Peek_input_slow(input_t * input)
 {
 	int len_line_continue = Len_line_continues(input->str, NULL);
 	if (!len_line_continue)
@@ -222,6 +222,12 @@ static bool Lex_after_vbar(input_t * input);
 
 bool Lex(input_t * input)
 {
+	// NOTE (matthewd) you may be tempted to try and pull up all the 
+	//  "++input->str;"s below, and just do "--input->str;" in 
+	//  the '\\' and '\0' cases, but some initial profiling seemed 
+	//  to suggest that was actually SLOWER than the way it is now
+	//  ... which I do not fully understand ...
+
 switch_on_str_0:
 	char ch = input->str[0];
 	switch (ch)
