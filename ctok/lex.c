@@ -1,5 +1,6 @@
 
 #include <stdlib.h>
+#include <stdbool.h>
 
 #include "lex.h"
 
@@ -185,39 +186,39 @@ __declspec(noinline) static void Advance_input_slow(input_t * input)
 
 // Main lex function (and helpers)
 
-static void Skip_horizontal_white_space(const char ** p_str);
+static bool Skip_horizontal_white_space(const char ** p_str);
 
-static void Lex_after_carriage_return(input_t * input);
-static void Lex_after_line_break(input_t * input);
+static bool Lex_after_carriage_return(input_t * input);
+static bool Lex_after_line_break(input_t * input);
 
-static void Lex_rest_of_ppnum(input_t * input);
-static void Lex_after_dot(input_t * input);
+static bool Lex_rest_of_ppnum(input_t * input);
+static bool Lex_after_dot(input_t * input);
 
-static void Lex_after_fslash(input_t * input);
-static void Lex_rest_of_block_comment(input_t * input);
-static void Lex_rest_of_line_comment(input_t * input);
+static bool Lex_after_fslash(input_t * input);
+static bool Lex_rest_of_block_comment(input_t * input);
+static bool Lex_rest_of_line_comment(input_t * input);
 
-static void Lex_after_u(input_t * input);
-static void Lex_after_U(input_t * input);
-static void Lex_after_L(input_t * input);
-static void Lex_rest_of_str_lit(char ch_sential, input_t * input);
+static bool Lex_after_u(input_t * input);
+static bool Lex_after_U(input_t * input);
+static bool Lex_after_L(input_t * input);
+static bool Lex_rest_of_str_lit(char ch_sential, input_t * input);
 
-static void Lex_rest_of_id(input_t * input);
+static bool Lex_rest_of_id(input_t * input);
 
-static void Lex_after_percent(input_t * input);
-static void Lex_after_percent_colon(input_t * input);
-static void Lex_after_lt(input_t * input);
-static void Lex_after_gt(input_t * input);
-static void Lex_after_bang(input_t * input);
-static void Lex_after_htag(input_t * input);
-static void Lex_after_amp(input_t * input);
-static void Lex_after_star(input_t * input);
-static void Lex_after_plus(input_t * input);
-static void Lex_after_minus(input_t * input);
-static void Lex_after_colon(input_t * input);
-static void Lex_after_eq(input_t * input);
-static void Lex_after_caret(input_t * input);
-static void Lex_after_vbar(input_t * input);
+static bool Lex_after_percent(input_t * input);
+static bool Lex_after_percent_colon(input_t * input);
+static bool Lex_after_lt(input_t * input);
+static bool Lex_after_gt(input_t * input);
+static bool Lex_after_bang(input_t * input);
+static bool Lex_after_htag(input_t * input);
+static bool Lex_after_amp(input_t * input);
+static bool Lex_after_star(input_t * input);
+static bool Lex_after_plus(input_t * input);
+static bool Lex_after_minus(input_t * input);
+static bool Lex_after_colon(input_t * input);
+static bool Lex_after_eq(input_t * input);
+static bool Lex_after_caret(input_t * input);
+static bool Lex_after_vbar(input_t * input);
 
 bool Lex(input_t * input)
 {
@@ -260,59 +261,48 @@ switch_on_str_0:
 	case '\f':
 	case '\v':
 		++input->str;
-		Skip_horizontal_white_space(&input->str);
-		return true;
+		return Skip_horizontal_white_space(&input->str);
 		
 	case '\r':
 		++input->str;
-		Lex_after_carriage_return(input);
-		return true;
+		return Lex_after_carriage_return(input);
 
 	case '\n':
 		++input->str;
-		Lex_after_line_break(input);
-		return true;
+		return Lex_after_line_break(input);
 
 	case '0': case '1': case '2': case '3': case '4':
 	case '5': case '6': case '7': case '8': case '9':
 		++input->str;
-		Lex_rest_of_ppnum(input);
-		return true;
+		return Lex_rest_of_ppnum(input);
 
 	case '.':
 		++input->str;
-		Lex_after_dot(input);
-		return true;
+		return Lex_after_dot(input);
 
 	case '/':
 		++input->str;
-		Lex_after_fslash(input);
-		return true;
+		return Lex_after_fslash(input);
 
 	case 'u':
 		++input->str;
-		Lex_after_u(input);
-		return true;
+		return Lex_after_u(input);
 
 	case 'U':
 		++input->str;
-		Lex_after_U(input);
-		return true;
+		return Lex_after_U(input);
 
 	case 'L':
 		++input->str;
-		Lex_after_L(input);
-		return true;
+		return Lex_after_L(input);
 
 	case '"':
 		++input->str;
-		Lex_rest_of_str_lit('"', input);
-		return true;
+		return Lex_rest_of_str_lit('"', input);
 
 	case '\'':
 		++input->str;
-		Lex_rest_of_str_lit('\'', input);
-		return true;
+		return Lex_rest_of_str_lit('\'', input);
 
 	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
 	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
@@ -325,73 +315,59 @@ switch_on_str_0:
 	case '_':
 	case '$': // $ allowed in ids as an extension :/
 		++input->str;
-		Lex_rest_of_id(input);
-		return true;
+		return Lex_rest_of_id(input);
 
 	case '%':
 		++input->str;
-		Lex_after_percent(input);
-		return true;
+		return Lex_after_percent(input);
 
 	case '<':
 		++input->str;
-		Lex_after_lt(input);
-		return true;
+		return Lex_after_lt(input);
 
 	case '>':
 		++input->str;
-		Lex_after_gt(input);
-		return true;
+		return Lex_after_gt(input);
 
 	case '!':
 		++input->str;
-		Lex_after_bang(input);
-		return true;
+		return Lex_after_bang(input);
 
 	case '#':
 		++input->str;
-		Lex_after_htag(input);
-		return true;
+		return Lex_after_htag(input);
 
 	case '&':
 		++input->str;
-		Lex_after_amp(input);
-		return true;
+		return Lex_after_amp(input);
 
 	case '*':
 		++input->str;
-		Lex_after_star(input);
-		return true;
+		return Lex_after_star(input);
 
 	case '+':
 		++input->str;
-		Lex_after_plus(input);
-		return true;
+		return Lex_after_plus(input);
 
 	case '-':
 		++input->str;
-		Lex_after_minus(input);
-		return true;
+		return Lex_after_minus(input);
 		
 	case ':':
 		++input->str;
-		Lex_after_colon(input);
-		return true;
+		return Lex_after_colon(input);
 
 	case '=':
 		++input->str;
-		Lex_after_eq(input);
-		return true;
+		return Lex_after_eq(input);
 
 	case '^':
 		++input->str;
-		Lex_after_caret(input);
-		return true;
+		return Lex_after_caret(input);
 
 	case '|':
 		++input->str;
-		Lex_after_vbar(input);
-		return true;
+		return Lex_after_vbar(input);
 
 	case '(':
 		++input->str;
@@ -444,7 +420,7 @@ switch_on_str_0:
 	}
 }
 
-static void Skip_horizontal_white_space(const char ** p_str)
+static bool Skip_horizontal_white_space(const char ** p_str)
 {
 	const char * str = *p_str;
 
@@ -457,19 +433,21 @@ static void Skip_horizontal_white_space(const char ** p_str)
 	}
 
 	*p_str = str;
+
+	return true;
 }
 
-static void Lex_after_carriage_return(input_t * input)
+static bool Lex_after_carriage_return(input_t * input)
 {
 	if (input->str[0] == '\n')
 	{
 		++input->str;
 	}
 
-	Lex_after_line_break(input);
+	return Lex_after_line_break(input);
 }
 
-static void Lex_after_line_break(input_t * input)
+static bool Lex_after_line_break(input_t * input)
 {
 	const char * str = input->str;
 	const char * line_start = str;
@@ -504,17 +482,18 @@ static void Lex_after_line_break(input_t * input)
 	input->str = str;
 	input->line_start = line_start;
 	input->line = line;
+
+	return true;
 }
 
-static void Lex_after_dot(input_t * input)
+static bool Lex_after_dot(input_t * input)
 {
 	char ch = Peek_input(input);
 	
 	if (Is_digit(ch))
 	{
 		Advance_input(input);
-		Lex_rest_of_ppnum(input);
-		return;
+		return Lex_rest_of_ppnum(input);
 	}
 
 	if (ch == '.')
@@ -528,29 +507,29 @@ static void Lex_after_dot(input_t * input)
 			*input = input_peek;
 		}
 	}
+
+	return true;
 }
 
-static void Lex_after_fslash(input_t * input)
+static bool Lex_after_fslash(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '*':
 		Advance_input(input);
-		Lex_rest_of_block_comment(input);
-		return;
+		return Lex_rest_of_block_comment(input);
 	case '/':
 		Advance_input(input);
-		Lex_rest_of_line_comment(input);
-		return;
+		return Lex_rest_of_line_comment(input);
 	case '=':
 		Advance_input(input);
-		return;
+		return true;
 	default:
-		return;
+		return true;
 	}
 }
 
-static void Lex_rest_of_block_comment(input_t * input)
+static bool Lex_rest_of_block_comment(input_t * input)
 {
 	while (true)
 	{
@@ -576,9 +555,11 @@ static void Lex_rest_of_block_comment(input_t * input)
 
 		input->str += 1;
 	}
+
+	return true;
 }
 
-static void Lex_rest_of_line_comment(input_t * input)
+static bool Lex_rest_of_line_comment(input_t * input)
 {
 	while (true)
 	{
@@ -592,9 +573,11 @@ static void Lex_rest_of_line_comment(input_t * input)
 
 		Advance_input(input);
 	}
+
+	return true;
 }
 
-static void Lex_after_u(input_t * input)
+static bool Lex_after_u(input_t * input)
 {
 	if (Peek_input(input) == '8')
 	{
@@ -602,40 +585,36 @@ static void Lex_after_u(input_t * input)
 
 		// Reusing Lex_after_U because it does what we want
 
-		Lex_after_U(input);
-
-		return;
+		return Lex_after_U(input);
 	}
 
-	Lex_rest_of_id(input);
+	return Lex_rest_of_id(input);
 }
 
-static void Lex_after_U(input_t * input)
+static bool Lex_after_U(input_t * input)
 {
 	if (Peek_input(input) == '"')
 	{
 		Advance_input(input);
-		Lex_rest_of_str_lit('"', input);
-		return;
+		return Lex_rest_of_str_lit('"', input);
 	}
 
-	Lex_rest_of_id(input);
+	return Lex_rest_of_id(input);
 }
 
-static void Lex_after_L(input_t * input)
+static bool Lex_after_L(input_t * input)
 {
 	char ch = Peek_input(input);
 	if (ch == '"' || ch == '\'')
 	{
 		Advance_input(input);
-		Lex_rest_of_str_lit(ch, input);
-		return;
+		return Lex_rest_of_str_lit(ch, input);
 	}
 
-	Lex_rest_of_id(input);
+	return Lex_rest_of_id(input);
 }
 
-static void Lex_rest_of_str_lit(char ch_sential, input_t * input)
+static bool Lex_rest_of_str_lit(char ch_sential, input_t * input)
 {
 	//??? TODO support utf8 chars? or do we get that for free?
 	//  should probably at least check for mal-formed utf8, instead
@@ -648,10 +627,10 @@ static void Lex_rest_of_str_lit(char ch_sential, input_t * input)
 		// In raw lexing mode, we accept string/char literals without the closing quote
 
 		if (ch0 == '\0')
-			return;
+			return true;
 
 		if (Is_line_break(ch0))
-			return;
+			return true;
 
 		// Whatever ch is at this point, we know
 		//  we are going to include it in the str lit
@@ -661,7 +640,7 @@ static void Lex_rest_of_str_lit(char ch_sential, input_t * input)
 		// Check for closing quote
 
 		if (ch0 == ch_sential)
-			return;
+			return true;
 
 		// Deal with back slash
 
@@ -670,17 +649,19 @@ static void Lex_rest_of_str_lit(char ch_sential, input_t * input)
 			char ch1 = Peek_input(input);
 
 			if (ch1 == '\0')
-				return;
+				return true;
 
 			if (Is_line_break(ch1))
-				return;
+				return true;
 
 			Advance_input(input);
 		}
 	}
+
+	return true;
 }
 
-static void Lex_rest_of_id(input_t * input)
+static bool Lex_rest_of_id(input_t * input)
 {
 	//??? todo add support for universal-character-names
 	//??? todo support utf8 in ids
@@ -690,7 +671,7 @@ static void Lex_rest_of_id(input_t * input)
 		char ch = Peek_input(input);
 
 		if (!Extends_id(ch))
-			return;
+			return true;
 
 		Advance_input(input);
 
@@ -706,29 +687,30 @@ static void Lex_rest_of_id(input_t * input)
 
 		input->str = str_peek;
 	}
+
+	return true;
 }
 
-static void Lex_after_percent(input_t * input)
+static bool Lex_after_percent(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case ':':
 		Advance_input(input);
-		Lex_after_percent_colon(input);
-		return;
+		return Lex_after_percent_colon(input);
 
 	case '=':
 		Advance_input(input);
-		return;
+		return true;
 	case '>':
 		Advance_input(input);
-		return;
+		return true;
 	default:
-		return;
+		return true;
 	}
 }
 
-static void Lex_after_percent_colon(input_t * input)
+static bool Lex_after_percent_colon(input_t * input)
 {
 	if (Peek_input(input) == '%')
 	{
@@ -741,9 +723,11 @@ static void Lex_after_percent_colon(input_t * input)
 			*input = input_peek;
 		}
 	}
+
+	return true;
 }
 
-static void Lex_after_lt(input_t * input)
+static bool Lex_after_lt(input_t * input)
 {
 	switch (Peek_input(input))
 	{
@@ -752,28 +736,28 @@ static void Lex_after_lt(input_t * input)
 		if (Peek_input(input) == '=')
 		{
 			Advance_input(input);
-			return;
+			return true;
 		}
-		return;
+		return true;
 
 	case '%':
 		Advance_input(input);
-		return;
+		return true;
 
 	case ':':
 		Advance_input(input);
-		return;
+		return true;
 
 	case '=':
 		Advance_input(input);
-		return;
+		return true;
 
 	default:
-		return;
+		return true;
 	}
 }
 
-static void Lex_after_gt(input_t * input)
+static bool Lex_after_gt(input_t * input)
 {
 	switch (Peek_input(input))
 	{
@@ -782,127 +766,139 @@ static void Lex_after_gt(input_t * input)
 		if (Peek_input(input) == '=')
 		{
 			Advance_input(input);
-			return;
+			return true;
 		}
-		return;
+		return true;
 
 	case '=':
 		Advance_input(input);
-		return;
+		return true;
 
 	default:
-		return;
+		return true;
 	}
 }
 
-static void Lex_after_bang(input_t * input)
+static bool Lex_after_bang(input_t * input)
 {
 	if (Peek_input(input) == '=')
 	{
 		Advance_input(input);
 	}
+
+	return true;
 }
 
-static void Lex_after_htag(input_t * input)
+static bool Lex_after_htag(input_t * input)
 {
 	if (Peek_input(input) == '#')
 	{
 		Advance_input(input);
 	}
+
+	return true;
 }
 
-static void Lex_after_amp(input_t * input)
+static bool Lex_after_amp(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '&':
 		Advance_input(input);
-		return;
+		return true;
 	case '=':
 		Advance_input(input);
-		return;
+		return true;
 	default:
-		return;
+		return true;
 	}
 }
 
-static void Lex_after_star(input_t * input)
+static bool Lex_after_star(input_t * input)
 {
 	if (Peek_input(input) == '=')
 	{
 		Advance_input(input);
 	}
+
+	return true;
 }
 
-static void Lex_after_plus(input_t * input)
+static bool Lex_after_plus(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '+':
 		Advance_input(input);
-		return;
+		return true;
 	case '=':
 		Advance_input(input);
-		return;
+		return true;
 	default:
-		return;
+		return true;
 	}
 }
 
-static void Lex_after_minus(input_t * input)
+static bool Lex_after_minus(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '>':
 		Advance_input(input);
-		return;
+		return true;
 	case '-':
 		Advance_input(input);
-		return;
+		return true;
 	case '=':
 		Advance_input(input);
-		return;
+		return true;
 	default:
-		return;
+		return true;
 	}
 }
 
-static void Lex_after_colon(input_t * input)
+static bool Lex_after_colon(input_t * input)
 {
 	if (Peek_input(input) == '>')
 	{
 		Advance_input(input);
 	}
+
+	return true;
 }
 
-static void Lex_after_eq(input_t * input)
+static bool Lex_after_eq(input_t * input)
 {
 	if (Peek_input(input) == '=')
 	{
 		Advance_input(input);
 	}
+
+	return true;
 }
 
-static void Lex_after_caret(input_t * input)
+static bool Lex_after_caret(input_t * input)
 {
 	if (Peek_input(input) == '=')
 	{
 		Advance_input(input);
 	}
+
+	return true;
 }
 
-static void Lex_after_vbar(input_t * input)
+static bool Lex_after_vbar(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '|':
 		Advance_input(input);
-		return;
+		return true;
 	case '=':
 		Advance_input(input);
-		return;
+		return true;
 	default:
-		return;
+		return true;
 	}
 }
 
@@ -959,7 +955,7 @@ static void Lex_after_vbar(input_t * input)
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 // 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-static void Lex_rest_of_ppnum(input_t * input)
+static bool Lex_rest_of_ppnum(input_t * input)
 {
 	while (true)
 	{
@@ -988,4 +984,6 @@ static void Lex_rest_of_ppnum(input_t * input)
 			break;
 		}
 	}
+
+	return true;
 }
