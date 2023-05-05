@@ -1031,6 +1031,9 @@ static bool Lex_after_vbar(input_t * input)
 
 	where identifier_nondigit is 
 	[a-zA-Z_] OR a "universal character name"
+
+	oh, and '$' is included in identifier_nondigit as well,
+	since we support that as an 'implentation defined identifier character'
 */
 
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
@@ -1046,6 +1049,9 @@ static bool Lex_rest_of_ppnum(input_t * input)
 
 		if (Is_digit(ch))
 		{
+			// Look for digits in a loop, sicne they
+			//  are the most common thing in ppnums
+
 			while (true)
 			{
 				++input->str;
@@ -1054,6 +1060,12 @@ static bool Lex_rest_of_ppnum(input_t * input)
 					break;
 			}
 		}
+
+		// BUG assuming normal float literals are more common than
+		//  hex/etc literals. In some code, letters may actually be more common
+		//  than '.', but we have to pick one of them to optimize for.
+		//  In either case, Is_letter is more expensive than comparing to '.'
+		//  so it seems 'fine' to check '.' first
 
 		if (ch == '.')
 		{
@@ -1065,21 +1077,38 @@ static bool Lex_rest_of_ppnum(input_t * input)
 		{
 			++input->str;
 
-			if (ch == 'e' || ch == 'E' || ch == 'p' || ch == 'P')
+			// deal with float exponents
+
+			// NOTE We peek at the next char, 
+			//  since '+'/'-' in ppnums is less common than 'e'/'E' 
+			//  (since 'e'/'E' are valid hex digits, and I think
+			//  it is safe to say that hex literals are more common that
+			//  float literals with exponents)
+			//  So, this way, we leave the slow 'E'/'P' check for the case
+			//  where we actually see a '+'/'-'
+
+			char ch0 = ch;
+			ch = input->str[0];
+
+			if (ch == '-' || ch == '+')
 			{
-				ch = input->str[0];
-				if (ch == '-' || ch == '+')
+				if (ch0 == 'e' || ch0 == 'E' || ch0 == 'p' || ch0 == 'P')
 				{
 					++input->str;
+					continue;
 				}
-				else
-				{
-					goto after_read_ch;
-				}
+				
+				// '+'/'-' not after 'E'/'P'? then this is the end
+				//  of this ppnum.
+
+				break;
 			}
 
-			continue;
+			goto after_read_ch;
 		}
+
+		// The lang spec says these can show up in ppnums, but
+		//  highly doubt there is any real code where they do...
 
 		if (ch == '_' || ch == '$')
 		{
@@ -1087,10 +1116,10 @@ static bool Lex_rest_of_ppnum(input_t * input)
 			continue;
 		}
 
+		// deal with line continues... (should be very uncommon)
+
 		if (ch == '\\')
 		{
-			// deal with line continues
-
 			ch = Peek_input_slow(input);
 
 			if (Is_digit(ch) ||
