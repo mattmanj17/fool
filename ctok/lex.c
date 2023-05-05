@@ -1040,49 +1040,71 @@ static bool Lex_rest_of_ppnum(input_t * input)
 {
 	while (true)
 	{
-		// BUG should maybe check for '\\' inline?
-		//  since at the point we call this function,
-		//  we expect to see at least a few ppnum chars,
-		//  AND line continues withing a litteral should 
-		//  be SUPER uncommon
+		char ch = input->str[0]; 
 
-		char ch0 = Peek_input(input); 
+	after_read_ch:
 
-		if (Is_digit(ch0))
+		if (Is_digit(ch))
 		{
 			while (true)
 			{
-				Advance_input(input);
-				char ch_peek = Peek_input(input);
-				if (!Is_digit(ch_peek))
+				++input->str;
+				ch = input->str[0];
+				if (!Is_digit(ch))
 					break;
 			}
 		}
-		else if (ch0 == '.')
-		{
-			Advance_input(input);
-		}
-		else if (Is_letter(ch0))
-		{
-			Advance_input(input);
 
-			if (ch0 == 'e' || ch0 == 'E' || ch0 == 'p' || ch0 == 'P')
+		if (ch == '.')
+		{
+			++input->str;
+			continue;
+		}
+
+		if (Is_letter(ch))
+		{
+			++input->str;
+
+			if (ch == 'e' || ch == 'E' || ch == 'p' || ch == 'P')
 			{
-				char ch1 = Peek_input(input);
-				if (ch1 == '-' || ch1 == '+')
+				ch = input->str[0];
+				if (ch == '-' || ch == '+')
 				{
-					Advance_input(input);
+					++input->str;
+				}
+				else
+				{
+					goto after_read_ch;
 				}
 			}
+
+			continue;
 		}
-		else if (ch0 == '_' || ch0 == '$')
+
+		if (ch == '_' || ch == '$')
 		{
-			Advance_input(input);
+			++input->str;
+			continue;
 		}
-		else
+
+		if (ch == '\\')
 		{
-			break;
+			// deal with line continues
+
+			ch = Peek_input_slow(input);
+
+			if (Is_digit(ch) ||
+				ch == '.' ||
+				Is_letter(ch) ||
+				ch == '_' || ch == '$')
+			{
+				Advance_input_slow(input);
+				--input->str;
+				goto after_read_ch;
+			}
 		}
+
+		break;
 	}
 
 	return true;
