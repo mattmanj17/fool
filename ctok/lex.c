@@ -1,6 +1,7 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include <string.h> // strpbrk
 
 #include "lex.h"
 
@@ -562,27 +563,55 @@ static bool Lex_rest_of_block_comment(input_t * input)
 {
 	while (true)
 	{
-		int len_line_break = Len_line_break(input->str);
-		if (len_line_break)
-		{
-			const char * str_new = input->str + len_line_break;
-			input->str = str_new;
-			input->line_start = str_new;
-			input->line += 1;
+		// char *strpbrk( const char *dest, const char *breakset );
+		//  Scans the null-terminated byte string pointed to by dest 
+		//  for any character from the null-terminated byte string 
+		//  pointed to by breakset, and returns a pointer to that character.
+		//  returns null pointer if no such character exists
 
+		const char * pbrk = strpbrk(input->str, "*\n\r");
+
+		// Deal with unterminated block comment
+
+		if (!pbrk)
+			break;
+
+		// Deal with line breaks
+
+		// NOTE not using Len_line_break here, 
+		//  since we are checking for '\r'/'\n' ourselves
+
+		char ch = pbrk[0];
+		if (ch == '\r')
+		{
+			if (pbrk[1] == '\n')
+			{
+				++pbrk;
+			}
+			goto after_line_break;
+		}
+
+		if (ch == '\n')
+		{
+		after_line_break:
+			++pbrk;
+			input->str = pbrk;
+			input->line_start = pbrk;
+			input->line += 1;
 			continue;
 		}
+		
+		// ch == '*', so check for closing "*/"
 
-		if (input->str[0] == '*' && input->str[1] == '/')
+		if (pbrk[1] == '/')
 		{
-			input->str += 2;
+			input->str = pbrk + 2;
 			break;
 		}
 
-		if (input->str[0] == '\0')
-			break;
+		// stray '*', just move on
 
-		input->str += 1;
+		input->str = pbrk + 1;
 	}
 
 	return true;
