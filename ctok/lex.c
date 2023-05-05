@@ -213,6 +213,38 @@ static bool Lex_after_vbar(input_t * input);
 
 bool Lex(input_t * input)
 {
+	// This is a very perf sensitive function.
+	//	roughly half of the time (that we are not in some other function)
+	//  is spent on the 'switch (ch)' line, and roughly the other half 
+	//  is spent on function proloug + epilogue
+
+	// To avoid the prologue + epilogue perf hit, we probably could/should
+	//  make this function lex a few tokens at once. We probably do not want to go all the way
+	//  and lex the whole file at once (that would be a lot of memory to store the lex-ed tokens),
+	//  but if me maintained a small token buffer, we could read several tokens in batches, to 
+	//  minimize the cost of this functions prologue + epilogue.
+	//  ... we could also try to force this funnction be inlined, but that sounds like a bad idea,
+	//  and reading tokens in batches sounds like it would just be better generally
+
+	// As for the 'switch (ch)' ... that is harder
+	//  A fair bit of the time spent there is to deal with the fact that we need to
+	//  patch the jump offsets against the current RIP. If we had "computed goto's"
+	//  like in gcc, or if we did some dark linker magic, we could maybe get the
+	//  OS loader to patch these on load.
+	//
+	//  A larger idea, would be to pivot to a lexer style like in 
+	//   https://nothings.org/computer/lexing.html
+	//   I tried this a while ago, and the perf was not impressive
+	//   (at least in my first version), but I wonder if it might be worth
+	//   revisting at some point... it would be a massive re-write, though...
+
+	// An even larger idea, would be to try and SIMD-ify things, that is,
+	//  to classify blocks of characters at once, and then be able to
+	//  skip over more than one char at a time, instead of spending so much time
+	//  doing "++input->str;". But, that would be a lot of work, I am not
+	//  familar with writing simd code, and I wonder if the gains would even really be that big,
+	//  since is real code you tend to not have super long tokens...
+
 	// NOTE (matthewd) you may be tempted to try and pull up all the 
 	//  "++input->str;"s below, and just do "--input->str;" in 
 	//  the '\\' and '\0' cases, but some initial profiling seemed 
