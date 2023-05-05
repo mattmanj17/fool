@@ -621,15 +621,29 @@ static bool Lex_rest_of_line_comment(input_t * input)
 {
 	while (true)
 	{
-		char ch = Peek_input(input);
+		char ch = input->str[0];
 
-		if (ch == '\0')
+		if (ch == '\r' || ch == '\n' || ch == '\0')
 			break;
 
-		if (Is_line_break(ch))
-			break;
+		if (ch == '\\')
+		{
+			// BUG this is duplicated from the '\\' case in Lex...
+			//  should commonize?
 
-		Advance_input(input);
+			int num_lines;
+			int len_line_continue = Len_line_continues(input->str, &num_lines);
+			if (len_line_continue)
+			{
+				input->str += len_line_continue;
+				input->line_start = input->str;
+				input->line += num_lines;
+
+				continue;
+			}
+		}
+
+		++input->str;
 	}
 
 	return true;
