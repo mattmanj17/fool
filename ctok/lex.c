@@ -21,11 +21,6 @@ static bool Is_digit(char ch)
 	return uch < 10;
 }
 
-static bool Is_line_break(char ch)
-{
-	return ch == '\n' || ch == '\r'; 
-}
-
 static bool Is_lowercase(char ch)
 {
 	unsigned char uch = (unsigned char)ch;
@@ -694,40 +689,53 @@ static bool Lex_rest_of_str_lit(char ch_sential, input_t * input)
 
 	while (true)
 	{
-		char ch0 = Peek_input(input);
+		char ch = input->str[0];
 
-		// In raw lexing mode, we accept string/char literals without the closing quote
+		// String without closing quote (which we support in raw lexing mode..)
 
-		if (ch0 == '\0')
-			return true;
+		if (ch == '\r' || ch == '\n' || ch == '\0')
+			break;
 
-		if (Is_line_break(ch0))
-			return true;
+		// Closing quote
 
-		// Whatever ch is at this point, we know
-		//  we are going to include it in the str lit
-
-		Advance_input(input);
-
-		// Check for closing quote
-
-		if (ch0 == ch_sential)
-			return true;
+		if (ch == ch_sential)
+		{
+			++input->str;
+			break;
+		}
 
 		// Deal with back slash
 
-		if (ch0 == '\\')
+		if (ch == '\\')
 		{
-			char ch1 = Peek_input(input);
+			// Line continues
 
-			if (ch1 == '\0')
-				return true;
+			// BUG this is duplicated from the '\\' case in Lex...
+			//  should commonize?
 
-			if (Is_line_break(ch1))
-				return true;
+			int num_lines;
+			int len_line_continue = Len_line_continues(input->str, &num_lines);
+			if (len_line_continue)
+			{
+				input->str += len_line_continue;
+				input->line_start = input->str;
+				input->line += num_lines;
 
-			Advance_input(input);
+				continue;
+			}
+
+			// Otherwise, advance past the escaped char 
+			//  (it it not '\0'. we know it is not \r or \n, 
+			//  we checked for that in Len_line_continues)
+
+			++input->str;
+			ch = input->str[0];
+
+			if (ch == '\0')
+				break;
 		}
+
+		++input->str;
 	}
 
 	return true;
