@@ -25,29 +25,23 @@ static bool Is_line_break(char ch)
 	return ch == '\n' || ch == '\r'; 
 }
 
-static bool Can_start_id(char ch)
+static bool Is_lowercase(char ch)
 {
 	unsigned char uch = (unsigned char)ch;
-
-	if (uch == '$') // allowed in ids as an extention :/
-		return true;
-
-	if (uch == '_')
-		return true;
-
-	// make lower case
-
-	uch |= 0x20;
-
-	// Check if letter
-
 	uch -= 'a';
 	return uch < 26;
 }
 
-static bool Extends_id(char ch) //??? check perf, should maybe just use Is_digit/Can_start_id separately
+static bool Is_uppercase(char ch)
 {
-	return Is_digit(ch) || Can_start_id(ch);
+	unsigned char uch = (unsigned char)ch;
+	uch -= 'A';
+	return uch < 26;
+}
+
+static bool Is_letter(char ch)
+{
+	return Is_lowercase(ch | 0x20);
 }
 
 
@@ -671,27 +665,79 @@ static bool Lex_rest_of_id(input_t * input)
 
 	while (true)
 	{
-		char ch = Peek_input(input);
+		char ch = input->str[0];
 
-		if (!Extends_id(ch))
-			return true;
+		// We assume lower case letters are by far
+		//  the most common thing in id's, so we
+		//  check for multiple once we see one
+		//  as an optimization
 
-		Advance_input(input);
-
-		const char * str_peek = input->str;
-
-		while (true)
+		if (Is_lowercase(ch))
 		{
-			if (!Extends_id(*str_peek))
-				break;
-		
-			++str_peek;
+			while (true)
+			{
+				++input->str;
+				ch = input->str[0];
+				if (!Is_lowercase(ch))
+					break;
+			}
 		}
 
-		input->str = str_peek;
-	}
+		// For all other valid chars, we expect to only
+		//  see one (in the most common case), and then
+		//  start seeing lower case letters again
 
-	return true;
+		if (Is_uppercase(ch))
+		{
+			++input->str;
+			continue;
+		}
+
+		if (ch == '_')
+		{
+			++input->str;
+			continue;
+		}
+
+		if (Is_digit(ch))
+		{
+			++input->str;
+			continue;
+		}
+
+		if (ch == '$') // '$' allowed as an extension :/
+		{
+			++input->str;
+			continue;
+		}
+
+		if (ch == '\\')
+		{
+			// Deal with line continues...
+
+			ch = Peek_input_slow(input);
+
+			if (Is_letter(ch) || 
+				Is_digit(ch) || 
+				ch == '_' ||
+				ch == '$')
+			{
+				Advance_input_slow(input);
+				continue;
+			}
+		}
+
+		// Found a non-id char. return now that we have found the
+		//  end of the current id.
+
+		// BUG returning true here is confusing, but eventually
+		//  we will be returning some TOKEN kind enum, and this will make
+		//  more sense. We return a value from this function,
+		//  (and the other lex_ helper functions) so that they can
+		//  be tail calls in the main lex function
+
+		return true;
+	}
 }
 
 static bool Lex_after_percent(input_t * input)
@@ -962,23 +1008,42 @@ static bool Lex_rest_of_ppnum(input_t * input)
 {
 	while (true)
 	{
-		char ch0 = Peek_input(input);
+		// BUG should maybe check for '\\' inline?
+		//  since at the point we call this function,
+		//  we expect to see at least a few ppnum chars,
+		//  AND line continues withing a litteral should 
+		//  be SUPER uncommon
 
-		if (ch0 == '.')
-		{
-			Advance_input(input);
-		}
-		else if (ch0 == 'e' || ch0 == 'E' || ch0 == 'p' || ch0 == 'P')
-		{
-			Advance_input(input);
-			char ch1 = Peek_input(input);
+		char ch0 = Peek_input(input); 
 
-			if (ch1 == '-' || ch1 == '+')
+		if (Is_digit(ch0))
+		{
+			while (true)
 			{
 				Advance_input(input);
+				char ch_peek = Peek_input(input);
+				if (!Is_digit(ch_peek))
+					break;
 			}
 		}
-		else if (Extends_id(ch0))
+		else if (ch0 == '.')
+		{
+			Advance_input(input);
+		}
+		else if (Is_letter(ch0))
+		{
+			Advance_input(input);
+
+			if (ch0 == 'e' || ch0 == 'E' || ch0 == 'p' || ch0 == 'P')
+			{
+				char ch1 = Peek_input(input);
+				if (ch1 == '-' || ch1 == '+')
+				{
+					Advance_input(input);
+				}
+			}
+		}
+		else if (ch0 == '_' || ch0 == '$')
 		{
 			Advance_input(input);
 		}
