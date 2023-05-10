@@ -247,8 +247,8 @@ bool Lex(input_t * input)
 	//  to suggest that was actually SLOWER than the way it is now
 	//  ... which I do not fully understand ...
 
-switch_on_str_0:
 	char ch = input->str[0];
+switch_on_str_0:
 	switch (ch)
 	{
 	case '\\':
@@ -269,7 +269,19 @@ switch_on_str_0:
 				input->line_start = input->str;
 				input->line += num_lines;
 
-				goto switch_on_str_0;
+				ch = input->str[0];
+
+				if (Is_horizontal_white_space(ch))
+				{
+					// sigh, have to do this to match clang
+
+					--input->line;
+					return Lex_after_line_break(input);
+				}
+				else
+				{
+					goto switch_on_str_0;
+				}
 			}
 			else
 			{
