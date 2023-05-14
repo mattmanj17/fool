@@ -2,7 +2,9 @@
 
 typedef struct
 {
-	const char * str;
+	const char * cursor;
+	const char * terminator;
+
 	const char * line_start;
 	int line;
 
@@ -10,4 +12,4 @@ typedef struct
 } input_t;
 
 bool Lex(input_t * input);
-void Init_input(input_t * input, const char * str);
+void Init_input(input_t * input, const char * cursor, const char * terminator);

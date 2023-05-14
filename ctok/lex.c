@@ -1,10 +1,11 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
-#include <string.h> // strpbrk
 
 #include "lex.h"
 
+#include "utf8.h"
+#include "unicode_ids.h"
 
 
 // char helpers
@@ -110,25 +111,26 @@ static int Len_line_continues(const char * str, int * out_num_lines)
 
 // input_t
 
-void Init_input(input_t * input, const char * str)
+void Init_input(input_t * input, const char * cursor, const char * terminator)
 {
-	input->str = str;
-	input->line_start = str;
+	input->cursor = cursor;
+	input->terminator = terminator;
+	input->line_start = cursor;
 	input->line = 1;
 }
 
 __declspec(noinline) static char Peek_input_slow(input_t * input)
 {
-	int len_line_continue = Len_line_continues(input->str, NULL);
+	int len_line_continue = Len_line_continues(input->cursor, NULL);
 	if (!len_line_continue)
-		return input->str[0];
+		return input->cursor[0];
 
-	return input->str[len_line_continue];
+	return input->cursor[len_line_continue];
 }
 
 static char Peek_input(input_t * input)
 {
-	char ch = input->str[0];
+	char ch = input->cursor[0];
 	if (ch != '\\')
 		return ch;
 
@@ -138,20 +140,20 @@ static char Peek_input(input_t * input)
 __declspec(noinline) static void Advance_input_slow(input_t * input)
 {
 	int num_lines;
-	int len_line_continue = Len_line_continues(input->str, &num_lines);
+	int len_line_continue = Len_line_continues(input->cursor, &num_lines);
 	if (!len_line_continue)
 	{
-		++input->str;
+		++input->cursor;
 		return;
 	}
 
-	input->str += len_line_continue;
-	input->line_start = input->str;
+	input->cursor += len_line_continue;
+	input->line_start = input->cursor;
 	input->line += num_lines;
 
-	if (input->str[0] != '\0')
+	if (input->cursor != input->terminator)
 	{
-		++input->str;
+		++input->cursor;
 	}
 }
 
@@ -160,9 +162,9 @@ __declspec(noinline) static void Advance_input_slow(input_t * input)
 
 static void Advance_input(input_t * input)
 {
-	if (input->str[0] != '\\')
+	if (input->cursor[0] != '\\')
 	{
-		++input->str;
+		++input->cursor;
 		return;
 	}
 	
@@ -186,8 +188,7 @@ static bool Lex_rest_of_block_comment(input_t * input);
 static bool Lex_rest_of_line_comment(input_t * input);
 
 static bool Lex_after_u(input_t * input);
-static bool Lex_after_U(input_t * input);
-static bool Lex_after_L(input_t * input);
+static bool Lex_after_L_or_U(input_t * input);
 static bool Lex_rest_of_str_lit(char ch_sential, input_t * input);
 
 static bool Lex_rest_of_id(input_t * input);
@@ -247,7 +248,7 @@ bool Lex(input_t * input)
 	//  to suggest that was actually SLOWER than the way it is now
 	//  ... which I do not fully understand ...
 
-	char ch = input->str[0];
+	char ch = input->cursor[0];
 switch_on_str_0:
 	switch (ch)
 	{
@@ -262,14 +263,14 @@ switch_on_str_0:
 			//  the perf gain is worth it
 
 			int num_lines;
-			int len_line_continue = Len_line_continues(input->str, &num_lines);
+			int len_line_continue = Len_line_continues(input->cursor, &num_lines);
 			if (len_line_continue)
 			{
-				input->str += len_line_continue;
-				input->line_start = input->str;
+				input->cursor += len_line_continue;
+				input->line_start = input->cursor;
 				input->line += num_lines;
 
-				ch = input->str[0];
+				ch = input->cursor[0];
 
 				if (Is_horizontal_white_space(ch))
 				{
@@ -285,60 +286,81 @@ switch_on_str_0:
 			}
 			else
 			{
-				++input->str; // wrong, should handle UCNs
+				++input->cursor; // wrong, should handle UCNs
 				return true;
 			}
 		}
 
 	case '\0':
-		return false;
+		{
+			if (input->cursor == input->terminator)
+				return false;
+
+			++input->cursor;
+
+			// Clang skips whitespace after it sees
+			//  a bogus '\0'
+
+			ch = input->cursor[0];
+
+			if (Is_horizontal_white_space(ch))
+			{
+				Skip_horizontal_white_space(&input->cursor);
+				ch = input->cursor[0];
+			}
+
+			if (ch == '\r' || ch =='\n')
+				goto switch_on_str_0;
+
+			return true;
+		}
 
 	case ' ':
 	case '\t':
 	case '\f':
 	case '\v':
-		++input->str;
-		return Skip_horizontal_white_space(&input->str);
+		++input->cursor;
+		return Skip_horizontal_white_space(&input->cursor);
 		
 	case '\r':
-		++input->str;
+		++input->cursor;
 		return Lex_after_carriage_return(input);
 
 	case '\n':
-		++input->str;
+		++input->cursor;
 		return Lex_after_line_break(input);
 
 	case '0': case '1': case '2': case '3': case '4':
 	case '5': case '6': case '7': case '8': case '9':
-		++input->str;
+		++input->cursor;
 		return Lex_rest_of_ppnum(input);
 
 	case '.':
-		++input->str;
+		++input->cursor;
 		return Lex_after_dot(input);
 
 	case '/':
-		++input->str;
+		++input->cursor;
 		return Lex_after_fslash(input);
 
 	case 'u':
-		++input->str;
+		++input->cursor;
 		return Lex_after_u(input);
 
 	case 'U':
-		++input->str;
-		return Lex_after_U(input);
+		++input->cursor;
+		return Lex_after_L_or_U(input);
 
 	case 'L':
-		++input->str;
-		return Lex_after_L(input);
+		++input->cursor;
+		return Lex_after_L_or_U(input);
 
 	case '"':
-		++input->str;
+		++input->cursor;
 		return Lex_rest_of_str_lit('"', input);
 
 	case '\'':
-		++input->str;
+		++input->cursor;
 		return Lex_rest_of_str_lit('\'', input);
 
 	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
@@ -351,95 +373,95 @@ switch_on_str_0:
 	case 'V': case 'W': case 'X': case 'Y': case 'Z':
 	case '_':
 	case '$': // $ allowed in ids as an extension :/
-		++input->str;
+		++input->cursor;
 		return Lex_rest_of_id(input);
 
 	case '%':
-		++input->str;
+		++input->cursor;
 		return Lex_after_percent(input);
 
 	case '<':
-		++input->str;
+		++input->cursor;
 		return Lex_after_lt(input);
 
 	case '>':
-		++input->str;
+		++input->cursor;
 		return Lex_after_gt(input);
 
 	case '!':
-		++input->str;
+		++input->cursor;
 		return Lex_after_bang(input);
 
 	case '#':
-		++input->str;
+		++input->cursor;
 		return Lex_after_htag(input);
 
 	case '&':
-		++input->str;
+		++input->cursor;
 		return Lex_after_amp(input);
 
 	case '*':
-		++input->str;
+		++input->cursor;
 		return Lex_after_star(input);
 
 	case '+':
-		++input->str;
+		++input->cursor;
 		return Lex_after_plus(input);
 
 	case '-':
-		++input->str;
+		++input->cursor;
 		return Lex_after_minus(input);
 		
 	case ':':
-		++input->str;
+		++input->cursor;
 		return Lex_after_colon(input);
 
 	case '=':
-		++input->str;
+		++input->cursor;
 		return Lex_after_eq(input);
 
 	case '^':
-		++input->str;
+		++input->cursor;
 		return Lex_after_caret(input);
 
 	case '|':
-		++input->str;
+		++input->cursor;
 		return Lex_after_vbar(input);
 
 	case '(':
-		++input->str;
+		++input->cursor;
 		return true;
 	case ')':
-		++input->str;
+		++input->cursor;
 		return true;
 	case ',':
-		++input->str;
+		++input->cursor;
 		return true;
 	case ';':
-		++input->str;
+		++input->cursor;
 		return true;
 	case '?':
-		++input->str;
+		++input->cursor;
 		return true;
 	case '[':
-		++input->str;
+		++input->cursor;
 		return true;
 	case ']':
-		++input->str;
+		++input->cursor;
 		return true;
 	case '{':
-		++input->str;
+		++input->cursor;
 		return true;
 	case '}':
-		++input->str;
+		++input->cursor;
 		return true;
 	case '~':
-		++input->str;
+		++input->cursor;
 		return true;
 
 	case '`':
 	case '@':
-		++input->str;
+		++input->cursor;
 		return true;
 
 	case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07:
@@ -448,12 +470,32 @@ switch_on_str_0:
 	case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C:
 	case 0x1D: case 0x1E: case 0x1F:
 	case 0x7f:
-		++input->str;
+		++input->cursor;
 		return true;
 
-	default: // wrong, should handle utf8
-		++input->str;
-		return true;
+	default:
+		{
+			input_byte_span_t span;
+			span.cursor = (const uint8_t *)input->cursor;
+			span.max = (const uint8_t *)input->terminator;
+
+			uint32_t cp;
+			utf8_decode_error_t err = Try_decode_utf8(&span, &cp);
+			if (err == utf8_decode_ok)
+			{
+				input->cursor = (const char *)span.cursor;
+
+				if (May_non_ascii_codepoint_start_id(lang_ver_c11, cp))
+				{
+					return Lex_rest_of_id(input);
+				}
+
+				return true; // stray non-id utf8
+			}
+
+			++input->cursor;
+			return true;
+		}
 	}
 }
 
@@ -476,9 +518,9 @@ static bool Skip_horizontal_white_space(const char ** p_str)
 
 static bool Lex_after_carriage_return(input_t * input)
 {
-	if (input->str[0] == '\n')
+	if (input->cursor[0] == '\n')
 	{
-		++input->str;
+		++input->cursor;
 	}
 
 	return Lex_after_line_break(input);
@@ -486,7 +528,7 @@ static bool Lex_after_carriage_return(input_t * input)
 
 static bool Lex_after_line_break(input_t * input)
 {
-	const char * str = input->str;
+	const char * str = input->cursor;
 	const char * line_start = str;
 
 	int line = input->line + 1;
@@ -516,7 +558,7 @@ static bool Lex_after_line_break(input_t * input)
 		line_start = str;
 	}
 
-	input->str = str;
+	input->cursor = str;
 	input->line_start = line_start;
 	input->line = line;
 
@@ -568,32 +610,27 @@ static bool Lex_after_fslash(input_t * input)
 
 static bool Lex_rest_of_block_comment(input_t * input)
 {
-	while (true)
+	while (input->cursor < input->terminator)
 	{
-		// char *strpbrk( const char *dest, const char *breakset );
-		//  Scans the null-terminated byte string pointed to by dest 
-		//  for any character from the null-terminated byte string 
-		//  pointed to by breakset, and returns a pointer to that character.
-		//  returns null pointer if no such character exists
+		char ch = input->cursor[0];
+		++input->cursor;
 
-		const char * pbrk = strpbrk(input->str, "*\n\r");
-
-		// Deal with unterminated block comment
-
-		if (!pbrk)
-			break;
+		if (ch == '*' && input->cursor[0] == '/')
+		{
+			++input->cursor;
+			return true;
+		}
 
 		// Deal with line breaks
 
 		// NOTE not using Len_line_break here, 
 		//  since we are checking for '\r'/'\n' ourselves
 
-		char ch = pbrk[0];
 		if (ch == '\r')
 		{
-			if (pbrk[1] == '\n')
+			if (input->cursor[0] == '\n')
 			{
-				++pbrk;
+				++input->cursor;
 			}
 			goto after_line_break;
 		}
@@ -601,24 +638,9 @@ static bool Lex_rest_of_block_comment(input_t * input)
 		if (ch == '\n')
 		{
 		after_line_break:
-			++pbrk;
-			input->str = pbrk;
-			input->line_start = pbrk;
+			input->line_start = input->cursor;
 			input->line += 1;
-			continue;
 		}
-		
-		// ch == '*', so check for closing "*/"
-
-		if (pbrk[1] == '/')
-		{
-			input->str = pbrk + 2;
-			break;
-		}
-
-		// stray '*', just move on
-
-		input->str = pbrk + 1;
 	}
 
 	return true;
@@ -628,9 +650,22 @@ static bool Lex_rest_of_line_comment(input_t * input)
 {
 	while (true)
 	{
-		char ch = input->str[0];
+		char ch = input->cursor[0];
 
-		if (ch == '\r' || ch == '\n' || ch == '\0')
+		if (ch == '\0')
+		{
+			if (input->cursor == input->terminator)
+			{
+				break;
+			}
+			else
+			{
+				++input->cursor;
+				continue;
+			}
+		}
+
+		if (ch == '\r' || ch == '\n')
 			break;
 
 		if (ch == '\\')
@@ -639,18 +674,18 @@ static bool Lex_rest_of_line_comment(input_t * input)
 			//  should commonize?
 
 			int num_lines;
-			int len_line_continue = Len_line_continues(input->str, &num_lines);
+			int len_line_continue = Len_line_continues(input->cursor, &num_lines);
 			if (len_line_continue)
 			{
-				input->str += len_line_continue;
-				input->line_start = input->str;
+				input->cursor += len_line_continue;
+				input->line_start = input->cursor;
 				input->line += num_lines;
 
 				continue;
 			}
 		}
 
-		++input->str;
+		++input->cursor;
 	}
 
 	return true;
@@ -661,27 +696,12 @@ static bool Lex_after_u(input_t * input)
 	if (Peek_input(input) == '8')
 	{
 		Advance_input(input);
-
-		// Reusing Lex_after_U because it does what we want
-
-		return Lex_after_U(input);
 	}
 
-	return Lex_rest_of_id(input);
+	return Lex_after_L_or_U(input);
 }
 
-static bool Lex_after_U(input_t * input)
-{
-	if (Peek_input(input) == '"')
-	{
-		Advance_input(input);
-		return Lex_rest_of_str_lit('"', input);
-	}
-
-	return Lex_rest_of_id(input);
-}
-
-static bool Lex_after_L(input_t * input)
+static bool Lex_after_L_or_U(input_t * input)
 {
 	char ch = Peek_input(input);
 	if (ch == '"' || ch == '\'')
@@ -701,18 +721,32 @@ static bool Lex_rest_of_str_lit(char ch_sential, input_t * input)
 
 	while (true)
 	{
-		char ch = input->str[0];
+		char ch = input->cursor[0];
+
+	after_read_str_0:
+		if (ch == '\0')
+		{
+			if (input->cursor == input->terminator)
+			{
+				break;
+			}
+			else
+			{
+				++input->cursor;
+				continue;
+			}
+		}
 
 		// String without closing quote (which we support in raw lexing mode..)
 
-		if (ch == '\r' || ch == '\n' || ch == '\0')
+		if (ch == '\r' || ch == '\n')
 			break;
 
 		// Closing quote
 
 		if (ch == ch_sential)
 		{
-			++input->str;
+			++input->cursor;
 			break;
 		}
 
@@ -726,28 +760,36 @@ static bool Lex_rest_of_str_lit(char ch_sential, input_t * input)
 			//  should commonize?
 
 			int num_lines;
-			int len_line_continue = Len_line_continues(input->str, &num_lines);
+			int len_line_continue = Len_line_continues(input->cursor, &num_lines);
 			if (len_line_continue)
 			{
-				input->str += len_line_continue;
-				input->line_start = input->str;
+				input->cursor += len_line_continue;
+				input->line_start = input->cursor;
 				input->line += num_lines;
 
 				continue;
 			}
 
-			// Otherwise, advance past the escaped char 
-			//  (it it not '\0'. we know it is not \r or \n, 
-			//  we checked for that in Len_line_continues)
+			// Advance past '\\'
 
-			++input->str;
-			ch = input->str[0];
+			++input->cursor;
 
-			if (ch == '\0')
-				break;
+			// Check if escaped char is '\"', '\'', or '\\',
+			//  the only escapes we need to handle in raw mode
+
+			ch = input->cursor[0];
+			if (ch == ch_sential || ch == '\\')
+			{
+				++input->cursor;
+				continue;
+			}
+			else
+			{
+				goto after_read_str_0;
+			}
 		}
 
-		++input->str;
+		++input->cursor;
 	}
 
 	return true;
@@ -760,7 +802,7 @@ static bool Lex_rest_of_id(input_t * input)
 
 	while (true)
 	{
-		char ch = input->str[0];
+		char ch = input->cursor[0];
 
 		// We assume lower case letters are by far
 		//  the most common thing in id's, so we
@@ -771,8 +813,8 @@ static bool Lex_rest_of_id(input_t * input)
 		{
 			while (true)
 			{
-				++input->str;
-				ch = input->str[0];
+				++input->cursor;
+				ch = input->cursor[0];
 				if (!Is_lowercase(ch))
 					break;
 			}
@@ -784,31 +826,33 @@ static bool Lex_rest_of_id(input_t * input)
 
 		if (Is_uppercase(ch))
 		{
-			++input->str;
+			++input->cursor;
 			continue;
 		}
 
 		if (ch == '_')
 		{
-			++input->str;
+			++input->cursor;
 			continue;
 		}
 
 		if (Is_digit(ch))
 		{
-			++input->str;
+			++input->cursor;
 			continue;
 		}
 
 		if (ch == '$') // '$' allowed as an extension :/
 		{
-			++input->str;
+			++input->cursor;
 			continue;
 		}
 
 		if (ch == '\\')
 		{
 			// Deal with line continues...
+
+			// BUG not handling utf8 after line escape
 
 			ch = Peek_input_slow(input);
 
@@ -819,6 +863,39 @@ static bool Lex_rest_of_id(input_t * input)
 			{
 				Advance_input_slow(input);
 				continue;
+			}
+			else
+			{
+				// BUG not handling UCNs
+
+				return true;
+			}
+		}
+
+		if (!Is_ch_ascii(ch))
+		{
+			input_byte_span_t span;
+			span.cursor = (const uint8_t *)input->cursor;
+			span.max = (const uint8_t *)input->terminator;
+
+			uint32_t cp;
+			utf8_decode_error_t err = Try_decode_utf8(&span, &cp);
+			if (err == utf8_decode_ok)
+			{
+				// We are lexing in 'raw mode', and to match clang, 
+				//  once we are parsing an id, we just slurp up all
+				//  non-ascii-non-whitespace utf8...
+
+				// I do not like this. Clang seems to do the wrong thing here,
+				//  and produce an invalid pp token. I suspect no one
+				//  actually cares, since dump_raw_tokens is only for debugging...
+
+				/*if (Does_non_ascii_codepoint_extend_id(lang_ver_c11, cp))*/
+				if (!Is_unicode_whitespace(cp))
+				{
+					input->cursor = (const char *)span.cursor;
+					continue;
+				}
 			}
 		}
 
@@ -1106,7 +1183,7 @@ static bool Lex_rest_of_ppnum(input_t * input)
 {
 	while (true)
 	{
-		char ch = input->str[0]; 
+		char ch = input->cursor[0]; 
 
 	after_read_ch:
 
@@ -1117,8 +1194,8 @@ static bool Lex_rest_of_ppnum(input_t * input)
 
 			while (true)
 			{
-				++input->str;
-				ch = input->str[0];
+				++input->cursor;
+				ch = input->cursor[0];
 				if (!Is_digit(ch))
 					break;
 			}
@@ -1132,13 +1209,13 @@ static bool Lex_rest_of_ppnum(input_t * input)
 
 		if (ch == '.')
 		{
-			++input->str;
+			++input->cursor;
 			continue;
 		}
 
 		if (Is_letter(ch))
 		{
-			++input->str;
+			++input->cursor;
 
 			// deal with float exponents
 
@@ -1151,13 +1228,13 @@ static bool Lex_rest_of_ppnum(input_t * input)
 			//  where we actually see a '+'/'-'
 
 			char ch0 = ch;
-			ch = input->str[0];
+			ch = input->cursor[0];
 
 			if (ch == '-' || ch == '+')
 			{
 				if (ch0 == 'e' || ch0 == 'E' || ch0 == 'p' || ch0 == 'P')
 				{
-					++input->str;
+					++input->cursor;
 					continue;
 				}
 				
@@ -1173,13 +1250,19 @@ static bool Lex_rest_of_ppnum(input_t * input)
 		// The lang spec says these can show up in ppnums, but
 		//  highly doubt there is any real code where they do...
 
-		if (ch == '_' || ch == '$')
+		// CLANG DOES NOT ALLOW '$' in ids, even though the spec would seem to
+		//  suggest that implimentation defined id chars should be
+		//  included in PP nums...
+
+		if (ch == '_')
 		{
-			++input->str;
+			++input->cursor;
 			continue;
 		}
 
 		// deal with line continues... (should be very uncommon)
+
+		// BUG not handling utf8 after line escape
 
 		if (ch == '\\')
 		{
@@ -1188,11 +1271,44 @@ static bool Lex_rest_of_ppnum(input_t * input)
 			if (Is_digit(ch) ||
 				ch == '.' ||
 				Is_letter(ch) ||
-				ch == '_' || ch == '$')
+				ch == '_')
 			{
 				Advance_input_slow(input);
-				--input->str;
+				--input->cursor; // this is safe because we know we are not pointing at '\0'
 				goto after_read_ch;
+			}
+			else
+			{
+				// BUG not handling UCNs
+
+				return true;
+			}
+		}
+
+		if (!Is_ch_ascii(ch))
+		{
+			input_byte_span_t span;
+			span.cursor = (const uint8_t *)input->cursor;
+			span.max = (const uint8_t *)input->terminator;
+
+			uint32_t cp;
+			utf8_decode_error_t err = Try_decode_utf8(&span, &cp);
+			if (err == utf8_decode_ok)
+			{
+				// We are lexing in 'raw mode', and to match clang, 
+				//  once we are parsing an id, we just slurp up all
+				//  non-ascii-non-whitespace utf8...
+
+				// I do not like this. Clang seems to do the wrong thing here,
+				//  and produce an invalid pp token. I suspect no one
+				//  actually cares, since dump_raw_tokens is only for debugging...
+
+				/*if (Does_non_ascii_codepoint_extend_id(lang_ver_c11, cp))*/
+				if (!Is_unicode_whitespace(cp))
+				{
+					input->cursor = (const char *)span.cursor;
+					continue;
+				}
 			}
 		}
 

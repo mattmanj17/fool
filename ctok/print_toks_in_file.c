@@ -83,24 +83,62 @@ void Print_token(
 		loc_in_line);
 }
 
-static void Print_toks_in_str(const char * str)
+int count_raw_lines(const char * min, const char * max)
+{
+	int count = 0;
+
+	while (min < max)
+	{
+		char ch = min[0];
+		if (ch == '\n')
+		{
+			++count;
+		}
+		else if (ch == '\r')
+		{
+			if (min[1] == '\n')
+			{
+				++min;
+			}
+
+			++count;
+		}
+
+		++min;
+	}
+
+	return count;
+}
+
+static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 {
 	input_t input;
-	Init_input(&input, str);
+	Init_input(&input, bstr->cursor, bstr->terminator);
 
 	while (true)
 	{
-		const char * token_start = input.str;
+		const char * token_start = input.cursor;
 		int line_prev = input.line;
-		int loc_in_line = (int)(input.str - input.line_start + 1);
+		int loc_in_line = (int)(input.cursor - input.line_start + 1);
 
 		if (!Lex(&input))
 			break;
 
+		/*int bonk = count_raw_lines(bstr->cursor, token_start) + 1;
+
+		if (bonk != line_prev)
+		{
+			printf(
+				"FAIL, got %d, should have been %d\n",
+				line_prev,
+				bonk);
+			exit(0);
+		}*/
+
 #if !PROFILE_PRINT_TOK
 		Print_token(
 			token_start,
-			(int)(input.str - token_start), 
+			(int)(input.cursor - token_start), 
 			line_prev, 
 			loc_in_line);
 #else
@@ -117,8 +155,9 @@ static void Print_toks_in_str(const char * str)
 
 void Print_tokens_in_file(const char * fpath)
 {
-	char * file_buf = Try_read_file_at_path_to_buffer(fpath);
-	if (!file_buf)
+	bounded_c_str_t bstr;
+	bool success = Try_read_file_at_path_to_buffer(fpath, &bstr);
+	if (!success)
 	{
 		printf("Failed to read file '%s'.\n", fpath);
 		exit(1);
@@ -142,6 +181,6 @@ void Print_tokens_in_file(const char * fpath)
 
 	printf("Elapsed time: %f seconds\n", elapsed_time);
 #else
-	Print_toks_in_str(file_buf);
+	Print_toks_in_ch_range(&bstr);
 #endif
 }

@@ -17,7 +17,7 @@ static void Unpatch_ptr_from_base(void ** pp, void * base)
 	*pp = (void *)((uintptr_t)(*pp) - (uintptr_t)base);
 }
 
-static void Patch_tests(tests_t * tests)
+void Patch_tests(tests_t * tests) // FIXME should be static
 {
 	Patch_ptr_to_base((void **)&tests->token_positions, tests);
 	Patch_ptr_to_base((void **)&tests->inputs, tests);
@@ -25,6 +25,12 @@ static void Patch_tests(tests_t * tests)
 
 void Try_load_tests_from_file(tests_t ** ptests, const char * fpath)
 {
+	// FIXME
+
+	(void) ptests;
+	(void) fpath;
+
+	/*
 	*ptests = (tests_t *)Try_read_file_at_path_to_buffer(fpath);
 
 	if (!*ptests)
@@ -34,6 +40,7 @@ void Try_load_tests_from_file(tests_t ** ptests, const char * fpath)
 	// if the file we loaded is a legit set of test cases
 
 	Patch_tests(*ptests);
+	*/
 }
 
 
