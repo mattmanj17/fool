@@ -17,8 +17,6 @@ bool Should_walk_dir(
 	return true;
 }
 
-int bink = 0;
-
 void On_walk_file(
 	const char * root_dir, 
 	const char * this_file,
