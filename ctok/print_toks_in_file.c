@@ -124,34 +124,13 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 		if (!Lex(&input))
 			break;
 
-		/*int bonk = count_raw_lines(bstr->cursor, token_start) + 1;
-
-		if (bonk != line_prev)
-		{
-			printf(
-				"FAIL, got %d, should have been %d\n",
-				line_prev,
-				bonk);
-			exit(0);
-		}*/
-
-#if !PROFILE_PRINT_TOK
 		Print_token(
 			token_start,
 			(int)(input.cursor - token_start), 
 			line_prev, 
 			loc_in_line);
-#else
-		(void) token_start;
-		(void) line_prev;
-		(void) loc_in_line;
-#endif
 	}
 }
-
-#if PROFILE_PRINT_TOK
-#include <windows.h>
-#endif
 
 void Print_tokens_in_file(const char * fpath)
 {
@@ -163,24 +142,5 @@ void Print_tokens_in_file(const char * fpath)
 		exit(1);
 	}
 
-#if PROFILE_PRINT_TOK
-	LARGE_INTEGER frequency, start_time, end_time;
-	double elapsed_time;
-
-	QueryPerformanceFrequency(&frequency);
-	QueryPerformanceCounter(&start_time);
-
-	for (int i = 0; i < 20000; ++i)
-	{
-		Print_toks_in_str(file_buf);
-	}
-
-	QueryPerformanceCounter(&end_time);
-
-	elapsed_time = (double)(end_time.QuadPart - start_time.QuadPart) / (double)frequency.QuadPart;
-
-	printf("Elapsed time: %f seconds\n", elapsed_time);
-#else
 	Print_toks_in_ch_range(&bstr);
-#endif
 }
