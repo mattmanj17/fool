@@ -37,12 +37,12 @@ static bool Try_read_file_to_buffer(FILE * file, bounded_c_str_t * bstr)
 	return true;
 }
 
-bool Try_read_file_at_path_to_buffer(const char * fpath, bounded_c_str_t * bstr)
+bool Try_read_file_at_path_to_buffer(const wchar_t * fpath, bounded_c_str_t * bstr)
 {
 	bstr->cursor = NULL;
 	bstr->terminator = NULL;
 
-	FILE * file = fopen(fpath, "rb");
+	FILE * file = _wfopen(fpath, L"rb");
 	if (!file)
 		return false;
 
