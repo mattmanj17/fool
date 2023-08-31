@@ -142,5 +142,11 @@ void Print_tokens_in_file(const char * fpath)
 		exit(1);
 	}
 
+	char * buf = bstr.cursor;
+
 	Print_toks_in_ch_range(&bstr);
+
+	// BUG this is scuffed...
+
+	free(buf);
 }
