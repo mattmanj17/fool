@@ -138,12 +138,12 @@ void Init_input(input_t * input, const char * cursor, const char * terminator)
 	input->line = 1;
 }
 
-bool Does_input_physically_start_with_horizontal_whitespace(input_t * input)
+static bool Does_input_physically_start_with_horizontal_whitespace(input_t * input)
 {
 	return Is_ch_horizontal_white_space(input->cursor[0]);
 }
 
-void Skip_horizontal_whitespace(input_t * input)
+static void Skip_horizontal_whitespace(input_t * input)
 {
 	while (Is_ch_horizontal_white_space(input->cursor[0]))
 	{
@@ -166,7 +166,7 @@ typedef struct
 	int _padding;
 } peek_res_t;
 
-peek_res_t Peek_input_internal(input_t * input, bool discard_unicode_after_line_escape)
+static peek_res_t Peek_input_internal(input_t * input, bool discard_unicode_after_line_escape)
 {
 	peek_res_t res;
 	res.length = 0;
@@ -251,17 +251,17 @@ peek_res_t Peek_input_internal(input_t * input, bool discard_unicode_after_line_
 	return res;
 }
 
-uint32_t Peek_input(input_t * input)
+static uint32_t Peek_input(input_t * input)
 {
 	return Peek_input_internal(input, false).cp;
 }
 
-uint32_t Peek_input_after_id_start_hack(input_t * input)
+static uint32_t Peek_input_after_id_start_hack(input_t * input)
 {
 	return Peek_input_internal(input, true).cp;
 }
 
-void Advance_input(input_t * input)
+static void Advance_input(input_t * input)
 {
 	peek_res_t peek = Peek_input_internal(input, false);
 
@@ -270,7 +270,7 @@ void Advance_input(input_t * input)
 	input->line += peek.num_lines;
 }
 
-void Advance_past_line_continue(input_t * input)
+static void Advance_past_line_continue(input_t * input)
 {
 	// BUG the fact that this function is needed is awful
 
@@ -287,7 +287,7 @@ void Advance_past_line_continue(input_t * input)
 	}
 }
 
-void Skip_whitespace(input_t * input)
+static void Skip_whitespace(input_t * input)
 {
 	while (Is_ch_white_space(input->cursor[0]))
 	{
@@ -299,47 +299,42 @@ void Skip_whitespace(input_t * input)
 
 // Main lex function (and helpers)
 
-static bool Lex_rest_of_ppnum(input_t * input);
-static bool Lex_after_dot(input_t * input);
+static void Lex_rest_of_ppnum(input_t * input);
+static void Lex_after_dot(input_t * input);
 
-static bool Lex_after_fslash(input_t * input);
-static bool Lex_rest_of_block_comment(input_t * input);
-static bool Lex_rest_of_line_comment(input_t * input);
+static void Lex_after_fslash(input_t * input);
+static void Lex_rest_of_block_comment(input_t * input);
+static void Lex_rest_of_line_comment(input_t * input);
 
-static bool Lex_after_u(input_t * input);
-static bool Lex_after_L_or_U(input_t * input);
-static bool Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input);
+static void Lex_after_u(input_t * input);
+static void Lex_after_L_or_U(input_t * input);
+static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input);
 
-static bool Lex_rest_of_id(input_t * input);
+static void Lex_rest_of_id(input_t * input);
 
-static bool Lex_after_percent(input_t * input);
-static bool Lex_after_percent_colon(input_t * input);
-static bool Lex_after_lt(input_t * input);
-static bool Lex_after_gt(input_t * input);
-static bool Lex_after_bang(input_t * input);
-static bool Lex_after_htag(input_t * input);
-static bool Lex_after_amp(input_t * input);
-static bool Lex_after_star(input_t * input);
-static bool Lex_after_plus(input_t * input);
-static bool Lex_after_minus(input_t * input);
-static bool Lex_after_colon(input_t * input);
-static bool Lex_after_eq(input_t * input);
-static bool Lex_after_caret(input_t * input);
-static bool Lex_after_vbar(input_t * input);
+static void Lex_after_percent(input_t * input);
+static void Lex_after_percent_colon(input_t * input);
+static void Lex_after_lt(input_t * input);
+static void Lex_after_gt(input_t * input);
+static void Lex_after_bang(input_t * input);
+static void Lex_after_htag(input_t * input);
+static void Lex_after_amp(input_t * input);
+static void Lex_after_star(input_t * input);
+static void Lex_after_plus(input_t * input);
+static void Lex_after_minus(input_t * input);
+static void Lex_after_colon(input_t * input);
+static void Lex_after_eq(input_t * input);
+static void Lex_after_caret(input_t * input);
+static void Lex_after_vbar(input_t * input);
 
-bool Lex(input_t * input)
+void Lex(input_t * input)
 {
-	// Check for EOF
-
-	if (Is_input_exhausted(input))
-		return false;
-
 	// Special handling of horizontal WS to match clang ... :(
 
 	if (Does_input_physically_start_with_horizontal_whitespace(input))
 	{
 		Skip_horizontal_whitespace(input);
-		return true;
+		return;
 	}
 
 	// Advance input and decide what to do
@@ -356,32 +351,40 @@ bool Lex(input_t * input)
 	case '\v':
 	case '\n':
 		Skip_whitespace(input);
-		return  true;
+		break;
 
 	case '0': case '1': case '2': case '3': case '4':
 	case '5': case '6': case '7': case '8': case '9':
-		return Lex_rest_of_ppnum(input);
+		Lex_rest_of_ppnum(input);
+		break;
 
 	case '.':
-		return Lex_after_dot(input);
+		Lex_after_dot(input);
+		break;
 
 	case '/':
-		return Lex_after_fslash(input);
+		Lex_after_fslash(input);
+		break;
 
 	case 'u':
-		return Lex_after_u(input);
+		Lex_after_u(input);
+		break;
 
 	case 'U':
-		return Lex_after_L_or_U(input);
+		Lex_after_L_or_U(input);
+		break;
 
 	case 'L':
-		return Lex_after_L_or_U(input);
+		Lex_after_L_or_U(input);
+		break;
 
 	case '"':
-		return Lex_rest_of_str_lit('"', input);
+		Lex_rest_of_str_lit('"', input);
+		break;
 
 	case '\'':
-		return Lex_rest_of_str_lit('\'', input);
+		Lex_rest_of_str_lit('\'', input);
+		break;
 
 	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
 	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
@@ -393,73 +396,78 @@ bool Lex(input_t * input)
 	case 'V': case 'W': case 'X': case 'Y': case 'Z':
 	case '_':
 	case '$': // $ allowed in ids as an extension :/
-		return Lex_rest_of_id(input);
+		Lex_rest_of_id(input);
+		break;
 
 	case '%':
-		return Lex_after_percent(input);
+		Lex_after_percent(input);
+		break;
 
 	case '<':
-		return Lex_after_lt(input);
+		Lex_after_lt(input);
+		break;
 
 	case '>':
-		return Lex_after_gt(input);
+		Lex_after_gt(input);
+		break;
 
 	case '!':
-		return Lex_after_bang(input);
+		Lex_after_bang(input);
+		break;
 
 	case '#':
-		return Lex_after_htag(input);
+		Lex_after_htag(input);
+		break;
 
 	case '&':
-		return Lex_after_amp(input);
+		Lex_after_amp(input);
+		break;
 
 	case '*':
-		return Lex_after_star(input);
+		Lex_after_star(input);
+		break;
 
 	case '+':
-		return Lex_after_plus(input);
+		Lex_after_plus(input);
+		break;
 
 	case '-':
-		return Lex_after_minus(input);
+		Lex_after_minus(input);
+		break;
 		
 	case ':':
-		return Lex_after_colon(input);
+		Lex_after_colon(input);
+		break;
 
 	case '=':
-		return Lex_after_eq(input);
+		Lex_after_eq(input);
+		break;
 
 	case '^':
-		return Lex_after_caret(input);
+		Lex_after_caret(input);
+		break;
 
 	case '|':
-		return Lex_after_vbar(input);
+		Lex_after_vbar(input);
+		break;
 
 	case '(':
-		return true;
 	case ')':
-		return true;
 	case ',':
-		return true;
 	case ';':
-		return true;
 	case '?':
-		return true;
 	case '[':
-		return true;
 	case ']':
-		return true;
 	case '{':
-		return true;
 	case '}':
-		return true;
 	case '~':
-		return true;
+		break;
 
 	case '`':
 	case '@':
 	case '\\':
 	case '\r': // Peek_input should never return '\r', but here for completeness 
-		return true;
+		break;
 
 	case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07:
 	case 0x08: /* '\t' */ /* '\n' */ /* '\v' */ /* '\f' */ /* '\r' */ case 0x0E:
@@ -467,23 +475,20 @@ bool Lex(input_t * input)
 	case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C:
 	case 0x1D: case 0x1E: case 0x1F:
 	case 0x7f:
-		return true;
+		break;
 
 	default:
 		{
 			if (May_non_ascii_codepoint_start_id(lang_ver_c11, cp))
 			{
-				return Lex_rest_of_id(input);
-			}
-			else
-			{
-				return true;
+				Lex_rest_of_id(input);
 			}
 		}
+		break;
 	}
 }
 
-static bool Lex_after_dot(input_t * input)
+static void Lex_after_dot(input_t * input)
 {
 	uint32_t cp = Peek_input(input);
 	
@@ -504,29 +509,27 @@ static bool Lex_after_dot(input_t * input)
 			*input = input_peek;
 		}
 	}
-
-	return true;
 }
 
-static bool Lex_after_fslash(input_t * input)
+static void Lex_after_fslash(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '*':
 		Advance_input(input);
-		return Lex_rest_of_block_comment(input);
+		Lex_rest_of_block_comment(input);
+		break;
 	case '/':
 		Advance_input(input);
-		return Lex_rest_of_line_comment(input);
+		Lex_rest_of_line_comment(input);
+		break;
 	case '=':
 		Advance_input(input);
-		return true;
-	default:
-		return true;
+		break;
 	}
 }
 
-static bool Lex_rest_of_block_comment(input_t * input)
+static void Lex_rest_of_block_comment(input_t * input)
 {
 	while (!Is_input_exhausted(input))
 	{
@@ -536,14 +539,12 @@ static bool Lex_rest_of_block_comment(input_t * input)
 		if (cp == '*' && Peek_input(input) == '/')
 		{
 			Advance_input(input);
-			return true;
+			break;
 		}
 	}
-
-	return true;
 }
 
-static bool Lex_rest_of_line_comment(input_t * input)
+static void Lex_rest_of_line_comment(input_t * input)
 {
 	while (!Is_input_exhausted(input))
 	{
@@ -554,11 +555,9 @@ static bool Lex_rest_of_line_comment(input_t * input)
 
 		Advance_input(input);
 	}
-
-	return true;
 }
 
-static bool Lex_after_u(input_t * input)
+static void Lex_after_u(input_t * input)
 {
 	if (Peek_input(input) == '8')
 	{
@@ -568,7 +567,7 @@ static bool Lex_after_u(input_t * input)
 	return Lex_after_L_or_U(input);
 }
 
-static bool Lex_after_L_or_U(input_t * input)
+static void Lex_after_L_or_U(input_t * input)
 {
 	uint32_t cp = Peek_input(input);
 	if (cp == '"' || cp == '\'')
@@ -580,7 +579,7 @@ static bool Lex_after_L_or_U(input_t * input)
 	return Lex_rest_of_id(input);
 }
 
-static bool Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input)
+static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input)
 {
 	//??? TODO support utf8 chars? or do we get that for free?
 	//  should probably at least check for mal-formed utf8, instead
@@ -623,8 +622,6 @@ static bool Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input)
 			}
 		}
 	}
-
-	return true;
 }
 
 static bool Does_cp_extend_id(uint32_t cp)
@@ -664,7 +661,7 @@ static bool Does_cp_extend_id(uint32_t cp)
 	return false;
 }
 
-static bool Lex_rest_of_id(input_t * input)
+static void Lex_rest_of_id(input_t * input)
 {
 	while (true)
 	{
@@ -675,39 +672,28 @@ static bool Lex_rest_of_id(input_t * input)
 			continue;
 		}
 
-		// Found a non-id char. return now that we have found the
-		//  end of the current id.
-
-		// BUG returning true here is confusing, but eventually
-		//  we will be returning some TOKEN kind enum, and this will make
-		//  more sense. We return a value from this function,
-		//  (and the other lex_ helper functions) so that they can
-		//  be tail calls in the main lex function
-
-		return true;
+		break;
 	}
 }
 
-static bool Lex_after_percent(input_t * input)
+static void Lex_after_percent(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case ':':
 		Advance_input(input);
-		return Lex_after_percent_colon(input);
-
+		Lex_after_percent_colon(input);
+		break;
 	case '=':
 		Advance_input(input);
-		return true;
+		break;
 	case '>':
 		Advance_input(input);
-		return true;
-	default:
-		return true;
+		break;
 	}
 }
 
-static bool Lex_after_percent_colon(input_t * input)
+static void Lex_after_percent_colon(input_t * input)
 {
 	if (Peek_input(input) == '%')
 	{
@@ -720,11 +706,9 @@ static bool Lex_after_percent_colon(input_t * input)
 			*input = input_peek;
 		}
 	}
-
-	return true;
 }
 
-static bool Lex_after_lt(input_t * input)
+static void Lex_after_lt(input_t * input)
 {
 	switch (Peek_input(input))
 	{
@@ -733,28 +717,24 @@ static bool Lex_after_lt(input_t * input)
 		if (Peek_input(input) == '=')
 		{
 			Advance_input(input);
-			return true;
 		}
-		return true;
+		break;
 
 	case '%':
 		Advance_input(input);
-		return true;
+		break;
 
 	case ':':
 		Advance_input(input);
-		return true;
+		break;
 
 	case '=':
 		Advance_input(input);
-		return true;
-
-	default:
-		return true;
+		break;
 	}
 }
 
-static bool Lex_after_gt(input_t * input)
+static void Lex_after_gt(input_t * input)
 {
 	switch (Peek_input(input))
 	{
@@ -763,139 +743,115 @@ static bool Lex_after_gt(input_t * input)
 		if (Peek_input(input) == '=')
 		{
 			Advance_input(input);
-			return true;
 		}
-		return true;
+		break;
 
 	case '=':
 		Advance_input(input);
-		return true;
-
-	default:
-		return true;
+		break;
 	}
 }
 
-static bool Lex_after_bang(input_t * input)
+static void Lex_after_bang(input_t * input)
 {
 	if (Peek_input(input) == '=')
 	{
 		Advance_input(input);
 	}
-
-	return true;
 }
 
-static bool Lex_after_htag(input_t * input)
+static void Lex_after_htag(input_t * input)
 {
 	if (Peek_input(input) == '#')
 	{
 		Advance_input(input);
 	}
-
-	return true;
 }
 
-static bool Lex_after_amp(input_t * input)
+static void Lex_after_amp(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '&':
 		Advance_input(input);
-		return true;
+		break;
 	case '=':
 		Advance_input(input);
-		return true;
-	default:
-		return true;
+		break;
 	}
 }
 
-static bool Lex_after_star(input_t * input)
+static void Lex_after_star(input_t * input)
 {
 	if (Peek_input(input) == '=')
 	{
 		Advance_input(input);
 	}
-
-	return true;
 }
 
-static bool Lex_after_plus(input_t * input)
+static void Lex_after_plus(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '+':
 		Advance_input(input);
-		return true;
+		break;
 	case '=':
 		Advance_input(input);
-		return true;
-	default:
-		return true;
+		break;
 	}
 }
 
-static bool Lex_after_minus(input_t * input)
+static void Lex_after_minus(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '>':
 		Advance_input(input);
-		return true;
+		break;
 	case '-':
 		Advance_input(input);
-		return true;
+		break;
 	case '=':
 		Advance_input(input);
-		return true;
-	default:
-		return true;
+		break;
 	}
 }
 
-static bool Lex_after_colon(input_t * input)
+static void Lex_after_colon(input_t * input)
 {
 	if (Peek_input(input) == '>')
 	{
 		Advance_input(input);
 	}
-
-	return true;
 }
 
-static bool Lex_after_eq(input_t * input)
+static void Lex_after_eq(input_t * input)
 {
 	if (Peek_input(input) == '=')
 	{
 		Advance_input(input);
 	}
-
-	return true;
 }
 
-static bool Lex_after_caret(input_t * input)
+static void Lex_after_caret(input_t * input)
 {
 	if (Peek_input(input) == '=')
 	{
 		Advance_input(input);
 	}
-
-	return true;
 }
 
-static bool Lex_after_vbar(input_t * input)
+static void Lex_after_vbar(input_t * input)
 {
 	switch (Peek_input(input))
 	{
 	case '|':
 		Advance_input(input);
-		return true;
+		break;
 	case '=':
 		Advance_input(input);
-		return true;
-	default:
-		return true;
+		break;
 	}
 }
 
@@ -951,7 +907,7 @@ static bool Lex_after_vbar(input_t * input)
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 // 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-static bool Lex_rest_of_ppnum(input_t * input)
+static void Lex_rest_of_ppnum(input_t * input)
 {
 	while (true)
 	{
@@ -996,6 +952,4 @@ static bool Lex_rest_of_ppnum(input_t * input)
 			break;
 		}
 	}
-
-	return true;
 }

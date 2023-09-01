@@ -115,7 +115,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 	input_t input;
 	Init_input(&input, bstr->cursor, bstr->terminator);
 
-	while (true)
+	while (!Is_input_exhausted(&input))
 	{
 		// BUG refactor this so it is not reaching into input
 
@@ -123,8 +123,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 		int line_prev = input.line;
 		int loc_in_line = (int)(input.cursor - input.line_start + 1);
 
-		if (!Lex(&input))
-			break;
+		Lex(&input);
 
 		Print_token(
 			token_start,
