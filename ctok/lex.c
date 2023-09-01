@@ -733,9 +733,26 @@ static void Lex_after_u(input_t * input)
 	if (Peek_input(input) == '8')
 	{
 		Advance_input(input);
-	}
 
-	Lex_after_L_or_U(input);
+		// In c11 (ostensibly what we are targeting),
+		//  you can only have u8 before double quotes
+
+		// Bug commonize with Lex_after_L_or_U
+
+		if (Peek_input(input) == '"')
+		{
+			Advance_input(input);
+			Lex_rest_of_str_lit('"', input);
+		}
+		else
+		{
+			Lex_rest_of_id(input);
+		}
+	}
+	else
+	{
+		Lex_after_L_or_U(input);
+	}
 }
 
 static void Lex_after_L_or_U(input_t * input)
