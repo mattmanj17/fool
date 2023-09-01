@@ -2,7 +2,7 @@
 
 static const uint32_t cp_surrogate_min = 0xD800;
 static const uint32_t cp_surrogate_most = 0xDFFF;
-static const uint32_t cp_most = 0x10FFFF;
+const uint32_t cp_most = 0x10FFFF;
 
 utf8_encode_error_t Try_encode_utf8(
 	uint32_t cp, 

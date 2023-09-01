@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+extern const uint32_t cp_most;
+
 typedef struct
 {
 	const uint8_t * cursor;
