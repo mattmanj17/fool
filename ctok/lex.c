@@ -136,6 +136,23 @@ void Init_input(input_t * input, const char * cursor, const char * terminator)
 	input->terminator = terminator;
 	input->line_start = cursor;
 	input->line = 1;
+
+	// Deal with potential UTF-8 BOM
+
+	// Note that we leave line_start pointed at the original cursor.
+	//  This means anything on the first line will have their
+	//  col num bumped by 3, but that is what clang does, so whatever
+
+	//??? is this worth filing a bug about?
+
+	int num_ch = (int)(terminator - cursor);
+	if (num_ch >= 3 && 
+		cursor[0] == '\xEF' && 
+		cursor[1] == '\xBB' && 
+		cursor[2] == '\xBF')
+	{
+		input->cursor = cursor + 3;
+	}
 }
 
 static bool Does_input_physically_start_with_horizontal_whitespace(input_t * input)

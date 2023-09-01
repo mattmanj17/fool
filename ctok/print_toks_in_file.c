@@ -143,7 +143,11 @@ void Print_tokens_in_file(const wchar_t * fpath)
 		exit(1);
 	}
 
+	// Cache allocated buffer
+
 	char * buf = bstr.cursor;
+
+	// Print tokens
 
 	Print_toks_in_ch_range(&bstr);
 
