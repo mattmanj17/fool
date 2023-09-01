@@ -10,7 +10,7 @@
 
 #define CASSERT(f) static_assert((f), #f)
 
-uint32_t WC_GetLastError()
+uint32_t WC_GetLastError(void)
 {
     return GetLastError();
 }
@@ -161,7 +161,7 @@ int WC_FindNextFileA(
     void * hFindFile,
     WC_WIN32_FIND_DATAA * lpFindFileData)
 {
-    CASSERT(sizeof(WC_WIN32_FIND_DATAA) == sizeof(_WIN32_FIND_DATAA));
+    CASSERT(sizeof(WC_WIN32_FIND_DATAA) == sizeof(struct _WIN32_FIND_DATAA));
     return FindNextFileA(hFindFile, (LPWIN32_FIND_DATAA)lpFindFileData);
 }
 
@@ -169,7 +169,7 @@ void * WC_FindFirstFileA(
     const char * lpFileName,
     WC_WIN32_FIND_DATAA * lpFindFileData)
 {
-    CASSERT(sizeof(WC_WIN32_FIND_DATAA) == sizeof(_WIN32_FIND_DATAA));
+    CASSERT(sizeof(WC_WIN32_FIND_DATAA) == sizeof(struct _WIN32_FIND_DATAA));
     return FindFirstFileA(lpFileName, (LPWIN32_FIND_DATAA)lpFindFileData);
 }
 

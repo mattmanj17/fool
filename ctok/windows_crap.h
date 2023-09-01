@@ -15,7 +15,7 @@
 #define WC_ERROR_NO_MORE_FILES              18L
 #define WC_FILE_ATTRIBUTE_DIRECTORY         0x00000010  
 
-uint32_t WC_GetLastError();
+uint32_t WC_GetLastError(void);
 
 uint32_t WC_FormatMessageA(
     uint32_t dwFlags,
