@@ -117,6 +117,8 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 
 	while (true)
 	{
+		// BUG refactor this so it is not reaching into input
+
 		const char * token_start = input.cursor;
 		int line_prev = input.line;
 		int loc_in_line = (int)(input.cursor - input.line_start + 1);
