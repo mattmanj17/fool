@@ -666,7 +666,8 @@ static void Lex_after_dot(input_t * input)
 	if (Is_ascii_digit(cp))
 	{
 		Advance_input(input);
-		return Lex_rest_of_ppnum(input);
+		Lex_rest_of_ppnum(input);
+		return;
 	}
 
 	if (cp == '.')
@@ -735,7 +736,7 @@ static void Lex_after_u(input_t * input)
 		Advance_input(input);
 	}
 
-	return Lex_after_L_or_U(input);
+	Lex_after_L_or_U(input);
 }
 
 static void Lex_after_L_or_U(input_t * input)
@@ -744,10 +745,11 @@ static void Lex_after_L_or_U(input_t * input)
 	if (cp == '"' || cp == '\'')
 	{
 		Advance_input(input);
-		return Lex_rest_of_str_lit(cp, input);
+		Lex_rest_of_str_lit(cp, input);
+		return;
 	}
 
-	return Lex_rest_of_id(input);
+	Lex_rest_of_id(input);
 }
 
 static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input)
