@@ -1,5 +1,5 @@
 
-#include <stdlib.h>
+#include <stdio.h>
 
 #include "lex.h"
 
@@ -497,7 +497,7 @@ static void Lex_after_eq(input_t * input);
 static void Lex_after_caret(input_t * input);
 static void Lex_after_vbar(input_t * input);
 
-void Lex(input_t * input)
+void Skip_next_token(input_t * input)
 {
 	// Special handling of horizontal WS to match clang ... :(
 
@@ -656,6 +656,17 @@ void Lex(input_t * input)
 		}
 		break;
 	}
+}
+
+void Lex(input_t* input, token_t* tok)
+{
+	tok->str = input->cursor;
+	tok->line = input->line;
+	tok->col = (int)(input->cursor - input->line_start + 1);
+	
+	Skip_next_token(input);
+
+	tok->len = (int)(input->cursor - tok->str);
 }
 
 static void Lex_after_dot(input_t * input)
@@ -1141,4 +1152,77 @@ static void Lex_rest_of_ppnum(input_t * input)
 			break;
 		}
 	}
+}
+
+
+
+static void Clean_and_print_ch(char ch)
+{
+	// NOTE we print ' ' as \x20 so that we can split output on spaces
+
+	switch (ch)
+	{
+	case '0': case '1': case '2': case '3': case '4':
+	case '5': case '6': case '7': case '8': case '9':
+	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
+	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
+	case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+	case 'v': case 'w': case 'x': case 'y': case 'z':
+	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
+	case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
+	case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
+	case 'V': case 'W': case 'X': case 'Y': case 'Z':
+	case '_': case '$':
+	case '!': case '#': case '%': case '&': case '\'': case '(': case ')':
+	case '*': case '+': case ',': case '-': case '.': case '/': case ':':
+	case ';': case '<': case '=': case '>': case '?': case '@': case '[':
+	case ']': case '^': case '`': case '{': case '|': case '}': case '~':
+		putchar(ch);
+		break;
+	case '\a':
+		printf("\\a");
+		break;
+	case '\b':
+		printf("\\b");
+		break;
+	case '\f':
+		printf("\\f");
+		break;
+	case '\n':
+		printf("\\n");
+		break;
+	case '\r':
+		printf("\\r");
+		break;
+	case '\t':
+		printf("\\t");
+		break;
+	case '\v':
+		printf("\\v");
+		break;
+	case '"':
+		printf("\\\"");
+		break;
+	case '\\':
+		printf("\\\\");
+		break;
+	default:
+		printf("\\x%02hhx", ch);
+		break;
+	}
+}
+
+void Print_token(const token_t * tok)
+{
+	printf("\"");
+	for (int i = 0; i < tok->len; ++i)
+	{
+		Clean_and_print_ch(tok->str[i]);
+	}
+	printf("\"");
+
+	printf(
+		" %d:%d\n",
+		tok->line,
+		tok->col);
 }
