@@ -110,7 +110,7 @@ utf8_encode_error_t Try_encode_utf8(
 
 utf8_decode_error_t Try_decode_utf8(
 	input_byte_span_t * source_span, 
-	uint32_t * dest_cp)
+	cp_len_t * cp_len_out)
 {
 	// Figure out how many bytes we have to work with in source_span
 
@@ -317,7 +317,9 @@ utf8_decode_error_t Try_decode_utf8(
 
 	// We did it, copy to dest_cp and return OK
 
-	*dest_cp = cp;
+	cp_len_out->cp = cp;
+	cp_len_out->len = bytes_to_read;
+
 	source_span->cursor += bytes_to_read;
 	return utf8_decode_ok;
 }

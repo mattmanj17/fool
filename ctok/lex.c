@@ -55,43 +55,35 @@ bool Is_input_exhausted(input_t * input)
 	return input->cursor >= input->terminator;
 }
 
-static peek_t Peek_input(input_t * input)
+static peek_cp_t Peek_input(input_t * input)
 {
-	return Peek(input->cursor, input->terminator);
+	return Peek_cp(input->cursor, input->terminator);
 }
 
-static void Advance_input(input_t * input, peek_t peek)
+static void Advance_input(input_t * input, peek_cp_t peek_cp)
 {
-	input->cursor += peek.length;
-	if (peek.new_line_start)
+	input->cursor += peek_cp.len;
+	if (peek_cp.after_last_eol)
 	{
-		input->line_start = peek.new_line_start;
+		input->line_start = peek_cp.after_last_eol;
 	}
-	input->line += peek.num_lines;
+	input->line += peek_cp.num_eol;
 }
 
-static void Advance_past_line_continue(input_t * input)
+static void Advance_past_line_continues(input_t * input)
 {
 	// BUG the fact that this function is needed is awful
 
-	if (input->cursor[0] == '\\')
-	{
-		int num_lines;
-		int len_line_continue = Len_line_continues(input->cursor, &num_lines);
-		if (len_line_continue)
-		{
-			input->cursor += len_line_continue;
-			input->line += num_lines;
-			input->line_start = input->cursor;
-		}
-	}
+	peek_cp_t peek_cp;
+	Peek_escaped_end_of_lines(input->cursor, input->terminator, &peek_cp);
+	Advance_input(input, peek_cp);
 }
 
 static void Skip_whitespace(input_t * input)
 {
 	while (Is_ch_white_space(input->cursor[0]))
 	{
-		Advance_input(input, Peek(input->cursor, input->terminator));
+		Advance_input(input, Peek_cp(input->cursor, input->terminator));
 	}
 }
 
@@ -139,10 +131,10 @@ void Skip_next_token(input_t * input)
 
 	// Advance input and decide what to do
 
-	peek_t peek = Peek(input->cursor, input->terminator);
-	Advance_input(input, peek);
+	peek_cp_t peek_cp = Peek_cp(input->cursor, input->terminator);
+	Advance_input(input, peek_cp);
 
-	switch (peek.cp)
+	switch (peek_cp.cp)
 	{
 	case '\0': // Clang skips ws after a bogus \0
 	case ' ': // Will likely only see horz ws in this switch if it is after an escaped newline
@@ -279,7 +271,7 @@ void Skip_next_token(input_t * input)
 
 	default:
 		{
-			if (May_non_ascii_codepoint_start_id(lang_ver_c11, peek.cp))
+			if (May_non_ascii_codepoint_start_id(lang_ver_c11, peek_cp.cp))
 			{
 				Lex_rest_of_id(input);
 			}
@@ -301,24 +293,24 @@ void Lex(input_t* input, token_t* tok)
 
 static void Lex_after_dot(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 	
-	if (Is_ascii_digit(peek.cp))
+	if (Is_ascii_digit(peek_cp.cp))
 	{
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		Lex_rest_of_ppnum(input);
 		return;
 	}
 
-	if (peek.cp == '.')
+	if (peek_cp.cp == '.')
 	{
 		input_t input_peek = *input;
-		Advance_input(&input_peek, peek);
+		Advance_input(&input_peek, peek_cp);
 
-		peek = Peek_input(&input_peek);
-		if (peek.cp == '.')
+		peek_cp = Peek_input(&input_peek);
+		if (peek_cp.cp == '.')
 		{
-			Advance_input(&input_peek, peek);
+			Advance_input(&input_peek, peek_cp);
 			*input = input_peek;
 		}
 	}
@@ -326,7 +318,7 @@ static void Lex_after_dot(input_t * input)
 
 static void Lex_after_fslash(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek = Peek_input(input);
 
 	switch (peek.cp)
 	{
@@ -348,13 +340,13 @@ static void Lex_rest_of_block_comment(input_t * input)
 {
 	while (!Is_input_exhausted(input))
 	{
-		peek_t peek0 = Peek_input(input);
-		Advance_input(input, peek0);
+		peek_cp_t peek_cp0 = Peek_input(input);
+		Advance_input(input, peek_cp0);
 
-		peek_t peek1 = Peek_input(input);
-		if (peek0.cp == '*' && peek1.cp == '/')
+		peek_cp_t peek_cp1 = Peek_input(input);
+		if (peek_cp0.cp == '*' && peek_cp1.cp == '/')
 		{
-			Advance_input(input, peek1);
+			Advance_input(input, peek_cp1);
 			break;
 		}
 	}
@@ -364,32 +356,32 @@ static void Lex_rest_of_line_comment(input_t * input)
 {
 	while (!Is_input_exhausted(input))
 	{
-		peek_t peek = Peek_input(input);
+		peek_cp_t peek_cp = Peek_input(input);
 
-		if (peek.cp == '\n')
+		if (peek_cp.cp == '\n')
 			break;
 
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 	}
 }
 
 static void Lex_after_u(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	if (peek.cp == '8')
+	if (peek_cp.cp == '8')
 	{
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 
 		// In c11 (ostensibly what we are targeting),
 		//  you can only have u8 before double quotes
 
 		// Bug commonize with Lex_after_L_or_U
 
-		peek_t peek_quote = Peek_input(input);
-		if (peek_quote.cp == '"')
+		peek_cp_t peek_cp_quote = Peek_input(input);
+		if (peek_cp_quote.cp == '"')
 		{
-			Advance_input(input, peek_quote);
+			Advance_input(input, peek_cp_quote);
 			Lex_rest_of_str_lit('"', input);
 		}
 		else
@@ -405,11 +397,11 @@ static void Lex_after_u(input_t * input)
 
 static void Lex_after_L_or_U(input_t * input)
 {
-	peek_t peek = Peek_input(input);
-	if (peek.cp == '"' || peek.cp == '\'')
+	peek_cp_t peek_cp = Peek_input(input);
+	if (peek_cp.cp == '"' || peek_cp.cp == '\'')
 	{
-		Advance_input(input, peek);
-		Lex_rest_of_str_lit(peek.cp, input);
+		Advance_input(input, peek_cp);
+		Lex_rest_of_str_lit(peek_cp.cp, input);
 		return;
 	}
 
@@ -424,38 +416,38 @@ static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input)
 
 	while (!Is_input_exhausted(input))
 	{
-		peek_t peek = Peek_input(input);
+		peek_cp_t peek_cp = Peek_input(input);
 
 		// String without closing quote (which we support in raw lexing mode..)
 
-		if (peek.cp == '\n')
+		if (peek_cp.cp == '\n')
 		{
 			// BUG hack to match clang
 
-			Advance_past_line_continue(input);
+			Advance_past_line_continues(input);
 			break;
 		}
 
 		// Anything else will be part of the str lit
 
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 
 		// Closing quote
 
-		if (peek.cp == cp_sential)
+		if (peek_cp.cp == cp_sential)
 			break;
 
 		// Deal with back slash
 
-		if (peek.cp == '\\')
+		if (peek_cp.cp == '\\')
 		{
 			// Check if escaped char is '\"', '\'', or '\\',
 			//  the only escapes we need to handle in raw mode
 
-			peek = Peek_input(input);
-			if (peek.cp == cp_sential || peek.cp == '\\')
+			peek_cp = Peek_input(input);
+			if (peek_cp.cp == cp_sential || peek_cp.cp == '\\')
 			{
-				Advance_input(input, peek);
+				Advance_input(input, peek_cp);
 			}
 		}
 	}
@@ -502,10 +494,10 @@ static void Lex_rest_of_id(input_t * input)
 {
 	while (true)
 	{
-		peek_t peek = Peek_input(input);
-		if (Does_cp_extend_id(peek.cp))
+		peek_cp_t peek_cp = Peek_input(input);
+		if (Does_cp_extend_id(peek_cp.cp))
 		{
-			Advance_input(input, peek);
+			Advance_input(input, peek_cp);
 			continue;
 		}
 
@@ -515,36 +507,36 @@ static void Lex_rest_of_id(input_t * input)
 
 static void Lex_after_percent(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	switch (peek.cp)
+	switch (peek_cp.cp)
 	{
 	case ':':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		Lex_after_percent_colon(input);
 		break;
 	case '=':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	case '>':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	}
 }
 
 static void Lex_after_percent_colon(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	if (peek.cp == '%')
+	if (peek_cp.cp == '%')
 	{
 		input_t input_peek = *input;
-		Advance_input(&input_peek, peek);
+		Advance_input(&input_peek, peek_cp);
 
-		peek = Peek_input(&input_peek);
-		if (peek.cp == ':')
+		peek_cp = Peek_input(&input_peek);
+		if (peek_cp.cp == ':')
 		{
-			Advance_input(&input_peek, peek);
+			Advance_input(&input_peek, peek_cp);
 			*input = input_peek;
 		}
 	}
@@ -552,173 +544,179 @@ static void Lex_after_percent_colon(input_t * input)
 
 static void Lex_after_lt(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	switch (peek.cp)
+	switch (peek_cp.cp)
 	{
 	case '<':
-		Advance_input(input, peek);
-		peek = Peek_input(input);
-		if (peek.cp == '=')
+		Advance_input(input, peek_cp);
+		peek_cp = Peek_input(input);
+		if (peek_cp.cp == '=')
 		{
-			Advance_input(input, peek);
+			Advance_input(input, peek_cp);
 		}
 		break;
 
 	case '%':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 
 	case ':':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 
 	case '=':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	}
 }
 
 static void Lex_after_gt(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	switch (peek.cp)
+	switch (peek_cp.cp)
 	{
 	case '>':
-		Advance_input(input, peek);
-		peek = Peek_input(input);
-		if (peek.cp == '=')
+		Advance_input(input, peek_cp);
+		peek_cp = Peek_input(input);
+		if (peek_cp.cp == '=')
 		{
-			Advance_input(input, peek);
+			Advance_input(input, peek_cp);
 		}
 		break;
 
 	case '=':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	}
 }
 
 static void Lex_after_bang(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	if (peek.cp == '=')
+	if (peek_cp.cp == '=')
 	{
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 	}
 }
 
 static void Lex_after_htag(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	if (peek.cp == '#')
+	if (peek_cp.cp == '#')
 	{
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 	}
 }
 
 static void Lex_after_amp(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	switch (peek.cp)
+	switch (peek_cp.cp)
 	{
 	case '&':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	case '=':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	}
 }
 
 static void Lex_after_star(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	if (peek.cp == '=')
+	if (peek_cp.cp == '=')
 	{
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 	}
 }
 
 static void Lex_after_plus(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	switch (peek.cp)
+	switch (peek_cp.cp)
 	{
 	case '+':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	case '=':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	}
 }
 
 static void Lex_after_minus(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	switch (peek.cp)
+	switch (peek_cp.cp)
 	{
 	case '>':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	case '-':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	case '=':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	}
 }
 
 static void Lex_after_colon(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	if (peek.cp == '>')
+	if (peek_cp.cp == '>')
 	{
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
+	}
+	else if (peek_cp.cp == ':')
+	{
+		// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
+
+		Advance_input(input, peek_cp);
 	}
 }
 
 static void Lex_after_eq(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	if (peek.cp == '=')
+	if (peek_cp.cp == '=')
 	{
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 	}
 }
 
 static void Lex_after_caret(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	if (peek.cp == '=')
+	if (peek_cp.cp == '=')
 	{
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 	}
 }
 
 static void Lex_after_vbar(input_t * input)
 {
-	peek_t peek = Peek_input(input);
+	peek_cp_t peek_cp = Peek_input(input);
 
-	switch (peek.cp)
+	switch (peek_cp.cp)
 	{
 	case '|':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	case '=':
-		Advance_input(input, peek);
+		Advance_input(input, peek_cp);
 		break;
 	}
 }
@@ -779,26 +777,26 @@ static void Lex_rest_of_ppnum(input_t * input)
 {
 	while (true)
 	{
-		peek_t peek = Peek_input(input);
+		peek_cp_t peek_cp = Peek_input(input);
 
-		if (peek.cp == '.')
+		if (peek_cp.cp == '.')
 		{
-			Advance_input(input, peek);
+			Advance_input(input, peek_cp);
 			continue;
 		}
-		else if (peek.cp == 'e' || peek.cp == 'E' || peek.cp == 'p' || peek.cp == 'P')
+		else if (peek_cp.cp == 'e' || peek_cp.cp == 'E' || peek_cp.cp == 'p' || peek_cp.cp == 'P')
 		{
-			Advance_input(input, peek);
+			Advance_input(input, peek_cp);
 		
-			peek = Peek_input(input);
-			if (peek.cp == '+' || peek.cp == '-')
+			peek_cp = Peek_input(input);
+			if (peek_cp.cp == '+' || peek_cp.cp == '-')
 			{
-				Advance_input(input, peek);
+				Advance_input(input, peek_cp);
 			}
 
 			continue;
 		}
-		else if (peek.cp == '$')
+		else if (peek_cp.cp == '$')
 		{
 			// Clang does not allow '$' in ppnums, 
 			//  even though the spec would seem to suggest that 
@@ -806,11 +804,11 @@ static void Lex_rest_of_ppnum(input_t * input)
 
 			break;
 		}
-		else if (Does_cp_extend_id(peek.cp))
+		else if (Does_cp_extend_id(peek_cp.cp))
 		{
 			// Everything (else) which extends ids can extend a ppnum
 
-			Advance_input(input, peek);
+			Advance_input(input, peek_cp);
 			continue;
 		}
 		else

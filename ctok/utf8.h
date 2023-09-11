@@ -48,6 +48,12 @@ typedef enum
 //  return error FLAGS instead of a single 'error code',
 //  to encode this more accuratly...
 
+typedef struct
+{
+	uint32_t cp;
+	int len;
+} cp_len_t;
+
 utf8_decode_error_t Try_decode_utf8(
 	input_byte_span_t * source_span, 
-	uint32_t * dest_cp);
+	cp_len_t * cp_len_out);
