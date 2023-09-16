@@ -347,7 +347,7 @@ static peek_cp_t Peek_handle_ucn(const char * mic, const char * mac)
 	}
 
 	// Otherwise, we read a valid UCN, and the info
-	//  we need to return in in peek_result
+	//  we need to return is in peek_result
 
 	return peek_result;
 }
