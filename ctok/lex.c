@@ -270,7 +270,7 @@ void Skip_next_token(input_t * input)
 
 	default:
 		{
-			if (May_non_ascii_codepoint_start_id(lang_ver_c11, peek_cp.cp))
+			if (May_non_ascii_codepoint_start_id(peek_cp.cp))
 			{
 				Lex_rest_of_id(input);
 			}
