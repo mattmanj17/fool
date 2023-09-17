@@ -52,20 +52,3 @@ bool Try_read_file_at_path_to_buffer(const wchar_t * fpath, bounded_c_str_t * bs
 
 	return success;
 }
-
-static void Try_write_buffer_to_file(void * buffer, uint64_t size, FILE * file)
-{
-	size_t bytes_written = fwrite(buffer, 1, size, file);
-	(void) bytes_written; //BUG ignoring return value?
-}
-
-void Try_write_buffer_to_file_at_path(void * buffer, uint64_t size, const char * fpath)
-{
-	FILE * file = fopen(fpath, "wb");
-	if (!file)
-		return;
-
-	Try_write_buffer_to_file(buffer, size, file);
-
-	fclose(file); // BUG (matthewd) ignoring return value?
-}
