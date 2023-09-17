@@ -9,21 +9,21 @@
 
 // cp_min_most_t
 
-bool Is_codepoint_in_range(
+bool Is_cp_in_range(
 	uint32_t cp,
 	cp_min_most_t range)
 {
 	return cp >= range.cp_min && cp <= range.cp_most;
 }
 
-bool Is_codepoint_in_ranges(
+bool Is_cp_in_ranges(
 	uint32_t cp,
 	const cp_min_most_t * ranges,
 	int num_ranges)
 {
 	for (int i = 0; i < num_ranges; ++i)
 	{
-		if (Is_codepoint_in_range(cp, ranges[i]))
+		if (Is_cp_in_range(cp, ranges[i]))
 			return true;
 	}
 
@@ -171,7 +171,22 @@ bool Is_cp_ascii(uint32_t cp)
 	return cp <= 0x7F;
 }
 
-bool Is_unicode_whitespace(uint32_t cp)
+bool Is_cp_ascii_digit(uint32_t cp)
+{
+	return cp >= '0' && cp <= '9';
+}
+
+bool Is_cp_ascii_lowercase(uint32_t cp)
+{
+	return cp >= 'a' && cp <= 'z';
+}
+
+bool Is_cp_ascii_uppercase(uint32_t cp)
+{
+	return cp >= 'A' && cp <= 'Z';
+}
+
+bool Is_cp_unicode_whitespace(uint32_t cp)
 {
 	static const cp_min_most_t unicode_whitespace[] =
 	{
@@ -186,7 +201,7 @@ bool Is_unicode_whitespace(uint32_t cp)
 		{ 0x3000, 0x3000 }
 	};
 
-	return Is_codepoint_in_ranges(cp, unicode_whitespace, COUNT_OF(unicode_whitespace));
+	return Is_cp_in_ranges(cp, unicode_whitespace, COUNT_OF(unicode_whitespace));
 }
 
 

@@ -296,7 +296,7 @@ static void Lex_after_dot(input_t * input)
 {
 	peek_cp_t peek_cp = Peek_input(input);
 	
-	if (Is_ascii_digit(peek_cp.cp))
+	if (Is_cp_ascii_digit(peek_cp.cp))
 	{
 		Advance_input(input, peek_cp);
 		Lex_rest_of_ppnum(input);
@@ -456,16 +456,16 @@ static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input)
 
 static bool Does_cp_extend_id(uint32_t cp)
 {
-	if (Is_ascii_lowercase(cp))
+	if (Is_cp_ascii_lowercase(cp))
 		return true;
 
-	if (Is_ascii_uppercase(cp))
+	if (Is_cp_ascii_uppercase(cp))
 		return true;
 
 	if (cp == '_')
 		return true;
 
-	if (Is_ascii_digit(cp))
+	if (Is_cp_ascii_digit(cp))
 		return true;
 
 	if (cp == '$') // '$' allowed as an extension :/
@@ -486,7 +486,7 @@ static bool Does_cp_extend_id(uint32_t cp)
 	//  and produce an invalid pp token. I suspect no one
 	//  actually cares, since dump_raw_tokens is only for debugging...
 
-	if (!Is_unicode_whitespace(cp))
+	if (!Is_cp_unicode_whitespace(cp))
 		return true;
 
 	return false;
@@ -496,10 +496,10 @@ static bool May_cp_start_id(uint32_t cp)
 {
 	// Letters
 
-	if (Is_ascii_lowercase(cp))
+	if (Is_cp_ascii_lowercase(cp))
 		return true;
 
-	if (Is_ascii_uppercase(cp))
+	if (Is_cp_ascii_uppercase(cp))
 		return true;
 
 	// Underscore
@@ -532,7 +532,7 @@ static bool May_cp_start_id(uint32_t cp)
 		{ 0xFE20, 0xFE2F }
 	};
 
-	if (Is_codepoint_in_ranges(cp, c11_disallowed_initial, COUNT_OF(c11_disallowed_initial)))
+	if (Is_cp_in_ranges(cp, c11_disallowed_initial, COUNT_OF(c11_disallowed_initial)))
 		return false;
 
 	// These code points are allowed to start an id (minus ones from c11_disallowed_initial)
@@ -574,7 +574,7 @@ static bool May_cp_start_id(uint32_t cp)
 		{ 0xD0000, 0xDFFFD }, { 0xE0000, 0xEFFFD }
 	};
 
-	return Is_codepoint_in_ranges(cp, c11_allowed, COUNT_OF(c11_allowed));
+	return Is_cp_in_ranges(cp, c11_allowed, COUNT_OF(c11_allowed));
 }
 
 static void Lex_rest_of_id(input_t * input)

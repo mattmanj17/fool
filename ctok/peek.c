@@ -192,7 +192,7 @@ static uint32_t Hex_digit_value_from_cp(uint32_t cp)
 	if (!Is_cp_ascii(cp))
 		return UINT32_MAX;
 
-	if (Is_ascii_digit(cp))
+	if (Is_cp_ascii_digit(cp))
 		return cp - '0';
 
 	if (cp < 'A')
