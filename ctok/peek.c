@@ -29,12 +29,8 @@ static cp_len_t Peek_handle_utf8_eol_trigraph(const char * mic, const char * mac
 
 	if (ch > 0x7f)
 	{
-		input_byte_span_t span;
-		span.cursor = (const uint8_t *)mic;
-		span.max = (const uint8_t *)mac;
-
 		cp_len_t cp_len;
-		if (Try_decode_utf8(&span, &cp_len))
+		if (Try_decode_utf8((const uint8_t *)mic, (const uint8_t *)mac, &cp_len))
 			return cp_len;
 		
 		return {UINT32_MAX, 1};

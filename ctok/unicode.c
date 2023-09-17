@@ -9,103 +9,6 @@ static const uint32_t cp_surrogate_min = 0xD800;
 static const uint32_t cp_surrogate_most = 0xDFFF;
 const uint32_t cp_most = 0x10FFFF;
 
-bool Try_encode_utf8(
-	uint32_t cp,
-	output_byte_span_t * dest_span)
-{
-	/*
-		utf8 can encode up to 21 bits like this
-
-		1-byte = 0 to 7 bits : 		0xxxxxxx
-		2-byte = 8 to 11 bits :		110xxxxx 10xxxxxx
-		3-byte = 12 to 16 bits :	1110xxxx 10xxxxxx 10xxxxxx
-		4-byte = 17 to 21 bits :	11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
-
-		so
-		1-byte if		<= 	0b 0111 1111, 			(0x7f)
-		2-byte if		<= 	0b 0111 1111 1111,		(0x7ff)
-		3-byte if		<= 	0b 1111 1111 1111 1111,	(0xffff)
-		4 byte otherwise
-
-		The only other details, are that you are not allowed to encode
-		values in [0xD800, 0xDFFF] (the utf16 surogates),
-		or anything > 0x10FFFF (0x10FFFF is the largest valid code point).
-
-		Also note that, 2/3/4 byte values start with a byte with 2/3/4 leading ones.
-		That is how you decode them later. (the trailing bytes all start with '10')
-	*/
-
-	// figure out how many bytes we need to encode this code point
-	// (or if this codepoint is too large)
-
-	int bytes_to_write;
-	if (cp <= 0x7f)
-	{
-		bytes_to_write = 1;
-	}
-	else if (cp <= 0x7ff)
-	{
-		bytes_to_write = 2;
-	}
-	else if (cp <= 0xffff)
-	{
-		// Check for illegal surrogate values
-
-		if (cp >= cp_surrogate_min && cp <= cp_surrogate_most)
-			return false;
-
-		bytes_to_write = 3;
-	}
-	else if (cp <= cp_most)
-	{
-		bytes_to_write = 4;
-	}
-	else
-	{
-		return false;
-	}
-
-	// Check for space in dest
-
-	int bytes_available = (int)(dest_span->max - dest_span->cursor);
-	if (bytes_available < bytes_to_write)
-		return false;
-
-	// write least significant bits in 6 bit chunks.
-	// we write from right to left, 
-	// so we can >>= 6 to get the next 6 bits to write.
-
-	int i_byte_write = bytes_to_write - 1;
-	while (i_byte_write > 0)
-	{
-		uint8_t byte = (uint8_t)(cp & 0b111111);
-		byte |= 0b10000000; // trailing byte mark
-
-		dest_span->cursor[i_byte_write] = byte;
-
-		cp >>= 6;
-		--i_byte_write;
-	}
-
-	// Write remaining most significant bits
-
-	uint8_t first_byte_mark[5] =
-	{
-		0x00, // 0 bytes (unused, bytes_to_write always > 0)
-		0x00, // 1 byte  (leave cp unchanged)
-		0xC0, // 2 bytes (0b11000000)
-		0xE0, // 3 bytes (0b11100000)
-		0xF0, // 4 bytes (0b11110000)
-	};
-
-	*dest_span->cursor = (uint8_t)(cp | first_byte_mark[bytes_to_write]);
-
-	// advance dest_span->begin and return
-
-	dest_span->cursor += bytes_to_write;
-	return true;
-}
-
 // Try_decode_utf8 Roughly based on Table 3.1B in unicode Corrigendum #1
 //  Special care is taken to reject 'overlong encodings'
 //  that is, using more bytes than necessary/allowed for a given code point
@@ -114,12 +17,13 @@ bool Try_encode_utf8(
 //  about the checks it is doing, so it is easy to debug + verify its correctness
 
 bool Try_decode_utf8(
-	input_byte_span_t * source_span,
+	const uint8_t * mic,
+	const uint8_t * mac,
 	cp_len_t * cp_len_out)
 {
 	// Figure out how many bytes we have to work with in source_span
 
-	int bytes_available = (int)(source_span->max - source_span->cursor);
+	int bytes_available = (int)(mac - mic);
 
 	// If source_span is empty, we can not even look at the
 	//  'first' byte to figure anything out, so just
@@ -131,7 +35,7 @@ bool Try_decode_utf8(
 	// Figure out how many bytes to read by looking at the first byte
 	//  (and also do some initial validation...)
 
-	uint8_t first_byte = source_span->cursor[0];
+	uint8_t first_byte = mic[0];
 
 	int bytes_to_read;
 	if (first_byte <= 0x7f)
@@ -169,7 +73,7 @@ bool Try_decode_utf8(
 		if (bytes_available < 2)
 			return false;
 
-		uint8_t second = source_span->cursor[1];
+		uint8_t second = mic[1];
 
 		// Must have first bit set
 
@@ -214,7 +118,7 @@ bool Try_decode_utf8(
 		if (bytes_available < 2)
 			return false;
 
-		uint8_t second = source_span->cursor[1];
+		uint8_t second = mic[1];
 
 		// Must have first bit set
 
@@ -271,7 +175,7 @@ bool Try_decode_utf8(
 		if (i > bytes_available - 1)
 			return false;
 
-		uint8_t trailing_byte = source_span->cursor[i];
+		uint8_t trailing_byte = mic[i];
 
 		// need first two bits to be exactly '10'
 
@@ -305,7 +209,7 @@ bool Try_decode_utf8(
 
 	for (int i = 1; i < bytes_to_read; ++i)
 	{
-		uint8_t trailing_byte = source_span->cursor[i];
+		uint8_t trailing_byte = mic[i];
 		cp <<= 6;
 		cp |= (uint8_t)(trailing_byte & 0b111111);
 	}
@@ -325,7 +229,6 @@ bool Try_decode_utf8(
 	cp_len_out->cp = cp;
 	cp_len_out->len = bytes_to_read;
 
-	source_span->cursor += bytes_to_read;
 	return true;
 }
 
