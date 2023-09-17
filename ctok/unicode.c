@@ -9,7 +9,7 @@ static const uint32_t cp_surrogate_min = 0xD800;
 static const uint32_t cp_surrogate_most = 0xDFFF;
 const uint32_t cp_most = 0x10FFFF;
 
-utf8_encode_error_t Try_encode_utf8(
+bool Try_encode_utf8(
 	uint32_t cp,
 	output_byte_span_t * dest_span)
 {
@@ -52,7 +52,7 @@ utf8_encode_error_t Try_encode_utf8(
 		// Check for illegal surrogate values
 
 		if (cp >= cp_surrogate_min && cp <= cp_surrogate_most)
-			return utf8_encode_illegal_surrogate;
+			return false;
 
 		bytes_to_write = 3;
 	}
@@ -62,14 +62,14 @@ utf8_encode_error_t Try_encode_utf8(
 	}
 	else
 	{
-		return utf8_encode_illegal_cp_too_high;
+		return false;
 	}
 
 	// Check for space in dest
 
 	int bytes_available = (int)(dest_span->max - dest_span->cursor);
 	if (bytes_available < bytes_to_write)
-		return utf8_encode_no_space_in_dest;
+		return false;
 
 	// write least significant bits in 6 bit chunks.
 	// we write from right to left, 
@@ -103,7 +103,7 @@ utf8_encode_error_t Try_encode_utf8(
 	// advance dest_span->begin and return
 
 	dest_span->cursor += bytes_to_write;
-	return utf8_encode_ok;
+	return true;
 }
 
 // Try_decode_utf8 Roughly based on Table 3.1B in unicode Corrigendum #1
@@ -113,7 +113,7 @@ utf8_encode_error_t Try_encode_utf8(
 // BUG Try_decode_utf8 is rather spaghetti-y, but is being very literal
 //  about the checks it is doing, so it is easy to debug + verify its correctness
 
-utf8_decode_error_t Try_decode_utf8(
+bool Try_decode_utf8(
 	input_byte_span_t * source_span,
 	cp_len_t * cp_len_out)
 {
@@ -126,7 +126,7 @@ utf8_decode_error_t Try_decode_utf8(
 	//  return utf8_decode_source_too_short right away
 
 	if (bytes_available == 0)
-		return utf8_decode_source_too_short;
+		return false;
 
 	// Figure out how many bytes to read by looking at the first byte
 	//  (and also do some initial validation...)
@@ -142,7 +142,7 @@ utf8_decode_error_t Try_decode_utf8(
 	{
 		// Invalid first byte if first two bits not set
 
-		return utf8_decode_first_marked_as_trailing;
+		return false;
 	}
 	else if (first_byte == 0xC0 || first_byte == 0xC1)
 	{
@@ -151,7 +151,7 @@ utf8_decode_error_t Try_decode_utf8(
 		//  using more than one byte to encode a codepoint <= 7f
 		//  is illegal
 
-		return utf8_decode_overlong_2_byte;
+		return false;
 	}
 	else if (first_byte <= 0xDF)
 	{
@@ -167,7 +167,7 @@ utf8_decode_error_t Try_decode_utf8(
 		//  the 2nd byte for 'overlong-ness'
 
 		if (bytes_available < 2)
-			return utf8_decode_source_too_short;
+			return false;
 
 		uint8_t second = source_span->cursor[1];
 
@@ -177,7 +177,7 @@ utf8_decode_error_t Try_decode_utf8(
 		//  We ALSO do it here to return the most correct error code.
 
 		if (second <= 0x7f)
-			return utf8_decode_invalid_trailing_byte;
+			return false;
 
 		// Check for 'overlong-ness'
 
@@ -189,7 +189,7 @@ utf8_decode_error_t Try_decode_utf8(
 			//  which could have been represented with only two bytes, 
 			//  so this is 'overlong'
 
-			return utf8_decode_overlong_3_byte;
+			return false;
 		}
 
 		// NOTE we check for <= BF in the normal case below
@@ -212,7 +212,7 @@ utf8_decode_error_t Try_decode_utf8(
 		//  the 2nd byte for 'overlong-ness'
 
 		if (bytes_available < 2)
-			return utf8_decode_source_too_short;
+			return false;
 
 		uint8_t second = source_span->cursor[1];
 
@@ -222,7 +222,7 @@ utf8_decode_error_t Try_decode_utf8(
 		//  We ALSO do it here to return the most correct error code.
 
 		if (second <= 0x7f)
-			return utf8_decode_invalid_trailing_byte;
+			return false;
 
 		// Check for 'overlong-ness'
 
@@ -234,7 +234,7 @@ utf8_decode_error_t Try_decode_utf8(
 			//  which could have been represented with only three bytes, 
 			//  so this is 'overlong'
 
-			return utf8_decode_overlong_4_byte;
+			return false;
 		}
 
 		// NOTE we check for <= BF in the normal case below
@@ -254,7 +254,7 @@ utf8_decode_error_t Try_decode_utf8(
 	{
 		// more than 4 leading ones
 
-		return utf8_decode_cp_too_high;
+		return false;
 	}
 
 	// Check that each trailing byte is valid 
@@ -269,14 +269,14 @@ utf8_decode_error_t Try_decode_utf8(
 		//  unclear if this is important...
 
 		if (i > bytes_available - 1)
-			return utf8_decode_source_too_short;
+			return false;
 
 		uint8_t trailing_byte = source_span->cursor[i];
 
 		// need first two bits to be exactly '10'
 
 		if (trailing_byte < 0x80 || trailing_byte > 0xBF)
-			return utf8_decode_invalid_trailing_byte;
+			return false;
 	}
 
 	// Ok, we have validated that this is legit utf8, 
@@ -313,12 +313,12 @@ utf8_decode_error_t Try_decode_utf8(
 	// Check for illegal surrogate values
 
 	if (cp >= cp_surrogate_min && cp <= cp_surrogate_most)
-		return utf8_decode_illegal_surrogate;
+		return false;
 
 	// Make sure below cp_most
 
 	if (cp > cp_most)
-		return utf8_decode_cp_too_high;
+		return false;
 
 	// We did it, copy to dest_cp and return OK
 
@@ -326,7 +326,7 @@ utf8_decode_error_t Try_decode_utf8(
 	cp_len_out->len = bytes_to_read;
 
 	source_span->cursor += bytes_to_read;
-	return utf8_decode_ok;
+	return true;
 }
 
 
