@@ -220,10 +220,7 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	if (cp < 0xA0 && cp != 0x24 && cp != 0x40 && cp != 0x60)
 		return false;
 
-	if (cp >= 0xD800 && cp <= 0xDFFF)
-		return false;
-
-	if (cp > cp_most)
+	if (!Is_cp_valid(cp))
 		return false;
 
 	return true;

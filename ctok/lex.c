@@ -4,6 +4,7 @@
 #include "lex.h"
 
 #include "ch.h"
+#include "count_of.h"
 #include "peek.h"
 #include "unicode.h"
 
@@ -101,6 +102,7 @@ static void Lex_after_u(input_t * input);
 static void Lex_after_L_or_U(input_t * input);
 static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input);
 
+static bool May_cp_start_id(uint32_t cp);
 static void Lex_rest_of_id(input_t * input);
 
 static void Lex_after_percent(input_t * input);
@@ -270,7 +272,7 @@ void Skip_next_token(input_t * input)
 
 	default:
 		{
-			if (May_non_ascii_codepoint_start_id(peek_cp.cp))
+			if (May_cp_start_id(peek_cp.cp))
 			{
 				Lex_rest_of_id(input);
 			}
@@ -479,7 +481,8 @@ static bool Does_cp_extend_id(uint32_t cp)
 	//  once we are parsing an id, we just slurp up all
 	//  valid non-ascii-non-whitespace utf8...
 
-	// I do not like this. Clang seems to do the wrong thing here,
+	// BUG I do not like this. the right thing to do is check c11_allowed from May_cp_start_id.
+	//  Clang seems to do the wrong thing here,
 	//  and produce an invalid pp token. I suspect no one
 	//  actually cares, since dump_raw_tokens is only for debugging...
 
@@ -487,6 +490,91 @@ static bool Does_cp_extend_id(uint32_t cp)
 		return true;
 
 	return false;
+}
+
+static bool May_cp_start_id(uint32_t cp)
+{
+	// Letters
+
+	if (Is_ascii_lowercase(cp))
+		return true;
+
+	if (Is_ascii_uppercase(cp))
+		return true;
+
+	// Underscore
+
+	if (cp == '_')
+		return true;
+
+	// '$' allowed as an extension :/
+
+	if (cp == '$') 
+		return true;
+
+	// All other ascii does not start ids
+
+	if (Is_cp_ascii(cp)) 
+		return false;
+
+	// Bogus utf8 does not start ids
+
+	if (cp == UINT32_MAX) 
+		return false;
+
+	// These codepoints are not allowed as the start of an id
+
+	static const cp_min_most_t c11_disallowed_initial[] =
+	{
+		{ 0x0300, 0x036F },
+		{ 0x1DC0, 0x1DFF },
+		{ 0x20D0, 0x20FF },
+		{ 0xFE20, 0xFE2F }
+	};
+
+	if (Is_codepoint_in_ranges(cp, c11_disallowed_initial, COUNT_OF(c11_disallowed_initial)))
+		return false;
+
+	// These code points are allowed to start an id (minus ones from c11_disallowed_initial)
+
+	static const cp_min_most_t c11_allowed[] =
+	{
+		// 1
+		{ 0x00A8, 0x00A8 }, { 0x00AA, 0x00AA }, { 0x00AD, 0x00AD },
+		{ 0x00AF, 0x00AF }, { 0x00B2, 0x00B5 }, { 0x00B7, 0x00BA },
+		{ 0x00BC, 0x00BE }, { 0x00C0, 0x00D6 }, { 0x00D8, 0x00F6 },
+		{ 0x00F8, 0x00FF },
+
+		// 2
+		{ 0x0100, 0x167F }, { 0x1681, 0x180D }, { 0x180F, 0x1FFF },
+
+		// 3
+		{ 0x200B, 0x200D }, { 0x202A, 0x202E }, { 0x203F, 0x2040 },
+		{ 0x2054, 0x2054 }, { 0x2060, 0x206F },
+
+		// 4
+		{ 0x2070, 0x218F }, { 0x2460, 0x24FF }, { 0x2776, 0x2793 },
+		{ 0x2C00, 0x2DFF }, { 0x2E80, 0x2FFF },
+
+		// 5
+		{ 0x3004, 0x3007 }, { 0x3021, 0x302F }, { 0x3031, 0x303F },
+
+		// 6
+		{ 0x3040, 0xD7FF },
+
+		// 7
+		{ 0xF900, 0xFD3D }, { 0xFD40, 0xFDCF }, { 0xFDF0, 0xFE44 },
+		{ 0xFE47, 0xFFFD },
+
+		// 8
+		{ 0x10000, 0x1FFFD }, { 0x20000, 0x2FFFD }, { 0x30000, 0x3FFFD },
+		{ 0x40000, 0x4FFFD }, { 0x50000, 0x5FFFD }, { 0x60000, 0x6FFFD },
+		{ 0x70000, 0x7FFFD }, { 0x80000, 0x8FFFD }, { 0x90000, 0x9FFFD },
+		{ 0xA0000, 0xAFFFD }, { 0xB0000, 0xBFFFD }, { 0xC0000, 0xCFFFD },
+		{ 0xD0000, 0xDFFFD }, { 0xE0000, 0xEFFFD }
+	};
+
+	return Is_codepoint_in_ranges(cp, c11_allowed, COUNT_OF(c11_allowed));
 }
 
 static void Lex_rest_of_id(input_t * input)
