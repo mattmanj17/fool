@@ -1,6 +1,19 @@
 #pragma once
 
-#include <stdint.h>
+typedef enum
+{
+	lang_ver_c99,
+	lang_ver_c11,
+	lang_ver_c2x,
+} lang_ver_t;
+
+bool Is_ch_ascii(char ch);
+bool Is_cp_ascii(uint32_t cp);
+bool May_non_ascii_codepoint_start_id(lang_ver_t lang_ver, uint32_t cp);
+bool Does_non_ascii_codepoint_extend_id(lang_ver_t lang_ver, uint32_t cp);
+bool Is_unicode_whitespace(uint32_t cp);
+
+
 
 extern const uint32_t cp_most;
 
@@ -25,7 +38,7 @@ typedef enum
 } utf8_encode_error_t;
 
 utf8_encode_error_t Try_encode_utf8(
-	uint32_t cp, 
+	uint32_t cp,
 	output_byte_span_t * dest_span);
 
 typedef enum
@@ -39,7 +52,7 @@ typedef enum
 	utf8_decode_overlong_4_byte,
 	utf8_decode_illegal_surrogate,
 	utf8_decode_cp_too_high,
-} utf8_decode_error_t; 
+} utf8_decode_error_t;
 
 // BUG it is possible to fail to decode for multiple reasons...
 //  i.e., we did not have enough bytes to decode, AND
@@ -55,5 +68,5 @@ typedef struct
 } cp_len_t;
 
 utf8_decode_error_t Try_decode_utf8(
-	input_byte_span_t * source_span, 
+	input_byte_span_t * source_span,
 	cp_len_t * cp_len_out);

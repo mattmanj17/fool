@@ -1,10 +1,340 @@
 ﻿
+#include <stdint.h>
+
+#include "unicode.h"
+
+
+
+static const uint32_t cp_surrogate_min = 0xD800;
+static const uint32_t cp_surrogate_most = 0xDFFF;
+const uint32_t cp_most = 0x10FFFF;
+
+utf8_encode_error_t Try_encode_utf8(
+	uint32_t cp,
+	output_byte_span_t * dest_span)
+{
+	/*
+		utf8 can encode up to 21 bits like this
+
+		1-byte = 0 to 7 bits : 		0xxxxxxx
+		2-byte = 8 to 11 bits :		110xxxxx 10xxxxxx
+		3-byte = 12 to 16 bits :	1110xxxx 10xxxxxx 10xxxxxx
+		4-byte = 17 to 21 bits :	11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+
+		so
+		1-byte if		<= 	0b 0111 1111, 			(0x7f)
+		2-byte if		<= 	0b 0111 1111 1111,		(0x7ff)
+		3-byte if		<= 	0b 1111 1111 1111 1111,	(0xffff)
+		4 byte otherwise
+
+		The only other details, are that you are not allowed to encode
+		values in [0xD800, 0xDFFF] (the utf16 surogates),
+		or anything > 0x10FFFF (0x10FFFF is the largest valid code point).
+
+		Also note that, 2/3/4 byte values start with a byte with 2/3/4 leading ones.
+		That is how you decode them later. (the trailing bytes all start with '10')
+	*/
+
+	// figure out how many bytes we need to encode this code point
+	// (or if this codepoint is too large)
+
+	int bytes_to_write;
+	if (cp <= 0x7f)
+	{
+		bytes_to_write = 1;
+	}
+	else if (cp <= 0x7ff)
+	{
+		bytes_to_write = 2;
+	}
+	else if (cp <= 0xffff)
+	{
+		// Check for illegal surrogate values
+
+		if (cp >= cp_surrogate_min && cp <= cp_surrogate_most)
+			return utf8_encode_illegal_surrogate;
+
+		bytes_to_write = 3;
+	}
+	else if (cp <= cp_most)
+	{
+		bytes_to_write = 4;
+	}
+	else
+	{
+		return utf8_encode_illegal_cp_too_high;
+	}
+
+	// Check for space in dest
+
+	int bytes_available = (int)(dest_span->max - dest_span->cursor);
+	if (bytes_available < bytes_to_write)
+		return utf8_encode_no_space_in_dest;
+
+	// write least significant bits in 6 bit chunks.
+	// we write from right to left, 
+	// so we can >>= 6 to get the next 6 bits to write.
+
+	int i_byte_write = bytes_to_write - 1;
+	while (i_byte_write > 0)
+	{
+		uint8_t byte = (uint8_t)(cp & 0b111111);
+		byte |= 0b10000000; // trailing byte mark
+
+		dest_span->cursor[i_byte_write] = byte;
+
+		cp >>= 6;
+		--i_byte_write;
+	}
+
+	// Write remaining most significant bits
+
+	uint8_t first_byte_mark[5] =
+	{
+		0x00, // 0 bytes (unused, bytes_to_write always > 0)
+		0x00, // 1 byte  (leave cp unchanged)
+		0xC0, // 2 bytes (0b11000000)
+		0xE0, // 3 bytes (0b11100000)
+		0xF0, // 4 bytes (0b11110000)
+	};
+
+	*dest_span->cursor = (uint8_t)(cp | first_byte_mark[bytes_to_write]);
+
+	// advance dest_span->begin and return
+
+	dest_span->cursor += bytes_to_write;
+	return utf8_encode_ok;
+}
+
+// Try_decode_utf8 Roughly based on Table 3.1B in unicode Corrigendum #1
+//  Special care is taken to reject 'overlong encodings'
+//  that is, using more bytes than necessary/allowed for a given code point
+
+// BUG Try_decode_utf8 is rather spaghetti-y, but is being very literal
+//  about the checks it is doing, so it is easy to debug + verify its correctness
+
+utf8_decode_error_t Try_decode_utf8(
+	input_byte_span_t * source_span,
+	cp_len_t * cp_len_out)
+{
+	// Figure out how many bytes we have to work with in source_span
+
+	int bytes_available = (int)(source_span->max - source_span->cursor);
+
+	// If source_span is empty, we can not even look at the
+	//  'first' byte to figure anything out, so just
+	//  return utf8_decode_source_too_short right away
+
+	if (bytes_available == 0)
+		return utf8_decode_source_too_short;
+
+	// Figure out how many bytes to read by looking at the first byte
+	//  (and also do some initial validation...)
+
+	uint8_t first_byte = source_span->cursor[0];
+
+	int bytes_to_read;
+	if (first_byte <= 0x7f)
+	{
+		bytes_to_read = 1;
+	}
+	else if (first_byte < 0xC0)
+	{
+		// Invalid first byte if first two bits not set
+
+		return utf8_decode_first_marked_as_trailing;
+	}
+	else if (first_byte == 0xC0 || first_byte == 0xC1)
+	{
+		// if first == 0xC0, we are only encoding (at most) 6 significant bits,
+		//  and if first == 0xC1, we are only encoding (at most) 7 bits.
+		//  using more than one byte to encode a codepoint <= 7f
+		//  is illegal
+
+		return utf8_decode_overlong_2_byte;
+	}
+	else if (first_byte <= 0xDF)
+	{
+		// There are enough significant bits in the first byte,
+		//  so we could be a valid 2 byte sequence
+
+		bytes_to_read = 2;
+	}
+	else if (first_byte == 0xE0)
+	{
+		// Going to use 3 bytes, but there are no significant bits
+		//  in the first byte (0b11100000) so we need to check 
+		//  the 2nd byte for 'overlong-ness'
+
+		if (bytes_available < 2)
+			return utf8_decode_source_too_short;
+
+		uint8_t second = source_span->cursor[1];
+
+		// Must have first bit set
+
+		// NOTE this is duplicating the normal <= 0x7f check below.
+		//  We ALSO do it here to return the most correct error code.
+
+		if (second <= 0x7f)
+			return utf8_decode_invalid_trailing_byte;
+
+		// Check for 'overlong-ness'
+
+		if (second < 0xA0)
+		{
+			// If less than '0b10100000',
+			//  the 2nd byte only has 5 significant bits, 
+			//  so we are encoding a max of 11 bits (5 + 6 in the 3rd byte), 
+			//  which could have been represented with only two bytes, 
+			//  so this is 'overlong'
+
+			return utf8_decode_overlong_3_byte;
+		}
+
+		// NOTE we check for <= BF in the normal case below
+
+		bytes_to_read = 3;
+	}
+	else if (first_byte <= 0xEF)
+	{
+		// There are enough significant bits in the first byte,
+		//  so we could be a valid 3 byte sequence
+
+		bytes_to_read = 3;
+	}
+	else if (first_byte == 0xF0)
+	{
+		// BUG this code is very similar to the (first_byte == 0xE0) case...
+
+		// Going to use 4 bytes, but there are no significant bits
+		//  in the first byte (0b11110000) so we need to check 
+		//  the 2nd byte for 'overlong-ness'
+
+		if (bytes_available < 2)
+			return utf8_decode_source_too_short;
+
+		uint8_t second = source_span->cursor[1];
+
+		// Must have first bit set
+
+		// NOTE this is duplicating the normal <= 0x7f check below.
+		//  We ALSO do it here to return the most correct error code.
+
+		if (second <= 0x7f)
+			return utf8_decode_invalid_trailing_byte;
+
+		// Check for 'overlong-ness'
+
+		if (second < 0x90)
+		{
+			// If less than '0b10010000',
+			//  the 2nd byte only has 4 significant bits, 
+			//  so we are encoding a max of 11 bits (4 + 12 in the 3rd + 4th bytes), 
+			//  which could have been represented with only three bytes, 
+			//  so this is 'overlong'
+
+			return utf8_decode_overlong_4_byte;
+		}
+
+		// NOTE we check for <= BF in the normal case below
+
+		bytes_to_read = 4;
+	}
+	else if (first_byte <= 0xF7)
+	{
+		// There are enough significant bits in the first byte,
+		//  so we could be a valid 3 byte sequence
+
+		// NOTE we deal with checking cp_most below
+
+		bytes_to_read = 4;
+	}
+	else
+	{
+		// more than 4 leading ones
+
+		return utf8_decode_cp_too_high;
+	}
+
+	// Check that each trailing byte is valid 
+
+	for (int i = 1; i < bytes_to_read; ++i)
+	{
+		// ... but if we run out of input, return THAT error code
+
+		// BUG we do it this weird way so that we return 
+		//  utf8_decode_invalid_trailing_byte even
+		//  if bytes_available < bytes_to_read...
+		//  unclear if this is important...
+
+		if (i > bytes_available - 1)
+			return utf8_decode_source_too_short;
+
+		uint8_t trailing_byte = source_span->cursor[i];
+
+		// need first two bits to be exactly '10'
+
+		if (trailing_byte < 0x80 || trailing_byte > 0xBF)
+			return utf8_decode_invalid_trailing_byte;
+	}
+
+	// Ok, we have validated that this is legit utf8, 
+	//  so decode into a 21 bit codepoint
+
+	// Get the significant bits from the first byte
+
+	uint32_t cp = 0;
+	switch (bytes_to_read)
+	{
+	case 1:
+		cp = first_byte;
+		break;
+	case 2:
+		cp = (uint8_t)(first_byte & 0b11111);
+		break;
+	case 3:
+		cp = (uint8_t)(first_byte & 0b1111);
+		break;
+	case 4:
+		cp = (uint8_t)(first_byte & 0b111);
+		break;
+	}
+
+	// Get the bits from the trailing bytes
+
+	for (int i = 1; i < bytes_to_read; ++i)
+	{
+		uint8_t trailing_byte = source_span->cursor[i];
+		cp <<= 6;
+		cp |= (uint8_t)(trailing_byte & 0b111111);
+	}
+
+	// Check for illegal surrogate values
+
+	if (cp >= cp_surrogate_min && cp <= cp_surrogate_most)
+		return utf8_decode_illegal_surrogate;
+
+	// Make sure below cp_most
+
+	if (cp > cp_most)
+		return utf8_decode_cp_too_high;
+
+	// We did it, copy to dest_cp and return OK
+
+	cp_len_out->cp = cp;
+	cp_len_out->len = bytes_to_read;
+
+	source_span->cursor += bytes_to_read;
+	return utf8_decode_ok;
+}
+
+
+
 // Cribbed from LLVM UnicodeCharRanges.h/etc
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "unicode_ids.h"
-
-typedef struct 
+typedef struct
 {
 	uint32_t min;
 	uint32_t most;
@@ -12,7 +342,7 @@ typedef struct
 
 // Unicode 15.0 XID_Start
 
-static const codepoint_range_t xid_start[] = 
+static const codepoint_range_t xid_start[] =
 {
 	{0x0041, 0x005A},   {0x0061, 0x007A},   {0x00AA, 0x00AA},
 	{0x00B5, 0x00B5},   {0x00BA, 0x00BA},   {0x00C0, 0x00D6},
@@ -243,7 +573,7 @@ static const codepoint_range_t xid_start[] =
 // To save Space, the table below only contains the codepoints
 // that are not also in XID_Start.
 
-static const codepoint_range_t xid_continue[] = 
+static const codepoint_range_t xid_continue[] =
 {
 	{0x0030, 0x0039},   {0x005F, 0x005F},   {0x00B7, 0x00B7},
 	{0x0300, 0x036F},   {0x0387, 0x0387},   {0x0483, 0x0487},
@@ -376,7 +706,7 @@ static const codepoint_range_t xid_continue[] =
 // as described in https://www.unicode.org/L2/L2022/22230-math-profile.pdf
 // Math_Start
 
-static const codepoint_range_t math_start[] = 
+static const codepoint_range_t math_start[] =
 {
 	{0x02202, 0x02202}, // ∂
 	{0x02207, 0x02207}, // ∇
@@ -395,7 +725,7 @@ static const codepoint_range_t math_start[] =
 
 // Math_Continue
 
-static const codepoint_range_t math_continue[] = 
+static const codepoint_range_t math_continue[] =
 {
 	{0x000B2, 0x000B3}, // ²-³
 	{0x000B9, 0x000B9}, // ¹
@@ -406,35 +736,35 @@ static const codepoint_range_t math_continue[] =
 
 // C11 D.1 [charname.allowed]
 
-static const codepoint_range_t c11_allowed[] = 
+static const codepoint_range_t c11_allowed[] =
 {
 	// 1
 	{ 0x00A8, 0x00A8 }, { 0x00AA, 0x00AA }, { 0x00AD, 0x00AD },
 	{ 0x00AF, 0x00AF }, { 0x00B2, 0x00B5 }, { 0x00B7, 0x00BA },
 	{ 0x00BC, 0x00BE }, { 0x00C0, 0x00D6 }, { 0x00D8, 0x00F6 },
 	{ 0x00F8, 0x00FF },
-	
+
 	// 2
 	{ 0x0100, 0x167F }, { 0x1681, 0x180D }, { 0x180F, 0x1FFF },
-	
+
 	// 3
 	{ 0x200B, 0x200D }, { 0x202A, 0x202E }, { 0x203F, 0x2040 },
 	{ 0x2054, 0x2054 }, { 0x2060, 0x206F },
-	
+
 	// 4
 	{ 0x2070, 0x218F }, { 0x2460, 0x24FF }, { 0x2776, 0x2793 },
 	{ 0x2C00, 0x2DFF }, { 0x2E80, 0x2FFF },
-	
+
 	// 5
 	{ 0x3004, 0x3007 }, { 0x3021, 0x302F }, { 0x3031, 0x303F },
-	
+
 	// 6
 	{ 0x3040, 0xD7FF },
-	
+
 	// 7
 	{ 0xF900, 0xFD3D }, { 0xFD40, 0xFDCF }, { 0xFDF0, 0xFE44 },
 	{ 0xFE47, 0xFFFD },
-	
+
 	// 8
 	{ 0x10000, 0x1FFFD }, { 0x20000, 0x2FFFD }, { 0x30000, 0x3FFFD },
 	{ 0x40000, 0x4FFFD }, { 0x50000, 0x5FFFD }, { 0x60000, 0x6FFFD },
@@ -445,7 +775,7 @@ static const codepoint_range_t c11_allowed[] =
 
 // C11 D.2 [charname.disallowed]
 
-static const codepoint_range_t c11_disallowed_initial[] = 
+static const codepoint_range_t c11_disallowed_initial[] =
 {
 	{ 0x0300, 0x036F }, { 0x1DC0, 0x1DFF }, { 0x20D0, 0x20FF },
 	{ 0xFE20, 0xFE2F }
@@ -453,150 +783,150 @@ static const codepoint_range_t c11_disallowed_initial[] =
 
 // C99 Annex D
 
-static const codepoint_range_t c99_allowed[] = 
+static const codepoint_range_t c99_allowed[] =
 {
 	// Latin (1)
 	{ 0x00AA, 0x00AA },
-	
+
 	// Special characters (1)
 	{ 0x00B5, 0x00B5 }, { 0x00B7, 0x00B7 },
-	
+
 	// Latin (2)
 	{ 0x00BA, 0x00BA }, { 0x00C0, 0x00D6 }, { 0x00D8, 0x00F6 },
 	{ 0x00F8, 0x01F5 }, { 0x01FA, 0x0217 }, { 0x0250, 0x02A8 },
-	
+
 	// Special characters (2)
 	{ 0x02B0, 0x02B8 }, { 0x02BB, 0x02BB }, { 0x02BD, 0x02C1 },
 	{ 0x02D0, 0x02D1 }, { 0x02E0, 0x02E4 }, { 0x037A, 0x037A },
-	
+
 	// Greek (1)
 	{ 0x0386, 0x0386 }, { 0x0388, 0x038A }, { 0x038C, 0x038C },
 	{ 0x038E, 0x03A1 }, { 0x03A3, 0x03CE }, { 0x03D0, 0x03D6 },
 	{ 0x03DA, 0x03DA }, { 0x03DC, 0x03DC }, { 0x03DE, 0x03DE },
 	{ 0x03E0, 0x03E0 }, { 0x03E2, 0x03F3 },
-	
+
 	// Cyrillic
 	{ 0x0401, 0x040C }, { 0x040E, 0x044F }, { 0x0451, 0x045C },
 	{ 0x045E, 0x0481 }, { 0x0490, 0x04C4 }, { 0x04C7, 0x04C8 },
 	{ 0x04CB, 0x04CC }, { 0x04D0, 0x04EB }, { 0x04EE, 0x04F5 },
 	{ 0x04F8, 0x04F9 },
-	
+
 	// Armenian (1)
 	{ 0x0531, 0x0556 },
-	
+
 	// Special characters (3)
 	{ 0x0559, 0x0559 },
-	
+
 	// Armenian (2)
 	{ 0x0561, 0x0587 },
-	
+
 	// Hebrew
 	{ 0x05B0, 0x05B9 }, { 0x05BB, 0x05BD }, { 0x05BF, 0x05BF },
 	{ 0x05C1, 0x05C2 }, { 0x05D0, 0x05EA }, { 0x05F0, 0x05F2 },
-	
+
 	// Arabic (1)
 	{ 0x0621, 0x063A }, { 0x0640, 0x0652 },
-	
+
 	// Digits (1)
 	{ 0x0660, 0x0669 },
-	
+
 	// Arabic (2)
 	{ 0x0670, 0x06B7 }, { 0x06BA, 0x06BE }, { 0x06C0, 0x06CE },
 	{ 0x06D0, 0x06DC }, { 0x06E5, 0x06E8 }, { 0x06EA, 0x06ED },
-	
+
 	// Digits (2)
 	{ 0x06F0, 0x06F9 },
-	
+
 	// Devanagari and Special character 0x093D.
 	{ 0x0901, 0x0903 }, { 0x0905, 0x0939 }, { 0x093D, 0x094D },
 	{ 0x0950, 0x0952 }, { 0x0958, 0x0963 },
-	
+
 	// Digits (3)
 	{ 0x0966, 0x096F },
-	
+
 	// Bengali (1)
 	{ 0x0981, 0x0983 }, { 0x0985, 0x098C }, { 0x098F, 0x0990 },
 	{ 0x0993, 0x09A8 }, { 0x09AA, 0x09B0 }, { 0x09B2, 0x09B2 },
 	{ 0x09B6, 0x09B9 }, { 0x09BE, 0x09C4 }, { 0x09C7, 0x09C8 },
 	{ 0x09CB, 0x09CD }, { 0x09DC, 0x09DD }, { 0x09DF, 0x09E3 },
-	
+
 	// Digits (4)	
 	{ 0x09E6, 0x09EF },
-	
+
 	// Bengali (2)
 	{ 0x09F0, 0x09F1 },
-	
+
 	// Gurmukhi (1)
 	{ 0x0A02, 0x0A02 }, { 0x0A05, 0x0A0A }, { 0x0A0F, 0x0A10 },
 	{ 0x0A13, 0x0A28 }, { 0x0A2A, 0x0A30 }, { 0x0A32, 0x0A33 },
 	{ 0x0A35, 0x0A36 }, { 0x0A38, 0x0A39 }, { 0x0A3E, 0x0A42 },
 	{ 0x0A47, 0x0A48 }, { 0x0A4B, 0x0A4D }, { 0x0A59, 0x0A5C },
 	{ 0x0A5E, 0x0A5E },
-	
+
 	// Digits (5)
 	{ 0x0A66, 0x0A6F },
-	
+
 	// Gurmukhi (2)
 	{ 0x0A74, 0x0A74 },
-	
+
 	// Gujarti
 	{ 0x0A81, 0x0A83 }, { 0x0A85, 0x0A8B }, { 0x0A8D, 0x0A8D },
 	{ 0x0A8F, 0x0A91 }, { 0x0A93, 0x0AA8 }, { 0x0AAA, 0x0AB0 },
 	{ 0x0AB2, 0x0AB3 }, { 0x0AB5, 0x0AB9 }, { 0x0ABD, 0x0AC5 },
 	{ 0x0AC7, 0x0AC9 }, { 0x0ACB, 0x0ACD }, { 0x0AD0, 0x0AD0 },
 	{ 0x0AE0, 0x0AE0 },
-	
+
 	// Digits (6)
 	{ 0x0AE6, 0x0AEF },
-	
+
 	// Oriya and Special character 0x0B3D
 	{ 0x0B01, 0x0B03 }, { 0x0B05, 0x0B0C }, { 0x0B0F, 0x0B10 },
 	{ 0x0B13, 0x0B28 }, { 0x0B2A, 0x0B30 }, { 0x0B32, 0x0B33 },
 	{ 0x0B36, 0x0B39 }, { 0x0B3D, 0x0B43 }, { 0x0B47, 0x0B48 },
 	{ 0x0B4B, 0x0B4D }, { 0x0B5C, 0x0B5D }, { 0x0B5F, 0x0B61 },
-	
+
 	// Digits (7)
 	{ 0x0B66, 0x0B6F },
-	
+
 	// Tamil
 	{ 0x0B82, 0x0B83 }, { 0x0B85, 0x0B8A }, { 0x0B8E, 0x0B90 },
 	{ 0x0B92, 0x0B95 }, { 0x0B99, 0x0B9A }, { 0x0B9C, 0x0B9C },
 	{ 0x0B9E, 0x0B9F }, { 0x0BA3, 0x0BA4 }, { 0x0BA8, 0x0BAA },
 	{ 0x0BAE, 0x0BB5 }, { 0x0BB7, 0x0BB9 }, { 0x0BBE, 0x0BC2 },
 	{ 0x0BC6, 0x0BC8 }, { 0x0BCA, 0x0BCD },
-	
+
 	// Digits (8)
 	{ 0x0BE7, 0x0BEF },
-	
+
 	// Telugu
 	{ 0x0C01, 0x0C03 }, { 0x0C05, 0x0C0C }, { 0x0C0E, 0x0C10 },
 	{ 0x0C12, 0x0C28 }, { 0x0C2A, 0x0C33 }, { 0x0C35, 0x0C39 },
 	{ 0x0C3E, 0x0C44 }, { 0x0C46, 0x0C48 }, { 0x0C4A, 0x0C4D },
 	{ 0x0C60, 0x0C61 },
-	
+
 	// Digits (9)
 	{ 0x0C66, 0x0C6F },
-	
+
 	// Kannada
 	{ 0x0C82, 0x0C83 }, { 0x0C85, 0x0C8C }, { 0x0C8E, 0x0C90 },
 	{ 0x0C92, 0x0CA8 }, { 0x0CAA, 0x0CB3 }, { 0x0CB5, 0x0CB9 },
 	{ 0x0CBE, 0x0CC4 }, { 0x0CC6, 0x0CC8 }, { 0x0CCA, 0x0CCD },
 	{ 0x0CDE, 0x0CDE }, { 0x0CE0, 0x0CE1 },
-	
+
 	// Digits (10)
 	{ 0x0CE6, 0x0CEF },
-	
+
 	// Malayam
 	{ 0x0D02, 0x0D03 }, { 0x0D05, 0x0D0C }, { 0x0D0E, 0x0D10 },
 	{ 0x0D12, 0x0D28 }, { 0x0D2A, 0x0D39 }, { 0x0D3E, 0x0D43 },
 	{ 0x0D46, 0x0D48 }, { 0x0D4A, 0x0D4D }, { 0x0D60, 0x0D61 },
-	
+
 	// Digits (11)
 	{ 0x0D66, 0x0D6F },
-	
+
 	// Thai...including Digits { 0x0E50, 0x0E59 }
 	{ 0x0E01, 0x0E3A }, { 0x0E40, 0x0E5B },
-	
+
 	// Lao (1)
 	{ 0x0E81, 0x0E82 }, { 0x0E84, 0x0E84 }, { 0x0E87, 0x0E88 },
 	{ 0x0E8A, 0x0E8A }, { 0x0E8D, 0x0E8D }, { 0x0E94, 0x0E97 },
@@ -604,70 +934,70 @@ static const codepoint_range_t c99_allowed[] =
 	{ 0x0EA7, 0x0EA7 }, { 0x0EAA, 0x0EAB }, { 0x0EAD, 0x0EAE },
 	{ 0x0EB0, 0x0EB9 }, { 0x0EBB, 0x0EBD }, { 0x0EC0, 0x0EC4 },
 	{ 0x0EC6, 0x0EC6 }, { 0x0EC8, 0x0ECD },
-	
+
 	// Digits (12)
 	{ 0x0ED0, 0x0ED9 },
-	
+
 	// Lao (2)
 	{ 0x0EDC, 0x0EDD },
-	
+
 	// Tibetan (1)
 	{ 0x0F00, 0x0F00 }, { 0x0F18, 0x0F19 },
-	
+
 	// Digits (13)
 	{ 0x0F20, 0x0F33 },
-	
+
 	// Tibetan (2)
 	{ 0x0F35, 0x0F35 }, { 0x0F37, 0x0F37 }, { 0x0F39, 0x0F39 },
 	{ 0x0F3E, 0x0F47 }, { 0x0F49, 0x0F69 }, { 0x0F71, 0x0F84 },
 	{ 0x0F86, 0x0F8B }, { 0x0F90, 0x0F95 }, { 0x0F97, 0x0F97 },
 	{ 0x0F99, 0x0FAD }, { 0x0FB1, 0x0FB7 }, { 0x0FB9, 0x0FB9 },
-	
+
 	// Georgian
 	{ 0x10A0, 0x10C5 }, { 0x10D0, 0x10F6 },
-	
+
 	// Latin (3)
 	{ 0x1E00, 0x1E9B }, { 0x1EA0, 0x1EF9 },
-	
+
 	// Greek (2)
 	{ 0x1F00, 0x1F15 }, { 0x1F18, 0x1F1D }, { 0x1F20, 0x1F45 },
 	{ 0x1F48, 0x1F4D }, { 0x1F50, 0x1F57 }, { 0x1F59, 0x1F59 },
 	{ 0x1F5B, 0x1F5B }, { 0x1F5D, 0x1F5D }, { 0x1F5F, 0x1F7D },
 	{ 0x1F80, 0x1FB4 }, { 0x1FB6, 0x1FBC },
-	
+
 	// Special characters (4)
 	{ 0x1FBE, 0x1FBE },
-	
+
 	// Greek (3)
 	{ 0x1FC2, 0x1FC4 }, { 0x1FC6, 0x1FCC }, { 0x1FD0, 0x1FD3 },
 	{ 0x1FD6, 0x1FDB }, { 0x1FE0, 0x1FEC }, { 0x1FF2, 0x1FF4 },
 	{ 0x1FF6, 0x1FFC },
-	
+
 	// Special characters (5)
 	{ 0x203F, 0x2040 },
-	
+
 	// Latin (4)
 	{ 0x207F, 0x207F },
-	
+
 	// Special characters (6)
 	{ 0x2102, 0x2102 }, { 0x2107, 0x2107 }, { 0x210A, 0x2113 },
 	{ 0x2115, 0x2115 }, { 0x2118, 0x211D }, { 0x2124, 0x2124 },
 	{ 0x2126, 0x2126 }, { 0x2128, 0x2128 }, { 0x212A, 0x2131 },
 	{ 0x2133, 0x2138 }, { 0x2160, 0x2182 }, { 0x3005, 0x3007 },
 	{ 0x3021, 0x3029 },
-	
+
 	// Hiragana
 	{ 0x3041, 0x3093 }, { 0x309B, 0x309C },
-	
+
 	// Katakana
 	{ 0x30A1, 0x30F6 }, { 0x30FB, 0x30FC },
-	
+
 	// Bopmofo [sic]
 	{ 0x3105, 0x312C },
-	
+
 	// CJK Unified Ideographs
 	{ 0x4E00, 0x9FA5 },
-	
+
 	// Hangul,
 	{ 0xAC00, 0xD7A3 }
 };
@@ -676,7 +1006,7 @@ static const codepoint_range_t c99_allowed[] =
 // universal character name designating a digit.
 // C99 Annex D defines these characters as "Digits".
 
-static const codepoint_range_t c99_disallowed_initial[] = 
+static const codepoint_range_t c99_disallowed_initial[] =
 {
 	{ 0x0660, 0x0669 }, { 0x06F0, 0x06F9 }, { 0x0966, 0x096F },
 	{ 0x09E6, 0x09EF }, { 0x0A66, 0x0A6F }, { 0x0AE6, 0x0AEF },
@@ -686,7 +1016,7 @@ static const codepoint_range_t c99_disallowed_initial[] =
 };
 
 // Unicode v6.2, chapter 6.2, table 6-2.
-static const codepoint_range_t unicode_whitespace[] = 
+static const codepoint_range_t unicode_whitespace[] =
 {
 	{ 0x0085, 0x0085 }, { 0x00A0, 0x00A0 }, { 0x1680, 0x1680 },
 	{ 0x180E, 0x180E }, { 0x2000, 0x200A }, { 0x2028, 0x2029 },
@@ -694,15 +1024,15 @@ static const codepoint_range_t unicode_whitespace[] =
 };
 
 static bool Is_codepoint_in_range(
-	uint32_t cp, 
+	uint32_t cp,
 	codepoint_range_t range)
 {
 	return cp >= range.min && cp <= range.most;
 }
 
 static bool Is_codepoint_in_ranges(
-	uint32_t cp, 
-	const codepoint_range_t * ranges, 
+	uint32_t cp,
+	const codepoint_range_t * ranges,
 	int num_ranges)
 {
 	for (int i = 0; i < num_ranges; ++i)
