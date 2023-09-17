@@ -2,14 +2,13 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <stdlib.h>
 
 #include "lex.h"
 #include "file.h"
 
 
 
-void Print_tokens_in_file(const wchar_t * fpath);
+void Try_print_tokens_in_file(const wchar_t * fpath);
 
 
 
@@ -21,7 +20,7 @@ int wmain(int argc, wchar_t *argv[])
 		return 1;
 	}
 	
-	Print_tokens_in_file(argv[1]);
+	Try_print_tokens_in_file(argv[1]);
 	return 0;
 }
 
@@ -97,14 +96,14 @@ bool Starts_with_invalid_BOM(const bounded_c_str_t * bstr)
 	return false;
 }
 
-void Print_tokens_in_file(const wchar_t * fpath)
+void Try_print_tokens_in_file(const wchar_t * fpath)
 {
 	bounded_c_str_t bstr;
 	bool success = Try_read_file_at_path_to_buffer(fpath, &bstr);
 	if (!success)
 	{
 		printf("Failed to read file '%ls'.\n", fpath);
-		exit(1);
+		return;
 	}
 
 	// Check for invalid BOM
@@ -113,18 +112,10 @@ void Print_tokens_in_file(const wchar_t * fpath)
 	{
 		// Err msg printed in Starts_with_invalid_BOM...
 
-		exit(1);
+		return;
 	}
-
-	// Cache allocated buffer
-
-	char * buf = bstr.cursor;
 
 	// Print tokens
 
 	Print_toks_in_ch_range(&bstr);
-
-	// BUG this is scuffed...
-
-	free(buf);
 }

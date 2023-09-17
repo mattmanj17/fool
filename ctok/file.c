@@ -1,7 +1,8 @@
 #include <stdio.h>
-#include <stdlib.h>
 
+#include "alloc.h"
 #include "file.h"
+#include "panic.h"
 
 static bool Try_read_file_to_buffer(FILE * file, bounded_c_str_t * bstr)
 {
@@ -10,29 +11,24 @@ static bool Try_read_file_to_buffer(FILE * file, bounded_c_str_t * bstr)
 
 	int err = fseek(file, 0, SEEK_END);
 	if (err)
-		return false;
+		Panic("fseek failed");
 
 	long len_file = ftell(file);
 	if (len_file < 0)
-		return false;
+		Panic("ftell failed");
 
 	err = fseek(file, 0, SEEK_SET);
 	if (err)
-		return false;
+		Panic("fseek failed");
 
-	char * buf = (char *)calloc((size_t)(len_file + 1), 1);
-	if (!buf)
-		return false;
+	void * allocation = Allocate(len_file + 1);
 
-	size_t bytes_read = fread(buf, 1, (size_t)len_file, file);
+	size_t bytes_read = fread(allocation, 1, (size_t)len_file, file);
 	if (bytes_read != (size_t)len_file)
-	{
-		free(buf);
-		return false;
-	}
+		Panic("fread failed");
 
-	bstr->cursor = buf;
-	bstr->terminator = buf + len_file;
+	bstr->cursor = (char *)allocation;
+	bstr->terminator = bstr->cursor + len_file;
 
 	return true;
 }
