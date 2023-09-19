@@ -186,6 +186,26 @@ bool Is_cp_ascii_uppercase(uint32_t cp)
 	return cp >= 'A' && cp <= 'Z';
 }
 
+bool Is_cp_ascii_horizontal_white_space(uint32_t cp)
+{
+	return cp == ' ' || cp == '\t' || cp == '\f' || cp == '\v';
+}
+
+bool Is_cp_ascii_white_space(uint32_t cp)
+{
+	return Is_cp_ascii_horizontal_white_space(cp) || cp == '\n' || cp == '\r';
+}
+
+bool Is_ch_horizontal_white_space(char ch)
+{
+	return Is_cp_ascii_horizontal_white_space((uint32_t)ch);
+}
+
+bool Is_ch_white_space(char ch)
+{
+	return Is_cp_ascii_white_space((uint32_t)ch);
+}
+
 bool Is_cp_unicode_whitespace(uint32_t cp)
 {
 	static const cp_min_most_t unicode_whitespace[] =

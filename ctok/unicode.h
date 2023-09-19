@@ -32,8 +32,17 @@ bool Try_decode_utf8(
 
 bool Is_cp_valid(uint32_t cp);
 bool Is_cp_surrogate(uint32_t cp);
+
 bool Is_cp_ascii(uint32_t cp);
 bool Is_cp_ascii_digit(uint32_t cp);
 bool Is_cp_ascii_lowercase(uint32_t cp);
 bool Is_cp_ascii_uppercase(uint32_t cp);
+
+bool Is_cp_ascii_horizontal_white_space(uint32_t cp);
+bool Is_cp_ascii_white_space(uint32_t cp);
+
+bool Is_ch_horizontal_white_space(char ch);
+bool Is_ch_white_space(char ch);
+
 bool Is_cp_unicode_whitespace(uint32_t cp);
+

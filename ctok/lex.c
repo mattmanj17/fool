@@ -1,16 +1,14 @@
 
 #include <stdio.h>
+#include <string.h>
 
 #include "lex.h"
 
-#include "ch.h"
 #include "count_of.h"
 #include "peek.h"
 #include "unicode.h"
 
 
-
-// input_t
 
 void Init_input(input_t * input, const char * cursor, const char * terminator)
 {
@@ -37,22 +35,100 @@ void Init_input(input_t * input, const char * cursor, const char * terminator)
 	}
 }
 
-static bool Does_input_physically_start_with_horizontal_whitespace(input_t * input)
-{
-	return Is_ch_horizontal_white_space(input->cursor[0]);
-}
-
-static void Skip_horizontal_whitespace(input_t * input)
-{
-	while (Is_ch_horizontal_white_space(input->cursor[0]))
-	{
-		++input->cursor;
-	}
-}
-
 bool Is_input_exhausted(input_t * input)
 {
 	return input->cursor >= input->terminator;
+}
+
+
+
+// Main lex function (and helpers)
+
+static peek_cp_t Peek_input(input_t * input);
+static void Advance_input(input_t * input, peek_cp_t peek_cp);
+static void Skip_horizontal_whitespace(input_t * input);
+static void Skip_whitespace(input_t * input);
+static void Lex_after_u(input_t * input);
+static void Lex_after_L_or_U(input_t * input);
+static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input);
+static void Lex_after_fslash(input_t * input);
+static void Lex_rest_of_block_comment(input_t * input);
+static void Lex_rest_of_line_comment(input_t * input);
+static void Lex_after_dot(input_t * input);
+static bool May_cp_start_id(uint32_t cp);
+static void Lex_rest_of_id(input_t * input);
+static bool Does_cp_extend_id(uint32_t cp);
+static void Lex_operator_or_any_byte(uint32_t cp_leading, input_t * input);
+static void Lex_rest_of_ppnum(input_t * input);
+
+void Lex(input_t * input, token_t * tok)
+{
+	// Cache some stuff into tok
+
+	tok->str = input->cursor;
+	tok->line = input->line;
+	tok->col = (int)(input->cursor - input->line_start + 1);
+
+	// Special handling of horizontal WS to match clang ... :(
+
+	if (Is_ch_horizontal_white_space(input->cursor[0]))
+	{
+		Skip_horizontal_whitespace(input);
+		tok->len = (int)(input->cursor - tok->str);
+		return;
+	}
+
+	// Advance input and decide what to do
+
+	peek_cp_t peek_cp = Peek_input(input);
+	Advance_input(input, peek_cp);
+
+	if (peek_cp.cp == 'u')
+	{
+		Lex_after_u(input);
+	}
+	else if (peek_cp.cp == 'U' || peek_cp.cp == 'L')
+	{
+		Lex_after_L_or_U(input);
+	}
+	else if (peek_cp.cp == '"' || peek_cp.cp == '\'')
+	{
+		Lex_rest_of_str_lit(peek_cp.cp, input);
+	}
+	else if (peek_cp.cp == '/')
+	{
+		Lex_after_fslash(input);
+	}
+	else if (peek_cp.cp == '.')
+	{
+		Lex_after_dot(input);
+	}
+	else if (May_cp_start_id(peek_cp.cp))
+	{
+		Lex_rest_of_id(input);
+	}
+	else if (Is_cp_ascii_digit(peek_cp.cp))
+	{
+		Lex_rest_of_ppnum(input);
+	}
+	else if (Is_cp_ascii_white_space(peek_cp.cp))
+	{
+		Skip_whitespace(input);
+	}
+	else if (peek_cp.cp == '\0')
+	{
+		// skip whitespace after a '\0'
+
+		Skip_whitespace(input);
+	}
+	else
+	{
+		Lex_operator_or_any_byte(peek_cp.cp, input);
+	}
+
+	// Set tok->len
+
+	tok->len = (int)(input->cursor - tok->str);
 }
 
 static peek_cp_t Peek_input(input_t * input)
@@ -70,13 +146,12 @@ static void Advance_input(input_t * input, peek_cp_t peek_cp)
 	input->line += peek_cp.num_eol;
 }
 
-static void Advance_past_line_continues(input_t * input)
+static void Skip_horizontal_whitespace(input_t * input)
 {
-	// BUG the fact that this function is needed is awful
-
-	peek_cp_t peek_cp;
-	Peek_escaped_end_of_lines(input->cursor, input->terminator, &peek_cp);
-	Advance_input(input, peek_cp);
+	while (Is_ch_horizontal_white_space(input->cursor[0]))
+	{
+		++input->cursor;
+	}
 }
 
 static void Skip_whitespace(input_t * input)
@@ -84,285 +159,6 @@ static void Skip_whitespace(input_t * input)
 	while (Is_ch_white_space(input->cursor[0]))
 	{
 		Advance_input(input, Peek_cp(input->cursor, input->terminator));
-	}
-}
-
-
-
-// Main lex function (and helpers)
-
-static void Lex_rest_of_ppnum(input_t * input);
-static void Lex_after_dot(input_t * input);
-
-static void Lex_after_fslash(input_t * input);
-static void Lex_rest_of_block_comment(input_t * input);
-static void Lex_rest_of_line_comment(input_t * input);
-
-static void Lex_after_u(input_t * input);
-static void Lex_after_L_or_U(input_t * input);
-static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input);
-
-static bool May_cp_start_id(uint32_t cp);
-static void Lex_rest_of_id(input_t * input);
-
-static void Lex_after_percent(input_t * input);
-static void Lex_after_percent_colon(input_t * input);
-static void Lex_after_lt(input_t * input);
-static void Lex_after_gt(input_t * input);
-static void Lex_after_bang(input_t * input);
-static void Lex_after_htag(input_t * input);
-static void Lex_after_amp(input_t * input);
-static void Lex_after_star(input_t * input);
-static void Lex_after_plus(input_t * input);
-static void Lex_after_minus(input_t * input);
-static void Lex_after_colon(input_t * input);
-static void Lex_after_eq(input_t * input);
-static void Lex_after_caret(input_t * input);
-static void Lex_after_vbar(input_t * input);
-
-void Skip_next_token(input_t * input)
-{
-	// Special handling of horizontal WS to match clang ... :(
-
-	if (Does_input_physically_start_with_horizontal_whitespace(input))
-	{
-		Skip_horizontal_whitespace(input);
-		return;
-	}
-
-	// Advance input and decide what to do
-
-	peek_cp_t peek_cp = Peek_cp(input->cursor, input->terminator);
-	Advance_input(input, peek_cp);
-
-	switch (peek_cp.cp)
-	{
-	case '\0': // Clang skips ws after a bogus \0
-	case ' ': // Will likely only see horz ws in this switch if it is after an escaped newline
-	case '\t':
-	case '\f':
-	case '\v':
-	case '\n':
-		Skip_whitespace(input);
-		break;
-
-	case '0': case '1': case '2': case '3': case '4':
-	case '5': case '6': case '7': case '8': case '9':
-		Lex_rest_of_ppnum(input);
-		break;
-
-	case '.':
-		Lex_after_dot(input);
-		break;
-
-	case '/':
-		Lex_after_fslash(input);
-		break;
-
-	case 'u':
-		Lex_after_u(input);
-		break;
-
-	case 'U':
-		Lex_after_L_or_U(input);
-		break;
-
-	case 'L':
-		Lex_after_L_or_U(input);
-		break;
-
-	case '"':
-		Lex_rest_of_str_lit('"', input);
-		break;
-
-	case '\'':
-		Lex_rest_of_str_lit('\'', input);
-		break;
-
-	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
-	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
-	case 'o': case 'p': case 'q': case 'r': case 's': case 't': /* 'u' */
-	case 'v': case 'w': case 'x': case 'y': case 'z':
-	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
-	case 'H': case 'I': case 'J': case 'K': /* 'L' */ case 'M': case 'N':
-	case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': /* 'U' */
-	case 'V': case 'W': case 'X': case 'Y': case 'Z':
-	case '_':
-	case '$': // $ allowed in ids as an extension :/
-		Lex_rest_of_id(input);
-		break;
-
-	case '%':
-		Lex_after_percent(input);
-		break;
-
-	case '<':
-		Lex_after_lt(input);
-		break;
-
-	case '>':
-		Lex_after_gt(input);
-		break;
-
-	case '!':
-		Lex_after_bang(input);
-		break;
-
-	case '#':
-		Lex_after_htag(input);
-		break;
-
-	case '&':
-		Lex_after_amp(input);
-		break;
-
-	case '*':
-		Lex_after_star(input);
-		break;
-
-	case '+':
-		Lex_after_plus(input);
-		break;
-
-	case '-':
-		Lex_after_minus(input);
-		break;
-		
-	case ':':
-		Lex_after_colon(input);
-		break;
-
-	case '=':
-		Lex_after_eq(input);
-		break;
-
-	case '^':
-		Lex_after_caret(input);
-		break;
-
-	case '|':
-		Lex_after_vbar(input);
-		break;
-
-	case '(':
-	case ')':
-	case ',':
-	case ';':
-	case '?':
-	case '[':
-	case ']':
-	case '{':
-	case '}':
-	case '~':
-		break;
-
-	case '`':
-	case '@':
-	case '\\':
-	case '\r': // Peek_input should never return '\r', but here for completeness 
-		break;
-
-	case 0x01: case 0x02: case 0x03: case 0x04: case 0x05: case 0x06: case 0x07:
-	case 0x08: /* '\t' */ /* '\n' */ /* '\v' */ /* '\f' */ /* '\r' */ case 0x0E:
-	case 0x0F: case 0x10: case 0x11: case 0x12: case 0x13: case 0x14: case 0x15:
-	case 0x16: case 0x17: case 0x18: case 0x19: case 0x1A: case 0x1B: case 0x1C:
-	case 0x1D: case 0x1E: case 0x1F:
-	case 0x7f:
-		break;
-
-	default:
-		{
-			if (May_cp_start_id(peek_cp.cp))
-			{
-				Lex_rest_of_id(input);
-			}
-		}
-		break;
-	}
-}
-
-void Lex(input_t* input, token_t* tok)
-{
-	tok->str = input->cursor;
-	tok->line = input->line;
-	tok->col = (int)(input->cursor - input->line_start + 1);
-	
-	Skip_next_token(input);
-
-	tok->len = (int)(input->cursor - tok->str);
-}
-
-static void Lex_after_dot(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-	
-	if (Is_cp_ascii_digit(peek_cp.cp))
-	{
-		Advance_input(input, peek_cp);
-		Lex_rest_of_ppnum(input);
-		return;
-	}
-
-	if (peek_cp.cp == '.')
-	{
-		input_t input_peek = *input;
-		Advance_input(&input_peek, peek_cp);
-
-		peek_cp = Peek_input(&input_peek);
-		if (peek_cp.cp == '.')
-		{
-			Advance_input(&input_peek, peek_cp);
-			*input = input_peek;
-		}
-	}
-}
-
-static void Lex_after_fslash(input_t * input)
-{
-	peek_cp_t peek = Peek_input(input);
-
-	switch (peek.cp)
-	{
-	case '*':
-		Advance_input(input, peek);
-		Lex_rest_of_block_comment(input);
-		break;
-	case '/':
-		Advance_input(input, peek);
-		Lex_rest_of_line_comment(input);
-		break;
-	case '=':
-		Advance_input(input, peek);
-		break;
-	}
-}
-
-static void Lex_rest_of_block_comment(input_t * input)
-{
-	while (!Is_input_exhausted(input))
-	{
-		peek_cp_t peek_cp0 = Peek_input(input);
-		Advance_input(input, peek_cp0);
-
-		peek_cp_t peek_cp1 = Peek_input(input);
-		if (peek_cp0.cp == '*' && peek_cp1.cp == '/')
-		{
-			Advance_input(input, peek_cp1);
-			break;
-		}
-	}
-}
-
-static void Lex_rest_of_line_comment(input_t * input)
-{
-	while (!Is_input_exhausted(input))
-	{
-		peek_cp_t peek_cp = Peek_input(input);
-
-		if (peek_cp.cp == '\n')
-			break;
-
-		Advance_input(input, peek_cp);
 	}
 }
 
@@ -425,7 +221,9 @@ static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input)
 		{
 			// BUG hack to match clang
 
-			Advance_past_line_continues(input);
+			Peek_escaped_end_of_lines(input->cursor, input->terminator, &peek_cp);
+			Advance_input(input, peek_cp);
+
 			break;
 		}
 
@@ -454,42 +252,78 @@ static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input)
 	}
 }
 
-static bool Does_cp_extend_id(uint32_t cp)
+static void Lex_after_fslash(input_t * input)
 {
-	if (Is_cp_ascii_lowercase(cp))
-		return true;
+	peek_cp_t peek = Peek_input(input);
 
-	if (Is_cp_ascii_uppercase(cp))
-		return true;
+	switch (peek.cp)
+	{
+	case '*':
+		Advance_input(input, peek);
+		Lex_rest_of_block_comment(input);
+		break;
+	case '/':
+		Advance_input(input, peek);
+		Lex_rest_of_line_comment(input);
+		break;
+	case '=':
+		Advance_input(input, peek);
+		break;
+	}
+}
 
-	if (cp == '_')
-		return true;
+static void Lex_rest_of_block_comment(input_t * input)
+{
+	while (!Is_input_exhausted(input))
+	{
+		peek_cp_t peek_cp0 = Peek_input(input);
+		Advance_input(input, peek_cp0);
 
-	if (Is_cp_ascii_digit(cp))
-		return true;
+		peek_cp_t peek_cp1 = Peek_input(input);
+		if (peek_cp0.cp == '*' && peek_cp1.cp == '/')
+		{
+			Advance_input(input, peek_cp1);
+			break;
+		}
+	}
+}
 
-	if (cp == '$') // '$' allowed as an extension :/
-		return true;
+static void Lex_rest_of_line_comment(input_t * input)
+{
+	while (!Is_input_exhausted(input))
+	{
+		peek_cp_t peek_cp = Peek_input(input);
 
-	if (Is_cp_ascii(cp)) // All other ascii is invalid
-		return false;
+		if (peek_cp.cp == '\n')
+			break;
 
-	if (cp == UINT32_MAX) // Bogus utf8 does not extend ids
-		return false;
+		Advance_input(input, peek_cp);
+	}
+}
 
-	// We are lexing in 'raw mode', and to match clang, 
-	//  once we are parsing an id, we just slurp up all
-	//  valid non-ascii-non-whitespace utf8...
+static void Lex_after_dot(input_t * input)
+{
+	peek_cp_t peek_cp = Peek_input(input);
 
-	// BUG I do not like this. the right thing to do is check c11_allowed from May_cp_start_id.
-	//  Clang seems to do the wrong thing here,
-	//  and produce an invalid pp token. I suspect no one
-	//  actually cares, since dump_raw_tokens is only for debugging...
+	if (Is_cp_ascii_digit(peek_cp.cp))
+	{
+		Advance_input(input, peek_cp);
+		Lex_rest_of_ppnum(input);
+		return;
+	}
 
-	if (!Is_cp_unicode_whitespace(cp))
-		return true;
+	if (peek_cp.cp == '.')
+	{
+		input_t input_peek = *input;
+		Advance_input(&input_peek, peek_cp);
 
-	return false;
+		peek_cp = Peek_input(&input_peek);
+		if (peek_cp.cp == '.')
+		{
+			Advance_input(&input_peek, peek_cp);
+			*input = input_peek;
+		}
+	}
 }
 
 static bool May_cp_start_id(uint32_t cp)
@@ -509,17 +343,17 @@ static bool May_cp_start_id(uint32_t cp)
 
 	// '$' allowed as an extension :/
 
-	if (cp == '$') 
+	if (cp == '$')
 		return true;
 
 	// All other ascii does not start ids
 
-	if (Is_cp_ascii(cp)) 
+	if (Is_cp_ascii(cp))
 		return false;
 
 	// Bogus utf8 does not start ids
 
-	if (cp == UINT32_MAX) 
+	if (cp == UINT32_MAX)
 		return false;
 
 	// These codepoints are not allowed as the start of an id
@@ -592,220 +426,104 @@ static void Lex_rest_of_id(input_t * input)
 	}
 }
 
-static void Lex_after_percent(input_t * input)
+static bool Does_cp_extend_id(uint32_t cp)
 {
-	peek_cp_t peek_cp = Peek_input(input);
+	if (Is_cp_ascii_lowercase(cp))
+		return true;
 
-	switch (peek_cp.cp)
-	{
-	case ':':
-		Advance_input(input, peek_cp);
-		Lex_after_percent_colon(input);
-		break;
-	case '=':
-		Advance_input(input, peek_cp);
-		break;
-	case '>':
-		Advance_input(input, peek_cp);
-		break;
-	}
+	if (Is_cp_ascii_uppercase(cp))
+		return true;
+
+	if (cp == '_')
+		return true;
+
+	if (Is_cp_ascii_digit(cp))
+		return true;
+
+	if (cp == '$') // '$' allowed as an extension :/
+		return true;
+
+	if (Is_cp_ascii(cp)) // All other ascii is invalid
+		return false;
+
+	if (cp == UINT32_MAX) // Bogus utf8 does not extend ids
+		return false;
+
+	// We are lexing in 'raw mode', and to match clang, 
+	//  once we are parsing an id, we just slurp up all
+	//  valid non-ascii-non-whitespace utf8...
+
+	// BUG I do not like this. the right thing to do is check c11_allowed from May_cp_start_id.
+	//  Clang seems to do the wrong thing here,
+	//  and produce an invalid pp token. I suspect no one
+	//  actually cares, since dump_raw_tokens is only for debugging...
+
+	if (!Is_cp_unicode_whitespace(cp))
+		return true;
+
+	return false;
 }
 
-static void Lex_after_percent_colon(input_t * input)
+static void Lex_operator_or_any_byte(uint32_t cp_leading, input_t * input)
 {
-	peek_cp_t peek_cp = Peek_input(input);
+	// "::" is included to match clang
+	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
 
-	if (peek_cp.cp == '%')
+	static const char * operators[] =
 	{
+		">>=", "<<=", "...",
+		
+		"|=", "||", "^=", "==", "::", ":>", "-=", "--", "->", "+=", "++", "*=",
+		"&=", "&&", "##", "!=", ">=", ">>", "<=", "<:", "<%", "<<", "%>", "%=",
+		"%:", "/=",
+		
+		"~", "}", "{", "]", "[", "?", ";", ",", ")", "(", "|", "^", "=", ":",
+		"-", "+", "*", "&", "#", "!", ">", "<", "%", ".", "/",
+	};
+
+	for (int i_operator = 0; i_operator < COUNT_OF(operators); ++i_operator)
+	{
+		const char * str_operator = operators[i_operator];
+		size_t len = strlen(str_operator);
+
 		input_t input_peek = *input;
-		Advance_input(&input_peek, peek_cp);
+		bool found_match = true;
 
-		peek_cp = Peek_input(&input_peek);
-		if (peek_cp.cp == ':')
+		for (size_t i_ch = 0; i_ch < len; ++i_ch)
 		{
-			Advance_input(&input_peek, peek_cp);
+			char ch = str_operator[i_ch];
+			uint32_t cp_ch = (uint32_t)ch;
+
+			if (i_ch == 0)
+			{
+				if (cp_leading != cp_ch)
+				{
+					found_match = false;
+					break;
+				}
+			}
+			else
+			{
+				peek_cp_t peek_cp = Peek_input(&input_peek);
+				if (peek_cp.cp != cp_ch)
+				{
+					found_match = false;
+					break;
+				}
+
+				Advance_input(&input_peek, peek_cp);
+			}
+		}
+
+		if (found_match)
+		{
 			*input = input_peek;
+			break;
 		}
 	}
-}
 
-static void Lex_after_lt(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	switch (peek_cp.cp)
-	{
-	case '<':
-		Advance_input(input, peek_cp);
-		peek_cp = Peek_input(input);
-		if (peek_cp.cp == '=')
-		{
-			Advance_input(input, peek_cp);
-		}
-		break;
-
-	case '%':
-		Advance_input(input, peek_cp);
-		break;
-
-	case ':':
-		Advance_input(input, peek_cp);
-		break;
-
-	case '=':
-		Advance_input(input, peek_cp);
-		break;
-	}
-}
-
-static void Lex_after_gt(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	switch (peek_cp.cp)
-	{
-	case '>':
-		Advance_input(input, peek_cp);
-		peek_cp = Peek_input(input);
-		if (peek_cp.cp == '=')
-		{
-			Advance_input(input, peek_cp);
-		}
-		break;
-
-	case '=':
-		Advance_input(input, peek_cp);
-		break;
-	}
-}
-
-static void Lex_after_bang(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	if (peek_cp.cp == '=')
-	{
-		Advance_input(input, peek_cp);
-	}
-}
-
-static void Lex_after_htag(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	if (peek_cp.cp == '#')
-	{
-		Advance_input(input, peek_cp);
-	}
-}
-
-static void Lex_after_amp(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	switch (peek_cp.cp)
-	{
-	case '&':
-		Advance_input(input, peek_cp);
-		break;
-	case '=':
-		Advance_input(input, peek_cp);
-		break;
-	}
-}
-
-static void Lex_after_star(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	if (peek_cp.cp == '=')
-	{
-		Advance_input(input, peek_cp);
-	}
-}
-
-static void Lex_after_plus(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	switch (peek_cp.cp)
-	{
-	case '+':
-		Advance_input(input, peek_cp);
-		break;
-	case '=':
-		Advance_input(input, peek_cp);
-		break;
-	}
-}
-
-static void Lex_after_minus(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	switch (peek_cp.cp)
-	{
-	case '>':
-		Advance_input(input, peek_cp);
-		break;
-	case '-':
-		Advance_input(input, peek_cp);
-		break;
-	case '=':
-		Advance_input(input, peek_cp);
-		break;
-	}
-}
-
-static void Lex_after_colon(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	if (peek_cp.cp == '>')
-	{
-		Advance_input(input, peek_cp);
-	}
-	else if (peek_cp.cp == ':')
-	{
-		// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
-
-		Advance_input(input, peek_cp);
-	}
-}
-
-static void Lex_after_eq(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	if (peek_cp.cp == '=')
-	{
-		Advance_input(input, peek_cp);
-	}
-}
-
-static void Lex_after_caret(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	if (peek_cp.cp == '=')
-	{
-		Advance_input(input, peek_cp);
-	}
-}
-
-static void Lex_after_vbar(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
-
-	switch (peek_cp.cp)
-	{
-	case '|':
-		Advance_input(input, peek_cp);
-		break;
-	case '=':
-		Advance_input(input, peek_cp);
-		break;
-	}
+	// All other bytes are invalid, but we just leave
+	//  input unchanged, to effectivly return an 'unknown' token
 }
 
 
@@ -816,7 +534,7 @@ static void Lex_after_vbar(input_t * input)
 	in later translation phases.
 
 	so, here is a quick antlr style definition of pp-num
-	
+
 	pp_num
 		: pp_num_start pp_num_continue*
 		;
@@ -849,12 +567,6 @@ static void Lex_after_vbar(input_t * input)
 		| pp_num 'P' [+-]
 		| pp_num '.'
 		;
-
-	where identifier_nondigit is 
-	[a-zA-Z_] OR a "universal character name"
-
-	oh, and '$' is included in identifier_nondigit as well,
-	since we support that as an 'implentation defined identifier character'
 */
 
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
@@ -874,7 +586,7 @@ static void Lex_rest_of_ppnum(input_t * input)
 		else if (peek_cp.cp == 'e' || peek_cp.cp == 'E' || peek_cp.cp == 'p' || peek_cp.cp == 'P')
 		{
 			Advance_input(input, peek_cp);
-		
+
 			peek_cp = Peek_input(input);
 			if (peek_cp.cp == '+' || peek_cp.cp == '-')
 			{
@@ -906,6 +618,7 @@ static void Lex_rest_of_ppnum(input_t * input)
 		}
 	}
 }
+
 
 
 

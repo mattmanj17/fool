@@ -4,7 +4,6 @@
 
 #include "peek.h"
 
-#include "ch.h"
 #include "unicode.h"
 
 
