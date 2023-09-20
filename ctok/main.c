@@ -24,18 +24,189 @@ int wmain(int argc, wchar_t *argv[])
 	return 0;
 }
 
+static void Clean_and_print_ch(char ch)
+{
+	// NOTE we print ' ' as \x20 so that we can split output on spaces
 
+	switch (ch)
+	{
+	case '0': case '1': case '2': case '3': case '4':
+	case '5': case '6': case '7': case '8': case '9':
+	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
+	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
+	case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+	case 'v': case 'w': case 'x': case 'y': case 'z':
+	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
+	case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
+	case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
+	case 'V': case 'W': case 'X': case 'Y': case 'Z':
+	case '_': case '$':
+	case '!': case '#': case '%': case '&': case '\'': case '(': case ')':
+	case '*': case '+': case ',': case '-': case '.': case '/': case ':':
+	case ';': case '<': case '=': case '>': case '?': case '@': case '[':
+	case ']': case '^': case '`': case '{': case '|': case '}': case '~':
+		putchar(ch);
+		break;
+	case '\a':
+		printf("\\a");
+		break;
+	case '\b':
+		printf("\\b");
+		break;
+	case '\f':
+		printf("\\f");
+		break;
+	case '\n':
+		printf("\\n");
+		break;
+	case '\r':
+		printf("\\r");
+		break;
+	case '\t':
+		printf("\\t");
+		break;
+	case '\v':
+		printf("\\v");
+		break;
+	case '"':
+		printf("\\\"");
+		break;
+	case '\\':
+		printf("\\\\");
+		break;
+	default:
+		printf("\\x%02hhx", ch);
+		break;
+	}
+}
+
+void Print_token(
+	const char * str,
+	int len,
+	int line,
+	int col)
+{
+	printf("\"");
+	for (int i = 0; i < len; ++i)
+	{
+		Clean_and_print_ch(str[i]);
+	}
+	printf("\"");
+
+	printf(
+		" %d:%d\n",
+		line,
+		col);
+}
+
+int Len_eol(const char * str)
+{
+	char ch = str[0];
+
+	if (ch == '\n')
+	{
+		return 1;
+	}
+	else if (ch == '\r')
+	{
+		if (str[1] == '\n')
+		{
+			return 2;
+		}
+		else
+		{
+			return 1;
+		}
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+typedef struct
+{
+	int num_eol;
+	int offset_to_new_line_start;
+} eol_info_t;
+
+static eol_info_t Inspect_span_for_eol(const char * mic, const char * mac)
+{
+	const char * mic_orig = mic;
+
+	eol_info_t eol_info;
+	eol_info.num_eol = 0;
+	eol_info.offset_to_new_line_start = 0;
+
+	while (mic < mac)
+	{
+		int len_eol = Len_eol(mic);
+
+		if (len_eol)
+		{
+			mic += len_eol;
+			++eol_info.num_eol;
+			eol_info.offset_to_new_line_start = (int)(mic - mic_orig);
+		}
+		else
+		{
+			++mic;
+		}
+	}
+
+	return eol_info;
+}
 
 static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 {
-	input_t input;
-	Init_input(&input, bstr->cursor, bstr->terminator);
+	const char * cursor = bstr->cursor;
+	const char * terminator = bstr->terminator;
+	const char * line_start = cursor;
+	int line = 1;
 
-	while (!Is_input_exhausted(&input))
+	// Deal with potential UTF-8 BOM
+
+	// Note that we leave line_start pointed at the original cursor.
+	//  This means anything on the first line will have their
+	//  col num bumped by 3, but that is what clang does, so whatever
+
+	//??? is this worth filing a bug about?
+
+	int num_ch = (int)(terminator - cursor);
+	if (num_ch >= 3 &&
+		cursor[0] == '\xEF' &&
+		cursor[1] == '\xBB' &&
+		cursor[2] == '\xBF')
 	{
-		token_t tok;
-		Lex(&input, &tok);
-		Print_token(&tok);
+		cursor += 3;
+	}
+
+	while (cursor < terminator)
+	{
+		// Peek
+
+		int len_tok = Len_leading_token(cursor, terminator);
+
+		// Print
+
+		Print_token(
+			cursor,
+			len_tok,
+			line,
+			(int)(cursor - line_start + 1));
+
+		// Handle eol
+
+		eol_info_t eol_info = Inspect_span_for_eol(cursor, cursor + len_tok);
+		if (eol_info.num_eol)
+		{
+			line += eol_info.num_eol;
+			line_start = cursor + eol_info.offset_to_new_line_start;
+		}
+
+		// Advance
+
+		cursor += len_tok;
 	}
 }
 

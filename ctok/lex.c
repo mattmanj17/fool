@@ -10,320 +10,294 @@
 
 
 
-void Init_input(input_t * input, const char * cursor, const char * terminator)
-{
-	input->cursor = cursor;
-	input->terminator = terminator;
-	input->line_start = cursor;
-	input->line = 1;
-
-	// Deal with potential UTF-8 BOM
-
-	// Note that we leave line_start pointed at the original cursor.
-	//  This means anything on the first line will have their
-	//  col num bumped by 3, but that is what clang does, so whatever
-
-	//??? is this worth filing a bug about?
-
-	int num_ch = (int)(terminator - cursor);
-	if (num_ch >= 3 && 
-		cursor[0] == '\xEF' && 
-		cursor[1] == '\xBB' && 
-		cursor[2] == '\xBF')
-	{
-		input->cursor = cursor + 3;
-	}
-}
-
-bool Is_input_exhausted(input_t * input)
-{
-	return input->cursor >= input->terminator;
-}
-
-
-
-// Main lex function (and helpers)
-
-static peek_cp_t Peek_input(input_t * input);
-static void Advance_input(input_t * input, peek_cp_t peek_cp);
-static void Skip_horizontal_whitespace(input_t * input);
-static void Skip_whitespace(input_t * input);
-static void Lex_after_u(input_t * input);
-static void Lex_after_L_or_U(input_t * input);
-static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input);
-static void Lex_after_fslash(input_t * input);
-static void Lex_rest_of_block_comment(input_t * input);
-static void Lex_rest_of_line_comment(input_t * input);
-static void Lex_after_dot(input_t * input);
+static int Len_horizontal_whitespace(const char * cursor);
+static int Len_whitespace(const char * cursor);
+static int Len_after_u(const char * cursor, const char * terminator);
+static int Len_after_L_or_U(const char * cursor, const char * terminator);
+static int Len_rest_of_str_lit(uint32_t cp_sential, const char * cursor, const char * terminator);
+static int Len_after_fslash(const char * cursor, const char * terminator);
+static int Len_rest_of_block_comment(const char * cursor, const char * terminator);
+static int Len_rest_of_line_comment(const char * cursor, const char * terminator);
+static int Len_after_dot(const char * cursor, const char * terminator);
 static bool May_cp_start_id(uint32_t cp);
-static void Lex_rest_of_id(input_t * input);
+static int Len_rest_of_id(const char * cursor, const char * terminator);
 static bool Does_cp_extend_id(uint32_t cp);
-static void Lex_operator_or_any_byte(uint32_t cp_leading, input_t * input);
-static void Lex_rest_of_ppnum(input_t * input);
+static int Len_rest_of_operator(uint32_t cp_leading, const char * cursor, const char * terminator);
+static int Len_rest_of_ppnum(const char * cursor, const char * terminator);
 
-void Lex(input_t * input, token_t * tok)
+int Len_leading_token(const char * cursor, const char * terminator)
 {
-	// Cache some stuff into tok
-
-	tok->str = input->cursor;
-	tok->line = input->line;
-	tok->col = (int)(input->cursor - input->line_start + 1);
-
 	// Special handling of horizontal WS to match clang ... :(
 
-	if (Is_ch_horizontal_white_space(input->cursor[0]))
+	if (Is_ch_horizontal_white_space(cursor[0]))
 	{
-		Skip_horizontal_whitespace(input);
-		tok->len = (int)(input->cursor - tok->str);
-		return;
+		return Len_horizontal_whitespace(cursor);
 	}
 
 	// Advance input and decide what to do
 
-	peek_cp_t peek_cp = Peek_input(input);
-	Advance_input(input, peek_cp);
+	const char * cursor_orig = cursor;
 
-	if (peek_cp.cp == 'u')
+	cp_len_t cp_len = Peek_cp(cursor, terminator);
+	cursor += cp_len.len;
+
+	if (cp_len.cp == 'u')
 	{
-		Lex_after_u(input);
+		cursor += Len_after_u(cursor, terminator);
 	}
-	else if (peek_cp.cp == 'U' || peek_cp.cp == 'L')
+	else if (cp_len.cp == 'U' || cp_len.cp == 'L')
 	{
-		Lex_after_L_or_U(input);
+		cursor += Len_after_L_or_U(cursor, terminator);
 	}
-	else if (peek_cp.cp == '"' || peek_cp.cp == '\'')
+	else if (cp_len.cp == '"' || cp_len.cp == '\'')
 	{
-		Lex_rest_of_str_lit(peek_cp.cp, input);
+		cursor += Len_rest_of_str_lit(cp_len.cp, cursor, terminator);
 	}
-	else if (peek_cp.cp == '/')
+	else if (cp_len.cp == '/')
 	{
-		Lex_after_fslash(input);
+		cursor += Len_after_fslash(cursor, terminator);
 	}
-	else if (peek_cp.cp == '.')
+	else if (cp_len.cp == '.')
 	{
-		Lex_after_dot(input);
+		cursor += Len_after_dot(cursor, terminator);
 	}
-	else if (May_cp_start_id(peek_cp.cp))
+	else if (May_cp_start_id(cp_len.cp))
 	{
-		Lex_rest_of_id(input);
+		cursor += Len_rest_of_id(cursor, terminator);
 	}
-	else if (Is_cp_ascii_digit(peek_cp.cp))
+	else if (Is_cp_ascii_digit(cp_len.cp))
 	{
-		Lex_rest_of_ppnum(input);
+		cursor += Len_rest_of_ppnum(cursor, terminator);
 	}
-	else if (Is_cp_ascii_white_space(peek_cp.cp))
+	else if (Is_cp_ascii_white_space(cp_len.cp))
 	{
-		Skip_whitespace(input);
+		cursor += Len_whitespace(cursor);
 	}
-	else if (peek_cp.cp == '\0')
+	else if (cp_len.cp == '\0')
 	{
 		// skip whitespace after a '\0'
 
-		Skip_whitespace(input);
+		cursor += Len_whitespace(cursor);
 	}
 	else
 	{
-		Lex_operator_or_any_byte(peek_cp.cp, input);
+		cursor += Len_rest_of_operator(cp_len.cp, cursor, terminator);
 	}
 
-	// Set tok->len
-
-	tok->len = (int)(input->cursor - tok->str);
+	return (int)(cursor - cursor_orig);
 }
 
-static peek_cp_t Peek_input(input_t * input)
+static int Len_horizontal_whitespace(const char * cursor)
 {
-	return Peek_cp(input->cursor, input->terminator);
-}
+	int len = 0;
 
-static void Advance_input(input_t * input, peek_cp_t peek_cp)
-{
-	input->cursor += peek_cp.len;
-	if (peek_cp.after_last_eol)
+	while (Is_ch_horizontal_white_space(cursor[len]))
 	{
-		input->line_start = peek_cp.after_last_eol;
+		++len;
 	}
-	input->line += peek_cp.num_eol;
+
+	return len;
 }
 
-static void Skip_horizontal_whitespace(input_t * input)
+static int Len_whitespace(const char * cursor)
 {
-	while (Is_ch_horizontal_white_space(input->cursor[0]))
+	int len = 0;
+
+	while (Is_ch_white_space(cursor[len]))
 	{
-		++input->cursor;
+		++len;
 	}
+
+	return len;
 }
 
-static void Skip_whitespace(input_t * input)
+static int Len_after_u(const char * cursor, const char * terminator)
 {
-	while (Is_ch_white_space(input->cursor[0]))
-	{
-		Advance_input(input, Peek_cp(input->cursor, input->terminator));
-	}
-}
+	const char * cursor_orig = cursor;
 
-static void Lex_after_u(input_t * input)
-{
-	peek_cp_t peek_cp = Peek_input(input);
+	cp_len_t cp_len = Peek_cp(cursor, terminator);
 
-	if (peek_cp.cp == '8')
+	if (cp_len.cp == '8')
 	{
-		Advance_input(input, peek_cp);
+		cursor += cp_len.len;
 
 		// In c11 (ostensibly what we are targeting),
 		//  you can only have u8 before double quotes
 
 		// Bug commonize with Lex_after_L_or_U
 
-		peek_cp_t peek_cp_quote = Peek_input(input);
-		if (peek_cp_quote.cp == '"')
+		cp_len_t cp_len_quote = Peek_cp(cursor, terminator);
+		if (cp_len_quote.cp == '"')
 		{
-			Advance_input(input, peek_cp_quote);
-			Lex_rest_of_str_lit('"', input);
+			cursor += cp_len_quote.len;
+			cursor += Len_rest_of_str_lit('"', cursor, terminator);
 		}
 		else
 		{
-			Lex_rest_of_id(input);
+			cursor += Len_rest_of_id(cursor, terminator);
 		}
 	}
 	else
 	{
-		Lex_after_L_or_U(input);
+		cursor += Len_after_L_or_U(cursor, terminator);
 	}
+
+	return (int)(cursor - cursor_orig);
 }
 
-static void Lex_after_L_or_U(input_t * input)
+static int Len_after_L_or_U(const char * cursor, const char * terminator)
 {
-	peek_cp_t peek_cp = Peek_input(input);
-	if (peek_cp.cp == '"' || peek_cp.cp == '\'')
+	const char * cursor_orig = cursor;
+
+	cp_len_t cp_len = Peek_cp(cursor, terminator);
+	if (cp_len.cp == '"' || cp_len.cp == '\'')
 	{
-		Advance_input(input, peek_cp);
-		Lex_rest_of_str_lit(peek_cp.cp, input);
-		return;
+		cursor += cp_len.len;
+		cursor += Len_rest_of_str_lit(cp_len.cp, cursor, terminator);
+	}
+	else
+	{
+		cursor += Len_rest_of_id(cursor, terminator);
 	}
 
-	Lex_rest_of_id(input);
+	return (int)(cursor - cursor_orig);
 }
 
-static void Lex_rest_of_str_lit(uint32_t cp_sential, input_t * input)
+static int Len_rest_of_str_lit(uint32_t cp_sential, const char * cursor, const char * terminator)
 {
 	//??? TODO support utf8 chars? or do we get that for free?
 	//  should probably at least check for mal-formed utf8, instead
 	//  of just accepting all the bytes between the quotes
 
-	while (!Is_input_exhausted(input))
+	const char * cursor_orig = cursor;
+
+	while (cursor < terminator)
 	{
-		peek_cp_t peek_cp = Peek_input(input);
+		cp_len_t cp_len = Peek_cp(cursor, terminator);
 
 		// String without closing quote (which we support in raw lexing mode..)
 
-		if (peek_cp.cp == '\n')
+		if (cp_len.cp == '\n')
 		{
 			// BUG hack to match clang
 
-			Peek_escaped_end_of_lines(input->cursor, input->terminator, &peek_cp);
-			Advance_input(input, peek_cp);
-
+			cursor += Len_escaped_end_of_lines(cursor, terminator);
 			break;
 		}
 
 		// Anything else will be part of the str lit
 
-		Advance_input(input, peek_cp);
+		cursor += cp_len.len;
 
 		// Closing quote
 
-		if (peek_cp.cp == cp_sential)
+		if (cp_len.cp == cp_sential)
 			break;
 
 		// Deal with back slash
 
-		if (peek_cp.cp == '\\')
+		if (cp_len.cp == '\\')
 		{
 			// Check if escaped char is '\"', '\'', or '\\',
 			//  the only escapes we need to handle in raw mode
 
-			peek_cp = Peek_input(input);
-			if (peek_cp.cp == cp_sential || peek_cp.cp == '\\')
+			cp_len = Peek_cp(cursor, terminator);
+			if (cp_len.cp == cp_sential || cp_len.cp == '\\')
 			{
-				Advance_input(input, peek_cp);
+				cursor += cp_len.len;
 			}
 		}
 	}
+
+	return (int)(cursor - cursor_orig);
 }
 
-static void Lex_after_fslash(input_t * input)
+static int Len_after_fslash(const char * cursor, const char * terminator)
 {
-	peek_cp_t peek = Peek_input(input);
+	const char * cursor_orig = cursor;
 
-	switch (peek.cp)
+	cp_len_t cp_len = Peek_cp(cursor, terminator);
+
+	switch (cp_len.cp)
 	{
 	case '*':
-		Advance_input(input, peek);
-		Lex_rest_of_block_comment(input);
+		cursor += cp_len.len;
+		cursor += Len_rest_of_block_comment(cursor, terminator);
 		break;
 	case '/':
-		Advance_input(input, peek);
-		Lex_rest_of_line_comment(input);
+		cursor += cp_len.len;
+		cursor += Len_rest_of_line_comment(cursor, terminator);
 		break;
 	case '=':
-		Advance_input(input, peek);
+		cursor += cp_len.len;
 		break;
 	}
+
+	return (int)(cursor - cursor_orig);
 }
 
-static void Lex_rest_of_block_comment(input_t * input)
+static int Len_rest_of_block_comment(const char * cursor, const char * terminator)
 {
-	while (!Is_input_exhausted(input))
-	{
-		peek_cp_t peek_cp0 = Peek_input(input);
-		Advance_input(input, peek_cp0);
+	const char * cursor_orig = cursor;
 
-		peek_cp_t peek_cp1 = Peek_input(input);
-		if (peek_cp0.cp == '*' && peek_cp1.cp == '/')
+	while (cursor < terminator)
+	{
+		cp_len_t cp_len0 = Peek_cp(cursor, terminator);
+		cursor += cp_len0.len;
+
+		cp_len_t cp_len1 = Peek_cp(cursor, terminator);
+		if (cp_len0.cp == '*' && cp_len1.cp == '/')
 		{
-			Advance_input(input, peek_cp1);
+			cursor += cp_len1.len;
 			break;
 		}
 	}
+	
+	return (int)(cursor - cursor_orig);
 }
 
-static void Lex_rest_of_line_comment(input_t * input)
+static int Len_rest_of_line_comment(const char * cursor, const char * terminator)
 {
-	while (!Is_input_exhausted(input))
-	{
-		peek_cp_t peek_cp = Peek_input(input);
+	const char * cursor_orig = cursor;
 
-		if (peek_cp.cp == '\n')
+	while (cursor < terminator)
+	{
+		cp_len_t cp_len = Peek_cp(cursor, terminator);
+
+		if (cp_len.cp == '\n')
 			break;
 
-		Advance_input(input, peek_cp);
+		cursor += cp_len.len;
 	}
+
+	return (int)(cursor - cursor_orig);
 }
 
-static void Lex_after_dot(input_t * input)
+static int Len_after_dot(const char * cursor, const char * terminator)
 {
-	peek_cp_t peek_cp = Peek_input(input);
+	const char * cursor_orig = cursor;
 
-	if (Is_cp_ascii_digit(peek_cp.cp))
+	cp_len_t cp_len = Peek_cp(cursor, terminator);
+
+	if (Is_cp_ascii_digit(cp_len.cp))
 	{
-		Advance_input(input, peek_cp);
-		Lex_rest_of_ppnum(input);
-		return;
+		cursor += cp_len.len;
+		cursor += Len_rest_of_ppnum(cursor, terminator);
 	}
-
-	if (peek_cp.cp == '.')
+	else if (cp_len.cp == '.')
 	{
-		input_t input_peek = *input;
-		Advance_input(&input_peek, peek_cp);
+		const char * cursor_peek = cursor;
+		cursor_peek += cp_len.len;
 
-		peek_cp = Peek_input(&input_peek);
-		if (peek_cp.cp == '.')
+		cp_len = Peek_cp(cursor_peek, terminator);
+		if (cp_len.cp == '.')
 		{
-			Advance_input(&input_peek, peek_cp);
-			*input = input_peek;
+			cursor_peek += cp_len.len;
+			cursor = cursor_peek;
 		}
 	}
+
+	return (int)(cursor - cursor_orig);
 }
 
 static bool May_cp_start_id(uint32_t cp)
@@ -411,19 +385,23 @@ static bool May_cp_start_id(uint32_t cp)
 	return Is_cp_in_ranges(cp, c11_allowed, COUNT_OF(c11_allowed));
 }
 
-static void Lex_rest_of_id(input_t * input)
+static int Len_rest_of_id(const char * cursor, const char * terminator)
 {
+	const char * cursor_orig = cursor;
+
 	while (true)
 	{
-		peek_cp_t peek_cp = Peek_input(input);
-		if (Does_cp_extend_id(peek_cp.cp))
+		cp_len_t cp_len = Peek_cp(cursor, terminator);
+		if (Does_cp_extend_id(cp_len.cp))
 		{
-			Advance_input(input, peek_cp);
+			cursor += cp_len.len;
 			continue;
 		}
 
 		break;
 	}
+
+	return (int)(cursor - cursor_orig);
 }
 
 static bool Does_cp_extend_id(uint32_t cp)
@@ -464,19 +442,21 @@ static bool Does_cp_extend_id(uint32_t cp)
 	return false;
 }
 
-static void Lex_operator_or_any_byte(uint32_t cp_leading, input_t * input)
+static int Len_rest_of_operator(uint32_t cp_leading, const char * cursor, const char * terminator)
 {
+	const char * cursor_orig = cursor;
+
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
 
 	static const char * operators[] =
 	{
 		">>=", "<<=", "...",
-		
+
 		"|=", "||", "^=", "==", "::", ":>", "-=", "--", "->", "+=", "++", "*=",
 		"&=", "&&", "##", "!=", ">=", ">>", "<=", "<:", "<%", "<<", "%>", "%=",
 		"%:", "/=",
-		
+
 		"~", "}", "{", "]", "[", "?", ";", ",", ")", "(", "|", "^", "=", ":",
 		"-", "+", "*", "&", "#", "!", ">", "<", "%", ".", "/",
 	};
@@ -486,7 +466,7 @@ static void Lex_operator_or_any_byte(uint32_t cp_leading, input_t * input)
 		const char * str_operator = operators[i_operator];
 		size_t len = strlen(str_operator);
 
-		input_t input_peek = *input;
+		const char * cursor_peek = cursor;
 		bool found_match = true;
 
 		for (size_t i_ch = 0; i_ch < len; ++i_ch)
@@ -504,26 +484,25 @@ static void Lex_operator_or_any_byte(uint32_t cp_leading, input_t * input)
 			}
 			else
 			{
-				peek_cp_t peek_cp = Peek_input(&input_peek);
-				if (peek_cp.cp != cp_ch)
+				cp_len_t cp_len = Peek_cp(cursor_peek, terminator);
+				if (cp_len.cp != cp_ch)
 				{
 					found_match = false;
 					break;
 				}
 
-				Advance_input(&input_peek, peek_cp);
+				cursor_peek += cp_len.len;
 			}
 		}
 
 		if (found_match)
 		{
-			*input = input_peek;
+			cursor = cursor_peek;
 			break;
 		}
 	}
 
-	// All other bytes are invalid, but we just leave
-	//  input unchanged, to effectivly return an 'unknown' token
+	return (int)(cursor - cursor_orig);
 }
 
 
@@ -572,30 +551,32 @@ static void Lex_operator_or_any_byte(uint32_t cp_leading, input_t * input)
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 // 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-static void Lex_rest_of_ppnum(input_t * input)
+static int Len_rest_of_ppnum(const char * cursor, const char * terminator)
 {
+	const char * cursor_orig = cursor;
+
 	while (true)
 	{
-		peek_cp_t peek_cp = Peek_input(input);
+		cp_len_t cp_len = Peek_cp(cursor, terminator);
 
-		if (peek_cp.cp == '.')
+		if (cp_len.cp == '.')
 		{
-			Advance_input(input, peek_cp);
+			cursor += cp_len.len;
 			continue;
 		}
-		else if (peek_cp.cp == 'e' || peek_cp.cp == 'E' || peek_cp.cp == 'p' || peek_cp.cp == 'P')
+		else if (cp_len.cp == 'e' || cp_len.cp == 'E' || cp_len.cp == 'p' || cp_len.cp == 'P')
 		{
-			Advance_input(input, peek_cp);
+			cursor += cp_len.len;
 
-			peek_cp = Peek_input(input);
-			if (peek_cp.cp == '+' || peek_cp.cp == '-')
+			cp_len = Peek_cp(cursor, terminator);
+			if (cp_len.cp == '+' || cp_len.cp == '-')
 			{
-				Advance_input(input, peek_cp);
+				cursor += cp_len.len;
 			}
 
 			continue;
 		}
-		else if (peek_cp.cp == '$')
+		else if (cp_len.cp == '$')
 		{
 			// Clang does not allow '$' in ppnums, 
 			//  even though the spec would seem to suggest that 
@@ -603,11 +584,11 @@ static void Lex_rest_of_ppnum(input_t * input)
 
 			break;
 		}
-		else if (Does_cp_extend_id(peek_cp.cp))
+		else if (Does_cp_extend_id(cp_len.cp))
 		{
 			// Everything (else) which extends ids can extend a ppnum
 
-			Advance_input(input, peek_cp);
+			cursor += cp_len.len;
 			continue;
 		}
 		else
@@ -617,78 +598,6 @@ static void Lex_rest_of_ppnum(input_t * input)
 			break;
 		}
 	}
-}
 
-
-
-
-static void Clean_and_print_ch(char ch)
-{
-	// NOTE we print ' ' as \x20 so that we can split output on spaces
-
-	switch (ch)
-	{
-	case '0': case '1': case '2': case '3': case '4':
-	case '5': case '6': case '7': case '8': case '9':
-	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
-	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
-	case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
-	case 'v': case 'w': case 'x': case 'y': case 'z':
-	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
-	case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
-	case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
-	case 'V': case 'W': case 'X': case 'Y': case 'Z':
-	case '_': case '$':
-	case '!': case '#': case '%': case '&': case '\'': case '(': case ')':
-	case '*': case '+': case ',': case '-': case '.': case '/': case ':':
-	case ';': case '<': case '=': case '>': case '?': case '@': case '[':
-	case ']': case '^': case '`': case '{': case '|': case '}': case '~':
-		putchar(ch);
-		break;
-	case '\a':
-		printf("\\a");
-		break;
-	case '\b':
-		printf("\\b");
-		break;
-	case '\f':
-		printf("\\f");
-		break;
-	case '\n':
-		printf("\\n");
-		break;
-	case '\r':
-		printf("\\r");
-		break;
-	case '\t':
-		printf("\\t");
-		break;
-	case '\v':
-		printf("\\v");
-		break;
-	case '"':
-		printf("\\\"");
-		break;
-	case '\\':
-		printf("\\\\");
-		break;
-	default:
-		printf("\\x%02hhx", ch);
-		break;
-	}
-}
-
-void Print_token(const token_t * tok)
-{
-	printf("\"");
-	for (int i = 0; i < tok->len; ++i)
-	{
-		Clean_and_print_ch(tok->str[i]);
-	}
-	printf("\"");
-
-	printf(
-		" %d:%d\n",
-		tok->line,
-		tok->col);
+	return (int)(cursor - cursor_orig);
 }

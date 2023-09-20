@@ -87,19 +87,13 @@ static cp_len_t Peek_handle_utf8_eol_trigraph(const char * mic, const char * mac
 	return {ch, 1};
 }
 
-typedef struct
-{
-	int len;
-	int num_eol;
-} esc_eol_len_t;
-
-static esc_eol_len_t Len_escaped_eol(
+static int Len_escaped_end_of_line(
 	const char * mic, 
 	const char * mac)
 {
 	cp_len_t cp_len_bslash = Peek_handle_utf8_eol_trigraph(mic, mac);
 	if (cp_len_bslash.cp != '\\')
-		return {0, 0};
+		return 0;
 
 	// Skip whitespace after the backslash as an extension
 
@@ -120,70 +114,54 @@ static esc_eol_len_t Len_escaped_eol(
 	if (mic[len] == '\n')
 	{
 		if (mic[len + 1] == '\r')
-			return {len + 2, 2}; // :(
+			return len + 2; // :(
 
-		return {len + 1, 1};
+		return len + 1;
 	}
 
 	if (mic[len] == '\r')
 	{
 		if (mic[len + 1] == '\n')
-			return {len + 2, 1};
+			return len + 2;
 
-		return {len + 1, 1};
+		return len + 1;
 	}
 
-	return {0, 0};
+	return 0;
 }
 
-void Peek_escaped_end_of_lines(const char * mic, const char * mac, peek_cp_t * peek_cp_out)
+int Len_escaped_end_of_lines(const char * mic, const char * mac)
 {
-	peek_cp_t peek_cp;
-	peek_cp.cp = UINT32_MAX;
-	peek_cp.len = 0;
-	peek_cp.num_eol = 0;
-	peek_cp.after_last_eol = nullptr;
+	int len = 0;
 
 	while (true)
 	{
-		esc_eol_len_t esc_eol_len = Len_escaped_eol(mic, mac);
-		if (esc_eol_len.len == 0)
+		int len_esc_eol = Len_escaped_end_of_line(mic + len, mac);
+		if (len_esc_eol == 0)
 			break;
 
-		mic += esc_eol_len.len;
-
-		peek_cp.len += esc_eol_len.len;
-		peek_cp.num_eol += esc_eol_len.num_eol;
-		peek_cp.after_last_eol = mic;
+		len += len_esc_eol;
 	}
 
-	*peek_cp_out = peek_cp;
+	return len;
 }
 
-static void Peek_handle_escaped_eol(const char * mic, const char * mac, peek_cp_t * peek_cp_out)
+static cp_len_t Peek_handle_escaped_eol(const char * mic, const char * mac)
 {
-	peek_cp_t peek_cp;
-	Peek_escaped_end_of_lines(mic, mac, &peek_cp);
-	mic += peek_cp.len;
+	int len_esc_eol = Len_escaped_end_of_lines(mic, mac);
+	mic += len_esc_eol;
 
 	// Look at cp after line escapes
 
 	cp_len_t cp_len = Peek_handle_utf8_eol_trigraph(mic, mac);
 
-	peek_cp.cp = cp_len.cp;
-	peek_cp.len += cp_len.len;
+	// Add length of escaped eols
 
-	// Track end of lines
-
-	if (peek_cp.cp == '\n')
-	{
-		++peek_cp.num_eol;
-		peek_cp.after_last_eol = mic + cp_len.len;
-	}
+	cp_len.len += len_esc_eol;
 
 	// Return
 
-	*peek_cp_out = peek_cp;
+	return cp_len;
 }
 
 static uint32_t Hex_digit_value_from_cp(uint32_t cp)
@@ -225,57 +203,39 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	return true;
 }
 
-static void Accumulate_peeks(peek_cp_t * peek_cp_accumulate, peek_cp_t peek_cp)
-{
-	peek_cp_accumulate->len += peek_cp.len;
-	peek_cp_accumulate->num_eol += peek_cp.num_eol;
-
-	if (peek_cp.num_eol)
-	{
-		peek_cp_accumulate->after_last_eol = peek_cp.after_last_eol;
-	}
-}
-
-static peek_cp_t Peek_handle_ucn(const char * mic, const char * mac)
+static cp_len_t Peek_handle_ucn(const char * mic, const char * mac)
 {
 	// Check for leading '\\'
 
-	peek_cp_t peek_cp_bslash;
-	Peek_handle_escaped_eol(mic, mac, &peek_cp_bslash);
-	if (peek_cp_bslash.cp != '\\')
-		return peek_cp_bslash;
+	cp_len_t cp_len_bslash = Peek_handle_escaped_eol(mic, mac);
+	if (cp_len_bslash.cp != '\\')
+		return cp_len_bslash;
 
 	// Look past the leading '\\'
 
-	const char * mic_peek = mic + peek_cp_bslash.len;
+	mic += cp_len_bslash.len;
 
 	// Look for 'u' or 'U' after '\\'
 
-	peek_cp_t peek_cp_u;
-	Peek_handle_escaped_eol(mic_peek, mac, &peek_cp_u);
-	if (peek_cp_u.cp != 'u' && peek_cp_u.cp != 'U')
-		return peek_cp_bslash;
+	cp_len_t cp_len_u = Peek_handle_escaped_eol(mic, mac);
+	if (cp_len_u.cp != 'u' && cp_len_u.cp != 'U')
+		return cp_len_bslash;
 
 	// Set up 'scratch' peek struct to accumulate
 	//  the individual 'peeks' we do to read the UCN
 
-	peek_cp_t peek_result;
-	peek_result.cp = 0;
-	peek_result.len = 0;
-	peek_result.num_eol = 0;
-	peek_result.after_last_eol = nullptr;
-	
-	Accumulate_peeks(&peek_result, peek_cp_bslash);
-	Accumulate_peeks(&peek_result, peek_cp_u);
+	cp_len_t cp_len_result;
+	cp_len_result.cp = 0;
+	cp_len_result.len = cp_len_bslash.len + cp_len_u.len;
 
 	// Advance past u/U
 
-	mic_peek += peek_cp_u.len;
+	mic += cp_len_u.len;
 
 	// Look for 4 or 8 hex digits, based on u vs U
 
 	int num_hex_digits;
-	if (peek_cp_u.cp == 'u')
+	if (cp_len_u.cp == 'u')
 	{
 		num_hex_digits = 4;
 	}
@@ -291,23 +251,22 @@ static peek_cp_t Peek_handle_ucn(const char * mic, const char * mac)
 	{
 		// Peek next digit
 
-		peek_cp_t peek_cp_digit;
-		Peek_handle_escaped_eol(mic_peek, mac, &peek_cp_digit);
+		cp_len_t cp_len_digit = Peek_handle_escaped_eol(mic, mac);
 
 		// Check if valid hex digit
 
-		uint32_t hex_digit_value = Hex_digit_value_from_cp(peek_cp_digit.cp);
+		uint32_t hex_digit_value = Hex_digit_value_from_cp(cp_len_digit.cp);
 		if (hex_digit_value == UINT32_MAX)
 			break;
 
 		// Fold hex digit into cp
 
-		peek_result.cp <<= 4;
-		peek_result.cp |= hex_digit_value;
+		cp_len_result.cp <<= 4;
+		cp_len_result.cp |= hex_digit_value;
 
 		// Keep track of 'how far we have peeked'
 
-		Accumulate_peeks(&peek_result, peek_cp_digit);
+		cp_len_result.len += cp_len_digit.len;
 
 		// Keep track of how many digits we have read
 
@@ -315,31 +274,31 @@ static peek_cp_t Peek_handle_ucn(const char * mic, const char * mac)
 
 		// Advance to next digit
 
-		mic_peek += peek_cp_digit.len;
+		mic += cp_len_digit.len;
 	}
 
 	// If we did not read the correct number of digits after the 'u',
 	//  just treat this as a stray '\\'
 
 	if (hex_digits_read < num_hex_digits)
-		return peek_cp_bslash;
+		return cp_len_bslash;
 
 	// Sanity check that people are not trying to encode
 	//  something particularly weird with a UCN.
 	//  Convert any weird inputs to the error value UINT32_MAX
 
-	if (!Is_cp_valid_ucn(peek_result.cp))
+	if (!Is_cp_valid_ucn(cp_len_result.cp))
 	{
-		peek_result.cp = UINT32_MAX;
+		cp_len_result.cp = UINT32_MAX;
 	}
 
 	// Otherwise, we read a valid UCN, and the info
 	//  we need to return is in peek_result
 
-	return peek_result;
+	return cp_len_result;
 }
 
-peek_cp_t Peek_cp(const char * mic, const char * mac)
+cp_len_t Peek_cp(const char * mic, const char * mac)
 {
 	return Peek_handle_ucn(mic, mac);
 }
