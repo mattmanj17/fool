@@ -252,6 +252,77 @@ static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor)
 
 
 
+// Named UCNs
+
+static cp_len_t Peek_named_ucn(cp_len_str_t * cursor)
+{
+	int len = 0;
+
+	// Check for leading '\\'
+
+	if (cursor[len].cp != '\\')
+		return {UINT32_MAX, 0};
+
+	// Advance past '\\'
+
+	++len;
+
+	// Look for 'N' after '\\'
+
+	if (cursor[len].cp != 'N')
+		return {UINT32_MAX, 0};
+
+	// Advance past 'N'
+
+	++len;
+
+	// Look for '{'
+
+	if (cursor[len].cp != '{')
+		return {UINT32_MAX, 0};
+
+	// Advance
+
+	++len;
+
+	// Look for closing '}'
+
+	int len_name_start = len;
+	bool found_closing_brace = false;
+
+	while (uint32_t cp = cursor[len].cp)
+	{
+		++len;
+		if (cp == '}')
+		{
+			found_closing_brace = true;
+			break;
+		}
+
+		if (cp == '\n')
+			break;
+	}
+
+	// Check if we found '}'
+
+	if (!found_closing_brace)
+		return {UINT32_MAX, 0};
+
+	// Check if we actually got any chars between '{' and '}'
+
+	int len_name = len - len_name_start - 1;
+	if (!len_name)
+		return {UINT32_MAX, 0};
+
+	// Ok, we have \N{...}
+	//  For now, we just shrug and return it as an unknown codepoint.
+	//  Later on we are going to have to do all the name look up :/
+
+	return {UINT32_MAX, len};
+}
+
+
+
 // Generic driver function to run a collapse function over a span
 
 typedef cp_len_t (*collapse_fn_t)(cp_len_str_t * cursor);
@@ -310,5 +381,11 @@ void Collapse_cp_span(cp_span_t * cp_span)
 	Collapse(Peek_trigraph, cp_span);
 	Collapse(Peek_escaped_line_breaks, cp_span);
 	Collapse(Peek_line_break, cp_span);
+	
+	// BUG should merge hex_ucn and named_ucn into one pass,
+	//  right now this will let you nest a hex ucn in a named one, 
+	//  which is wrong.
+
 	Collapse(Peek_hex_ucn, cp_span);
+	Collapse(Peek_named_ucn, cp_span);
 }

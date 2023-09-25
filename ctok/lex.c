@@ -180,6 +180,38 @@ static int Len_after_L_or_U(cp_len_str_t * cursor, cp_len_str_t * terminator)
 	return (int)(cursor - cursor_orig);
 }
 
+static void Do_escaped_line_break_hack(cp_len_str_t * cursor)
+{
+	// BUG hack to match clang. 
+	//  We want to include any escaped line breaks at the end of this
+	//  un-terminated string literal. we do this by shuffling
+	//  everything except the trailing (physical) '\n', onto the last logical character
+	//  in the string, cursor[-1]. This is awful.
+
+	if (cursor[0].str[0] == '\\')
+	{
+		int len_logical_new_line = cursor[0].len;
+		int i_ch_most = len_logical_new_line - 1;
+
+		int len_physical_new_line;
+		if (cursor[0].str[i_ch_most] == '\n' &&
+			cursor[0].str[i_ch_most - 1] == '\r')
+		{
+			len_physical_new_line = 2;
+		}
+		else
+		{
+			len_physical_new_line = 1;
+		}
+
+		int len_escaped_line_break = len_logical_new_line - len_physical_new_line;
+
+		cursor[-1].len += len_escaped_line_break;
+		cursor[0].str += len_escaped_line_break;
+		cursor[0].len -= len_escaped_line_break;
+	}
+}
+
 static int Len_rest_of_str_lit(uint32_t cp_sential, cp_len_str_t * cursor, cp_len_str_t * terminator)
 {
 	const cp_len_str_t * cursor_orig = cursor;
@@ -192,34 +224,7 @@ static int Len_rest_of_str_lit(uint32_t cp_sential, cp_len_str_t * cursor, cp_le
 
 		if (cp == '\n')
 		{
-			// BUG hack to match clang. 
-			//  We want to include any escaped line breaks at the end of this
-			//  un-terminated string literal. we do this by shuffling
-			//  everything except the trailing (physical) '\n', onto the last logical character
-			//  in the string, cursor[-1]. This is awful.
-
-			if (cursor[0].str[0] == '\\')
-			{
-				int len_logical_new_line = cursor[0].len;
-				int i_ch_most = len_logical_new_line - 1;
-
-				int len_physical_new_line;
-				if (cursor[0].str[i_ch_most] == '\n' &&
-					cursor[0].str[i_ch_most - 1] == '\r')
-				{
-					len_physical_new_line = 2;
-				}
-				else
-				{
-					len_physical_new_line = 1;
-				}
-
-				int len_escaped_line_break = len_logical_new_line - len_physical_new_line;
-
-				cursor[-1].len += len_escaped_line_break;
-				cursor[0].str += len_escaped_line_break;
-				cursor[0].len -= len_escaped_line_break;
-			}
+			Do_escaped_line_break_hack(cursor);
 
 			break;
 		}
@@ -303,7 +308,11 @@ static int Len_rest_of_line_comment(cp_len_str_t * cursor, cp_len_str_t * termin
 	{
 		uint32_t cp = cursor->cp;
 		if (cp == '\n')
+		{
+			Do_escaped_line_break_hack(cursor);
+
 			break;
+		}
 
 		++cursor;
 	}
