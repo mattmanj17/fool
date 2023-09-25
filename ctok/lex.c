@@ -10,47 +10,47 @@
 
 
 
-static int Len_horizontal_whitespace(cp_offset_t * cursor);
-static int Len_whitespace(const char * str, cp_offset_t * cursor);
-static int Len_after_u(const char * str, cp_offset_t * cursor, cp_offset_t * terminator);
-static int Len_after_L_or_U(const char * str, cp_offset_t * cursor, cp_offset_t * terminator);
-static int Len_rest_of_str_lit(const char * str, uint32_t cp_sential, cp_offset_t * cursor, cp_offset_t * terminator);
-static int Len_after_fslash(cp_offset_t * cursor, cp_offset_t * terminator);
-static int Len_rest_of_block_comment(cp_offset_t * cursor, cp_offset_t * terminator);
-static int Len_rest_of_line_comment(cp_offset_t * cursor, cp_offset_t * terminator);
-static int Len_after_dot(cp_offset_t * cursor);
+static int Len_horizontal_whitespace(cp_len_str_t * cursor);
+static int Len_whitespace(cp_len_str_t * cursor);
+static int Len_after_u(cp_len_str_t * cursor, cp_len_str_t * terminator);
+static int Len_after_L_or_U(cp_len_str_t * cursor, cp_len_str_t * terminator);
+static int Len_rest_of_str_lit(uint32_t cp_sential, cp_len_str_t * cursor, cp_len_str_t * terminator);
+static int Len_after_fslash(cp_len_str_t * cursor, cp_len_str_t * terminator);
+static int Len_rest_of_block_comment(cp_len_str_t * cursor, cp_len_str_t * terminator);
+static int Len_rest_of_line_comment(cp_len_str_t * cursor, cp_len_str_t * terminator);
+static int Len_after_dot(cp_len_str_t * cursor);
 static bool May_cp_start_id(uint32_t cp);
-static int Len_rest_of_id(cp_offset_t * cursor);
+static int Len_rest_of_id(cp_len_str_t * cursor);
 static bool Does_cp_extend_id(uint32_t cp);
-static int Len_rest_of_operator(uint32_t cp_leading, cp_offset_t * cursor);
-static int Len_rest_of_ppnum(cp_offset_t * cursor);
+static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor);
+static int Len_rest_of_ppnum(cp_len_str_t * cursor);
 
-int Len_leading_token(const char * str, cp_offset_t * cursor, cp_offset_t * terminator)
+int Len_leading_token(cp_len_str_t * cursor, cp_len_str_t * terminator)
 {
 	// Special handling of horizontal WS to match clang ... :(
 
-	if (Is_ch_horizontal_white_space(str[cursor[0].offset]))
+	if (Is_ch_horizontal_white_space(cursor[0].str[0]))
 	{
 		return 1 + Len_horizontal_whitespace(cursor + 1);
 	}
 
 	// Advance input and decide what to do
 
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 	uint32_t cp = cursor->cp;
 	++cursor;
 
 	if (cp == 'u')
 	{
-		cursor += Len_after_u(str, cursor, terminator);
+		cursor += Len_after_u(cursor, terminator);
 	}
 	else if (cp == 'U' || cp == 'L')
 	{
-		cursor += Len_after_L_or_U(str, cursor, terminator);
+		cursor += Len_after_L_or_U(cursor, terminator);
 	}
 	else if (cp == '"' || cp == '\'')
 	{
-		cursor += Len_rest_of_str_lit(str, cp, cursor, terminator);
+		cursor += Len_rest_of_str_lit(cp, cursor, terminator);
 	}
 	else if (cp == '/')
 	{
@@ -70,13 +70,13 @@ int Len_leading_token(const char * str, cp_offset_t * cursor, cp_offset_t * term
 	}
 	else if (Is_cp_ascii_white_space(cp))
 	{
-		cursor += Len_whitespace(str, cursor);
+		cursor += Len_whitespace(cursor);
 	}
 	else if (cp == '\0')
 	{
 		// skip whitespace after a '\0'
 
-		cursor += Len_whitespace(str, cursor);
+		cursor += Len_whitespace(cursor);
 	}
 	else
 	{
@@ -86,7 +86,7 @@ int Len_leading_token(const char * str, cp_offset_t * cursor, cp_offset_t * term
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_horizontal_whitespace(cp_offset_t * cursor)
+static int Len_horizontal_whitespace(cp_len_str_t * cursor)
 {
 	int len = 0;
 
@@ -98,8 +98,7 @@ static int Len_horizontal_whitespace(cp_offset_t * cursor)
 		// We only want to skip raw whitespace, not whitesapce after
 		//  escaped new lines. This is a gross hack to hatch clang.
 
-		int num_ch_cp = cursor[len + 1].offset - cursor[len].offset;
-		if (num_ch_cp > 1)
+		if (cursor[len].len > 1)
 			break;
 
 		++len;
@@ -108,7 +107,7 @@ static int Len_horizontal_whitespace(cp_offset_t * cursor)
 	return len;
 }
 
-static int Len_whitespace(const char * str, cp_offset_t * cursor)
+static int Len_whitespace(cp_len_str_t * cursor)
 {
 	int len = 0;
 
@@ -119,7 +118,7 @@ static int Len_whitespace(const char * str, cp_offset_t * cursor)
 		//  but still being able to include "\r\n"
 		//  This is a gross hack to match clang
 
-		char ch = str[cursor[len].offset];
+		char ch = cursor[len].str[0];
 		if (!Is_ch_white_space(ch))
 			break;
 
@@ -129,9 +128,9 @@ static int Len_whitespace(const char * str, cp_offset_t * cursor)
 	return len;
 }
 
-static int Len_after_u(const char * str, cp_offset_t * cursor, cp_offset_t * terminator)
+static int Len_after_u(cp_len_str_t * cursor, cp_len_str_t * terminator)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	uint32_t cp = cursor->cp;
 
@@ -148,7 +147,7 @@ static int Len_after_u(const char * str, cp_offset_t * cursor, cp_offset_t * ter
 		if (cp_quote == '"')
 		{
 			++cursor;
-			cursor += Len_rest_of_str_lit(str, '"', cursor, terminator);
+			cursor += Len_rest_of_str_lit('"', cursor, terminator);
 		}
 		else
 		{
@@ -157,21 +156,21 @@ static int Len_after_u(const char * str, cp_offset_t * cursor, cp_offset_t * ter
 	}
 	else
 	{
-		cursor += Len_after_L_or_U(str, cursor, terminator);
+		cursor += Len_after_L_or_U(cursor, terminator);
 	}
 
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_after_L_or_U(const char * str, cp_offset_t * cursor, cp_offset_t * terminator)
+static int Len_after_L_or_U(cp_len_str_t * cursor, cp_len_str_t * terminator)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	uint32_t cp = cursor->cp;
 	if (cp == '"' || cp == '\'')
 	{
 		++cursor;
-		cursor += Len_rest_of_str_lit(str, cp, cursor, terminator);
+		cursor += Len_rest_of_str_lit(cp, cursor, terminator);
 	}
 	else
 	{
@@ -181,9 +180,9 @@ static int Len_after_L_or_U(const char * str, cp_offset_t * cursor, cp_offset_t 
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_rest_of_str_lit(const char * str, uint32_t cp_sential, cp_offset_t * cursor, cp_offset_t * terminator)
+static int Len_rest_of_str_lit(uint32_t cp_sential, cp_len_str_t * cursor, cp_len_str_t * terminator)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	while (cursor < terminator)
 	{
@@ -194,21 +193,32 @@ static int Len_rest_of_str_lit(const char * str, uint32_t cp_sential, cp_offset_
 		if (cp == '\n')
 		{
 			// BUG hack to match clang. 
-			//  we need to split off any escaped line breaks from the start of the next token,
-			//  and stick them onto the last token that is actually part of
-			//  this str lit. This is awfull.
+			//  We want to include any escaped line breaks at the end of this
+			//  un-terminated string literal. we do this by shuffling
+			//  everything except the trailing (physical) '\n', onto the last logical character
+			//  in the string, cursor[-1]. This is awful.
 
-			int num_ch_cp = cursor[1].offset - cursor[0].offset;
-			if (num_ch_cp > 1)
+			if (cursor[0].str[0] == '\\')
 			{
-				cursor[0].offset += (num_ch_cp - 1);
+				int len_logical_new_line = cursor[0].len;
+				int i_ch_most = len_logical_new_line - 1;
 
-				// blarg, handle "\r\n"
-
-				if (str[cursor[0].offset] == '\n' && str[cursor[0].offset - 1] == '\r')
+				int len_physical_new_line;
+				if (cursor[0].str[i_ch_most] == '\n' &&
+					cursor[0].str[i_ch_most - 1] == '\r')
 				{
-					--cursor[0].offset;
+					len_physical_new_line = 2;
 				}
+				else
+				{
+					len_physical_new_line = 1;
+				}
+
+				int len_escaped_line_break = len_logical_new_line - len_physical_new_line;
+
+				cursor[-1].len += len_escaped_line_break;
+				cursor[0].str += len_escaped_line_break;
+				cursor[0].len -= len_escaped_line_break;
 			}
 
 			break;
@@ -241,9 +251,9 @@ static int Len_rest_of_str_lit(const char * str, uint32_t cp_sential, cp_offset_
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_after_fslash(cp_offset_t * cursor, cp_offset_t * terminator)
+static int Len_after_fslash(cp_len_str_t * cursor, cp_len_str_t * terminator)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	uint32_t cp = cursor->cp;
 
@@ -265,9 +275,9 @@ static int Len_after_fslash(cp_offset_t * cursor, cp_offset_t * terminator)
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_rest_of_block_comment(cp_offset_t * cursor, cp_offset_t * terminator)
+static int Len_rest_of_block_comment(cp_len_str_t * cursor, cp_len_str_t * terminator)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	while (cursor < terminator)
 	{
@@ -285,9 +295,9 @@ static int Len_rest_of_block_comment(cp_offset_t * cursor, cp_offset_t * termina
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_rest_of_line_comment(cp_offset_t * cursor, cp_offset_t * terminator)
+static int Len_rest_of_line_comment(cp_len_str_t * cursor, cp_len_str_t * terminator)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	while (cursor < terminator)
 	{
@@ -301,9 +311,9 @@ static int Len_rest_of_line_comment(cp_offset_t * cursor, cp_offset_t * terminat
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_after_dot(cp_offset_t * cursor)
+static int Len_after_dot(cp_len_str_t * cursor)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	uint32_t cp = cursor->cp;
 
@@ -314,7 +324,7 @@ static int Len_after_dot(cp_offset_t * cursor)
 	}
 	else if (cp == '.')
 	{
-		cp_offset_t * cursor_peek = cursor;
+		cp_len_str_t * cursor_peek = cursor;
 		++cursor_peek;
 
 		cp = cursor_peek->cp;
@@ -413,9 +423,9 @@ static bool May_cp_start_id(uint32_t cp)
 	return Is_cp_in_ranges(cp, c11_allowed, COUNT_OF(c11_allowed));
 }
 
-static int Len_rest_of_id(cp_offset_t * cursor)
+static int Len_rest_of_id(cp_len_str_t * cursor)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	while (true)
 	{
@@ -470,9 +480,9 @@ static bool Does_cp_extend_id(uint32_t cp)
 	return false;
 }
 
-static int Len_rest_of_operator(uint32_t cp_leading, cp_offset_t * cursor)
+static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
@@ -494,7 +504,7 @@ static int Len_rest_of_operator(uint32_t cp_leading, cp_offset_t * cursor)
 		const char * str_operator = operators[i_operator];
 		size_t len = strlen(str_operator);
 
-		cp_offset_t * cursor_peek = cursor;
+		cp_len_str_t * cursor_peek = cursor;
 		bool found_match = true;
 
 		for (size_t i_ch = 0; i_ch < len; ++i_ch)
@@ -579,9 +589,9 @@ static int Len_rest_of_operator(uint32_t cp_leading, cp_offset_t * cursor)
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 // 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-static int Len_rest_of_ppnum(cp_offset_t * cursor)
+static int Len_rest_of_ppnum(cp_len_str_t * cursor)
 {
-	const cp_offset_t * cursor_orig = cursor;
+	const cp_len_str_t * cursor_orig = cursor;
 
 	while (true)
 	{

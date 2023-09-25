@@ -33,13 +33,14 @@ bool Try_decode_utf8(
 typedef struct
 {
 	uint32_t cp;
-	int offset;
-} cp_offset_t; // FIXME make this a cp_len plus a start char *
+	int len;
+	const char * str;
+} cp_len_str_t;
 
 typedef struct
 {
-	cp_offset_t * mic;
-	cp_offset_t * mac;
+	cp_len_str_t * mic;
+	cp_len_str_t * mac;
 } cp_span_t;
 
 void Decode_utf8_span(

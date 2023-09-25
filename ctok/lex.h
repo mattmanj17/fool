@@ -6,4 +6,4 @@
 
 
 
-int Len_leading_token(const char * str, cp_offset_t * cursor, cp_offset_t * terminator);
+int Len_leading_token(cp_len_str_t * cursor, cp_len_str_t * terminator);

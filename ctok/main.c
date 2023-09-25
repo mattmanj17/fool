@@ -88,12 +88,6 @@ void Print_token(
 	int line,
 	int col)
 {
-	if (line == 26401 && col == 255)
-	{
-		volatile int x = 0;
-		x = 1;
-	}
-
 	printf("\"");
 	for (int i = 0; i < len; ++i)
 	{
@@ -201,14 +195,13 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 	{
 		// Peek
 
-		int num_cp_tok = Len_leading_token(str_mic, cp_span.mic, cp_span.mac);
+		int num_cp_tok = Len_leading_token(cp_span.mic, cp_span.mac);
 
 		// Get token bounds
 
-		int tok_mic = cp_span.mic[0].offset;
-		int tok_mac = cp_span.mic[num_cp_tok].offset;
-		int num_ch_tok = tok_mac - tok_mic;
-		const char * str_tok = str_mic + tok_mic;
+		const char * str_tok = cp_span.mic[0].str;
+		const char * str_tok_mac = cp_span.mic[num_cp_tok].str;
+		int num_ch_tok = (int)(str_tok_mac - str_tok);
 
 		// Print
 

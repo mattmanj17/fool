@@ -10,70 +10,38 @@
 
 // trigraphs
 
-uint32_t Cp_leading_trigraph(cp_offset_t * cursor)
+cp_len_t Peek_trigraph(cp_len_str_t * cursor)
 {
 	uint32_t cp0 = cursor[0].cp;
 	if (cp0 != '?')
-		return UINT32_MAX;
+		return {UINT32_MAX, 0};
 
 	uint32_t cp1 = cursor[1].cp;
 	if (cp1 != '?')
-		return UINT32_MAX;
+		return {UINT32_MAX, 0};
 
 	uint32_t cp2 = cursor[2].cp;
 	switch (cp2)
 	{
-	case '<': return '{';
-	case '>': return '}';
-	case '(': return '[';
-	case ')': return ']';
-	case '=': return '#';
-	case '/': return '\\';
-	case '\'': return '^';
-	case '!': return '|';
-	case '-': return '~';
+	case '<': return {'{', 3};
+	case '>': return {'}', 3};
+	case '(': return {'[', 3};
+	case ')': return {']', 3};
+	case '=': return {'#', 3};
+	case '/': return {'\\', 3};
+	case '\'': return {'^', 3};
+	case '!': return {'|', 3};
+	case '-': return {'~', 3};
 	}
 
-	return UINT32_MAX;
-}
-
-void Collapse_trigraphs(cp_span_t * cp_span)
-{
-	cp_offset_t * cursor_from = cp_span->mic;
-	cp_offset_t * cursor_to = cp_span->mic;
-
-	while (cursor_from < cp_span->mac)
-	{
-		uint32_t cp_trigraph = Cp_leading_trigraph(cursor_from);
-
-		if (cp_trigraph == UINT32_MAX)
-		{
-			*cursor_to = *cursor_from;
-			
-			++cursor_to;
-			++cursor_from;
-		}
-		else
-		{
-			*cursor_to = *cursor_from;
-			cursor_to->cp = cp_trigraph;
-
-			++cursor_to;
-			cursor_from += 3;
-		}
-	}
-
-	// Copy trailing '\0'
-
-	*cursor_to = *cursor_from;
-	cp_span->mac = cursor_to;
+	return {UINT32_MAX, 0};
 }
 
 
 
 // Escaped line breaks
 
-int Len_escaped_end_of_line(cp_offset_t * cursor)
+int Len_escaped_end_of_line(cp_len_str_t * cursor)
 {
 	if (cursor[0].cp != '\\')
 		return 0;
@@ -110,7 +78,7 @@ int Len_escaped_end_of_line(cp_offset_t * cursor)
 	return 0;
 }
 
-int Len_escaped_end_of_lines(cp_offset_t * mic)
+int Len_escaped_end_of_lines(cp_len_str_t * mic)
 {
 	int len = 0;
 
@@ -126,85 +94,37 @@ int Len_escaped_end_of_lines(cp_offset_t * mic)
 	return len;
 }
 
-void Collapse_escaped_line_breaks(cp_span_t * cp_span)
+static cp_len_t Peek_escaped_line_breaks(cp_len_str_t * cursor)
 {
-	cp_offset_t * cursor_from = cp_span->mic;
-	cp_offset_t * cursor_to = cp_span->mic;
+	int len_esc_eol = Len_escaped_end_of_lines(cursor);
+	if (!len_esc_eol)
+		return {UINT32_MAX, 0};
 
-	while (cursor_from < cp_span->mac)
-	{
-		int len_esc_eol = Len_escaped_end_of_lines(cursor_from);
-		if (len_esc_eol)
-		{
-			int offset = cursor_from->offset;
-			cursor_from += len_esc_eol;
-
-			*cursor_to = *cursor_from;
-			cursor_to->offset = offset;
-
-			++cursor_to;
-			++cursor_from;
-		}
-		else
-		{
-			*cursor_to = *cursor_from;
-
-			++cursor_to;
-			++cursor_from;
-		}
-	}
-
-	// Copy trailing '\0'
-
-	*cursor_to = *cursor_from;
-	cp_span->mac = cursor_to;
+	return {cursor[len_esc_eol].cp, len_esc_eol + 1};
 }
 
 
 
 // Convert '\r' and "\r\n" to '\n'
 
-void Collapse_line_breaks(cp_span_t * cp_span)
+static cp_len_t Peek_line_break(cp_len_str_t * cursor)
 {
-	cp_offset_t * cursor_from = cp_span->mic;
-	cp_offset_t * cursor_to = cp_span->mic;
-
-	while (cursor_from < cp_span->mac)
+	if (cursor[0].cp == '\r')
 	{
-		uint32_t cp = cursor_from->cp;
-		if (cp == '\r')
+		if (cursor[1].cp == '\n')
 		{
-			if (cursor_from[1].cp == '\n')
-			{
-				*cursor_to = *cursor_from;
-				cursor_to->cp = '\n';
-
-				++cursor_to;
-				cursor_from += 2;
-			}
-			else
-			{
-				*cursor_to = *cursor_from;
-				cursor_to->cp = '\n';
-
-				++cursor_to;
-				++cursor_from;
-			}
+			return {'\n', 2};
 		}
 		else
 		{
-			*cursor_to = *cursor_from;
-
-			++cursor_to;
-			++cursor_from;
+			return {'\n', 1};
 		}
 	}
-
-	// Copy trailing '\0'
-
-	*cursor_to = *cursor_from;
-	cp_span->mac = cursor_to;
+	
+	return {UINT32_MAX, 0};
 }
+
+
 
 
 
@@ -249,7 +169,7 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	return true;
 }
 
-static cp_len_t Peek_hex_ucn(cp_offset_t * cursor)
+static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor)
 {
 	int len = 0;
 
@@ -330,30 +250,45 @@ static cp_len_t Peek_hex_ucn(cp_offset_t * cursor)
 	return {cp_result, len};
 }
 
-void Collapse_hex_ucn(cp_span_t * cp_span)
+
+
+// Generic driver function to run a collapse function over a span
+
+typedef cp_len_t (*collapse_fn_t)(cp_len_str_t * cursor);
+
+void Collapse(collapse_fn_t collapse_fn, cp_span_t * cp_span)
 {
-	cp_offset_t * cursor_from = cp_span->mic;
-	cp_offset_t * cursor_to = cp_span->mic;
+	cp_len_str_t * cursor_from = cp_span->mic;
+	cp_len_str_t * cursor_to = cp_span->mic;
 
 	while (cursor_from < cp_span->mac)
 	{
-		cp_len_t cp_len_ucn = Peek_hex_ucn(cursor_from);
-		if (cp_len_ucn.len)
+		cp_len_t cp_len = collapse_fn(cursor_from);
+		if (cp_len.len)
 		{
-			cursor_to->cp = cp_len_ucn.cp;
-			cursor_to->offset = cursor_from->offset;
+			cursor_to->cp = cp_len.cp;
+			cursor_to->str = cursor_from->str;
 
+			int len = 0;
+			for (int i_cp = 0; i_cp < cp_len.len; ++i_cp)
+			{
+				len += cursor_from[i_cp].len;
+			}
+			cursor_to->len = len;
+
+			cursor_from += cp_len.len;
+
+			assert(cursor_to->str + cursor_to->len == cursor_from->str);
 			++cursor_to;
-			cursor_from += cp_len_ucn.len;
 		}
 		else
 		{
 			*cursor_to = *cursor_from;
-
 			++cursor_to;
 			++cursor_from;
 		}
 	}
+	assert(cursor_from == cp_span->mac);
 
 	// Copy trailing '\0'
 
@@ -367,13 +302,13 @@ void Collapse_hex_ucn(cp_span_t * cp_span)
 
 void Collapse_cp_span(cp_span_t * cp_span)
 {
-	// BUG ostensibly the standard says Collapse_line_breaks
+	// BUG ostensibly the standard says Collapse(Peek_line_break)
 	//  should happen first, but it has to happen
-	//  after Collapse_escaped_line_breaks because of a hack
+	//  after Collapse(Peek_escaped_line_breaks) because of a hack
 	//  we do there to match clang
-
-	Collapse_trigraphs(cp_span);
-	Collapse_escaped_line_breaks(cp_span);
-	Collapse_line_breaks(cp_span);
-	Collapse_hex_ucn(cp_span);
+	
+	Collapse(Peek_trigraph, cp_span);
+	Collapse(Peek_escaped_line_breaks, cp_span);
+	Collapse(Peek_line_break, cp_span);
+	Collapse(Peek_hex_ucn, cp_span);
 }

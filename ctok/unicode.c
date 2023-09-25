@@ -151,25 +151,26 @@ void Decode_utf8_span(
 	int num_byte = (int)(mac - mic);
 	int num_offset_alloc = num_byte + 1;
 
-	cp_offset_t * cp_offsets = (cp_offset_t *)Allocate((int)sizeof(cp_offset_t) * num_offset_alloc);
+	cp_len_str_t * cp_offsets = (cp_len_str_t *)Allocate((int)sizeof(cp_len_str_t) * num_offset_alloc);
 
 	// Chew through the byte span with Try_decode_utf8
 
 	int num_cp = 0;
-	const char * mic_orig = mic;
 	while (mic < mac)
 	{
 		cp_len_t cp_len;
 		if (Try_decode_utf8((const uint8_t *)mic, (const uint8_t *)mac, &cp_len))
 		{
 			cp_offsets[num_cp].cp = cp_len.cp;
-			cp_offsets[num_cp].offset = (int)(mic - mic_orig);
+			cp_offsets[num_cp].len = cp_len.len;
+			cp_offsets[num_cp].str = mic;
 			mic += cp_len.len;
 		}
 		else
 		{
 			cp_offsets[num_cp].cp = UINT32_MAX;
-			cp_offsets[num_cp].offset = (int)(mic - mic_orig);
+			cp_offsets[num_cp].len = 1;
+			cp_offsets[num_cp].str = mic;
 			++mic;
 		}
 
@@ -180,7 +181,8 @@ void Decode_utf8_span(
 	// Append a final '\0'
 
 	cp_offsets[num_cp].cp = '\0';
-	cp_offsets[num_cp].offset = (int)(mic - mic_orig);
+	cp_offsets[num_cp].len = 0;
+	cp_offsets[num_cp].str = mic;
 
 	// Copy out to sp_span_out
 
