@@ -5,6 +5,8 @@
 
 #include "lex.h"
 #include "file.h"
+#include "unicode.h"
+#include "peek.h"
 
 
 
@@ -86,6 +88,12 @@ void Print_token(
 	int line,
 	int col)
 {
+	if (line == 26401 && col == 255)
+	{
+		volatile int x = 0;
+		x = 1;
+	}
+
 	printf("\"");
 	for (int i = 0; i < len; ++i)
 	{
@@ -159,9 +167,9 @@ static eol_info_t Inspect_span_for_eol(const char * mic, const char * mac)
 
 static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 {
-	const char * cursor = bstr->cursor;
-	const char * terminator = bstr->terminator;
-	const char * line_start = cursor;
+	const char * str_mic = bstr->cursor;
+	const char * str_mac = bstr->terminator;
+	const char * line_start = str_mic;
 	int line = 1;
 
 	// Deal with potential UTF-8 BOM
@@ -172,41 +180,56 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 
 	//??? is this worth filing a bug about?
 
-	int num_ch = (int)(terminator - cursor);
+	int num_ch = (int)(str_mac - str_mic);
 	if (num_ch >= 3 &&
-		cursor[0] == '\xEF' &&
-		cursor[1] == '\xBB' &&
-		cursor[2] == '\xBF')
+		str_mic[0] == '\xEF' &&
+		str_mic[1] == '\xBB' &&
+		str_mic[2] == '\xBF')
 	{
-		cursor += 3;
+		str_mic += 3;
 	}
 
-	while (cursor < terminator)
+	// Munch bytes to a cp_span
+
+	cp_span_t cp_span;
+	Decode_utf8_span(str_mic, str_mac, &cp_span);
+	Collapse_cp_span(&cp_span);
+
+	// Lex!
+
+	while (cp_span.mic < cp_span.mac)
 	{
 		// Peek
 
-		int len_tok = Len_leading_token(cursor, terminator);
+		int num_cp_tok = Len_leading_token(str_mic, cp_span.mic, cp_span.mac);
+
+		// Get token bounds
+
+		int tok_mic = cp_span.mic[0].offset;
+		int tok_mac = cp_span.mic[num_cp_tok].offset;
+		int num_ch_tok = tok_mac - tok_mic;
+		const char * str_tok = str_mic + tok_mic;
 
 		// Print
 
 		Print_token(
-			cursor,
-			len_tok,
+			str_tok,
+			num_ch_tok,
 			line,
-			(int)(cursor - line_start + 1));
+			(int)(str_tok - line_start + 1));
 
 		// Handle eol
 
-		eol_info_t eol_info = Inspect_span_for_eol(cursor, cursor + len_tok);
+		eol_info_t eol_info = Inspect_span_for_eol(str_tok, str_tok + num_ch_tok);
 		if (eol_info.num_eol)
 		{
 			line += eol_info.num_eol;
-			line_start = cursor + eol_info.offset_to_new_line_start;
+			line_start = str_tok + eol_info.offset_to_new_line_start;
 		}
 
 		// Advance
 
-		cursor += len_tok;
+		cp_span.mic += num_cp_tok;
 	}
 }
 

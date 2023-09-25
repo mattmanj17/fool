@@ -8,98 +8,78 @@
 
 
 
-static cp_len_t Peek_handle_utf8_eol_trigraph(const char * mic, const char * mac)
+// trigraphs
+
+uint32_t Cp_leading_trigraph(cp_offset_t * cursor)
 {
-	// Check for 'EOF'
+	uint32_t cp0 = cursor[0].cp;
+	if (cp0 != '?')
+		return UINT32_MAX;
 
-	// NOTE that we expect *mac == '\0'. the str pointed to
-	//  by mic may contain other nulls, but we expect there
-	//  to be a final null at the end. This means is it is always safe to read
-	//  another ch from mic, if reading after non-null.
+	uint32_t cp1 = cursor[1].cp;
+	if (cp1 != '?')
+		return UINT32_MAX;
 
-	if (mic == mac)
-		return {'\0', 0};
-
-	// Cast mic[0] to unsiged, so we can stuff it in a uint32_t
-
-	unsigned char ch = (unsigned char)mic[0];
-
-	// Utf8
-
-	if (ch > 0x7f)
+	uint32_t cp2 = cursor[2].cp;
+	switch (cp2)
 	{
-		cp_len_t cp_len;
-		if (Try_decode_utf8((const uint8_t *)mic, (const uint8_t *)mac, &cp_len))
-			return cp_len;
-		
-		return {UINT32_MAX, 1};
+	case '<': return '{';
+	case '>': return '}';
+	case '(': return '[';
+	case ')': return ']';
+	case '=': return '#';
+	case '/': return '\\';
+	case '\'': return '^';
+	case '!': return '|';
+	case '-': return '~';
 	}
 
-	// End of line
-
-	if (ch == '\r')
-	{
-		if (mic[1] == '\n')
-		{
-			return {'\n', 2};
-		}
-		
-		return {'\n', 1};
-	}
-	
-	// Trigraphs
-
-	if (ch == '?' && mic[1] == '?')
-	{
-		switch (mic[2])
-		{
-		case '<':
-			return {'{', 3};
-
-		case '>':
-			return {'}', 3};
-
-		case '(':
-			return {'[', 3};
-
-		case ')':
-			return {']', 3};
-
-		case '=':
-			return {'#', 3};
-
-		case '/':
-			return {'\\', 3};
-
-		case '\'':
-			return {'^', 3};
-
-		case '!':
-			return {'|', 3};
-
-		case '-':
-			return {'~', 3};
-		}
-	}
-	
-	// Normal ascii
-
-	return {ch, 1};
+	return UINT32_MAX;
 }
 
-static int Len_escaped_end_of_line(
-	const char * mic, 
-	const char * mac)
+void Collapse_trigraphs(cp_span_t * cp_span)
 {
-	cp_len_t cp_len_bslash = Peek_handle_utf8_eol_trigraph(mic, mac);
-	if (cp_len_bslash.cp != '\\')
+	cp_offset_t * cursor_from = cp_span->mic;
+	cp_offset_t * cursor_to = cp_span->mic;
+
+	while (cursor_from < cp_span->mac)
+	{
+		uint32_t cp_trigraph = Cp_leading_trigraph(cursor_from);
+
+		if (cp_trigraph == UINT32_MAX)
+		{
+			*cursor_to = *cursor_from;
+			
+			++cursor_to;
+			++cursor_from;
+		}
+		else
+		{
+			*cursor_to = *cursor_from;
+			cursor_to->cp = cp_trigraph;
+
+			++cursor_to;
+			cursor_from += 3;
+		}
+	}
+
+	// Copy trailing '\0'
+
+	*cursor_to = *cursor_from;
+	cp_span->mac = cursor_to;
+}
+
+
+
+// Escaped line breaks
+
+int Len_escaped_end_of_line(cp_offset_t * cursor)
+{
+	if (cursor[0].cp != '\\')
 		return 0;
 
-	// Skip whitespace after the backslash as an extension
-
-	int len = cp_len_bslash.len;
-
-	while (Is_ch_horizontal_white_space(mic[len]))
+	int len = 1;
+	while (Is_cp_ascii_horizontal_white_space(cursor[len].cp))
 	{
 		++len;
 	}
@@ -111,17 +91,17 @@ static int Len_escaped_end_of_line(
 	//  It has been like that since the very first
 	//  version of the tokenizer, go figure.
 
-	if (mic[len] == '\n')
+	if (cursor[len].cp == '\n')
 	{
-		if (mic[len + 1] == '\r')
+		if (cursor[len + 1].cp == '\r')
 			return len + 2; // :(
 
 		return len + 1;
 	}
 
-	if (mic[len] == '\r')
+	if (cursor[len].cp == '\r')
 	{
-		if (mic[len + 1] == '\n')
+		if (cursor[len + 1].cp == '\n')
 			return len + 2;
 
 		return len + 1;
@@ -130,13 +110,13 @@ static int Len_escaped_end_of_line(
 	return 0;
 }
 
-int Len_escaped_end_of_lines(const char * mic, const char * mac)
+int Len_escaped_end_of_lines(cp_offset_t * mic)
 {
 	int len = 0;
 
 	while (true)
 	{
-		int len_esc_eol = Len_escaped_end_of_line(mic + len, mac);
+		int len_esc_eol = Len_escaped_end_of_line(mic + len);
 		if (len_esc_eol == 0)
 			break;
 
@@ -146,23 +126,89 @@ int Len_escaped_end_of_lines(const char * mic, const char * mac)
 	return len;
 }
 
-static cp_len_t Peek_handle_escaped_eol(const char * mic, const char * mac)
+void Collapse_escaped_line_breaks(cp_span_t * cp_span)
 {
-	int len_esc_eol = Len_escaped_end_of_lines(mic, mac);
-	mic += len_esc_eol;
+	cp_offset_t * cursor_from = cp_span->mic;
+	cp_offset_t * cursor_to = cp_span->mic;
 
-	// Look at cp after line escapes
+	while (cursor_from < cp_span->mac)
+	{
+		int len_esc_eol = Len_escaped_end_of_lines(cursor_from);
+		if (len_esc_eol)
+		{
+			int offset = cursor_from->offset;
+			cursor_from += len_esc_eol;
 
-	cp_len_t cp_len = Peek_handle_utf8_eol_trigraph(mic, mac);
+			*cursor_to = *cursor_from;
+			cursor_to->offset = offset;
 
-	// Add length of escaped eols
+			++cursor_to;
+			++cursor_from;
+		}
+		else
+		{
+			*cursor_to = *cursor_from;
 
-	cp_len.len += len_esc_eol;
+			++cursor_to;
+			++cursor_from;
+		}
+	}
 
-	// Return
+	// Copy trailing '\0'
 
-	return cp_len;
+	*cursor_to = *cursor_from;
+	cp_span->mac = cursor_to;
 }
+
+
+
+// Convert '\r' and "\r\n" to '\n'
+
+void Collapse_line_breaks(cp_span_t * cp_span)
+{
+	cp_offset_t * cursor_from = cp_span->mic;
+	cp_offset_t * cursor_to = cp_span->mic;
+
+	while (cursor_from < cp_span->mac)
+	{
+		uint32_t cp = cursor_from->cp;
+		if (cp == '\r')
+		{
+			if (cursor_from[1].cp == '\n')
+			{
+				*cursor_to = *cursor_from;
+				cursor_to->cp = '\n';
+
+				++cursor_to;
+				cursor_from += 2;
+			}
+			else
+			{
+				*cursor_to = *cursor_from;
+				cursor_to->cp = '\n';
+
+				++cursor_to;
+				++cursor_from;
+			}
+		}
+		else
+		{
+			*cursor_to = *cursor_from;
+
+			++cursor_to;
+			++cursor_from;
+		}
+	}
+
+	// Copy trailing '\0'
+
+	*cursor_to = *cursor_from;
+	cp_span->mac = cursor_to;
+}
+
+
+
+// Hex UCNs
 
 static uint32_t Hex_digit_value_from_cp(uint32_t cp)
 {
@@ -203,39 +249,28 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	return true;
 }
 
-static cp_len_t Peek_handle_ucn(const char * mic, const char * mac)
+static cp_len_t Peek_hex_ucn(cp_offset_t * cursor)
 {
+	int len = 0;
+
 	// Check for leading '\\'
 
-	cp_len_t cp_len_bslash = Peek_handle_escaped_eol(mic, mac);
-	if (cp_len_bslash.cp != '\\')
-		return cp_len_bslash;
+	if (cursor[len].cp != '\\')
+		return {UINT32_MAX, 0};
 
-	// Look past the leading '\\'
+	// Advance past '\\'
 
-	mic += cp_len_bslash.len;
+	++len;
 
 	// Look for 'u' or 'U' after '\\'
 
-	cp_len_t cp_len_u = Peek_handle_escaped_eol(mic, mac);
-	if (cp_len_u.cp != 'u' && cp_len_u.cp != 'U')
-		return cp_len_bslash;
-
-	// Set up 'scratch' peek struct to accumulate
-	//  the individual 'peeks' we do to read the UCN
-
-	cp_len_t cp_len_result;
-	cp_len_result.cp = 0;
-	cp_len_result.len = cp_len_bslash.len + cp_len_u.len;
-
-	// Advance past u/U
-
-	mic += cp_len_u.len;
+	if (cursor[len].cp != 'u' && cursor[len].cp != 'U')
+		return {UINT32_MAX, 0};
 
 	// Look for 4 or 8 hex digits, based on u vs U
 
 	int num_hex_digits;
-	if (cp_len_u.cp == 'u')
+	if (cursor[len].cp == 'u')
 	{
 		num_hex_digits = 4;
 	}
@@ -244,29 +279,27 @@ static cp_len_t Peek_handle_ucn(const char * mic, const char * mac)
 		num_hex_digits = 8;
 	}
 
+	// Advance past u/U
+
+	++len;
+
 	// Look for correct number of hex digits
 
+	uint32_t cp_result = 0;
 	int hex_digits_read = 0;
+
 	while (hex_digits_read < num_hex_digits)
 	{
-		// Peek next digit
-
-		cp_len_t cp_len_digit = Peek_handle_escaped_eol(mic, mac);
-
 		// Check if valid hex digit
 
-		uint32_t hex_digit_value = Hex_digit_value_from_cp(cp_len_digit.cp);
+		uint32_t hex_digit_value = Hex_digit_value_from_cp(cursor[len].cp);
 		if (hex_digit_value == UINT32_MAX)
 			break;
 
 		// Fold hex digit into cp
 
-		cp_len_result.cp <<= 4;
-		cp_len_result.cp |= hex_digit_value;
-
-		// Keep track of 'how far we have peeked'
-
-		cp_len_result.len += cp_len_digit.len;
+		cp_result <<= 4;
+		cp_result |= hex_digit_value;
 
 		// Keep track of how many digits we have read
 
@@ -274,31 +307,73 @@ static cp_len_t Peek_handle_ucn(const char * mic, const char * mac)
 
 		// Advance to next digit
 
-		mic += cp_len_digit.len;
+		++len;
 	}
 
 	// If we did not read the correct number of digits after the 'u',
 	//  just treat this as a stray '\\'
 
 	if (hex_digits_read < num_hex_digits)
-		return cp_len_bslash;
+		return {UINT32_MAX, 0};
 
 	// Sanity check that people are not trying to encode
 	//  something particularly weird with a UCN.
 	//  Convert any weird inputs to the error value UINT32_MAX
 
-	if (!Is_cp_valid_ucn(cp_len_result.cp))
+	if (!Is_cp_valid_ucn(cp_result))
 	{
-		cp_len_result.cp = UINT32_MAX;
+		cp_result = UINT32_MAX;
 	}
 
-	// Otherwise, we read a valid UCN, and the info
-	//  we need to return is in peek_result
+	// Return result
 
-	return cp_len_result;
+	return {cp_result, len};
 }
 
-cp_len_t Peek_cp(const char * mic, const char * mac)
+void Collapse_hex_ucn(cp_span_t * cp_span)
 {
-	return Peek_handle_ucn(mic, mac);
+	cp_offset_t * cursor_from = cp_span->mic;
+	cp_offset_t * cursor_to = cp_span->mic;
+
+	while (cursor_from < cp_span->mac)
+	{
+		cp_len_t cp_len_ucn = Peek_hex_ucn(cursor_from);
+		if (cp_len_ucn.len)
+		{
+			cursor_to->cp = cp_len_ucn.cp;
+			cursor_to->offset = cursor_from->offset;
+
+			++cursor_to;
+			cursor_from += cp_len_ucn.len;
+		}
+		else
+		{
+			*cursor_to = *cursor_from;
+
+			++cursor_to;
+			++cursor_from;
+		}
+	}
+
+	// Copy trailing '\0'
+
+	*cursor_to = *cursor_from;
+	cp_span->mac = cursor_to;
+}
+
+
+
+// Exposed function
+
+void Collapse_cp_span(cp_span_t * cp_span)
+{
+	// BUG ostensibly the standard says Collapse_line_breaks
+	//  should happen first, but it has to happen
+	//  after Collapse_escaped_line_breaks because of a hack
+	//  we do there to match clang
+
+	Collapse_trigraphs(cp_span);
+	Collapse_escaped_line_breaks(cp_span);
+	Collapse_line_breaks(cp_span);
+	Collapse_hex_ucn(cp_span);
 }

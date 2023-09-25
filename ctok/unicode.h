@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 typedef struct
 {
 	uint32_t cp_min;
@@ -27,6 +29,23 @@ bool Try_decode_utf8(
 	const uint8_t * mic,
 	const uint8_t * mac,
 	cp_len_t * cp_len_out);
+
+typedef struct
+{
+	uint32_t cp;
+	int offset;
+} cp_offset_t; // FIXME make this a cp_len plus a start char *
+
+typedef struct
+{
+	cp_offset_t * mic;
+	cp_offset_t * mac;
+} cp_span_t;
+
+void Decode_utf8_span(
+	const char * mic,
+	const char * mac,
+	cp_span_t * cp_span_out);
 
 
 

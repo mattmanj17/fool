@@ -1,8 +1,10 @@
 ﻿
+#include <assert.h>
 #include <stdint.h>
 
 #include "unicode.h"
 
+#include "alloc.h"
 #include "count_of.h"
 
 
@@ -135,6 +137,55 @@ bool Try_decode_utf8(
 	cp_len_out->cp = cp;
 	cp_len_out->len = bytes_to_read;
 	return true;
+}
+
+void Decode_utf8_span(
+	const char * mic,
+	const char * mac,
+	cp_span_t * cp_span_out)
+{
+	// In the worst case, we will have a codepoint for every byte
+	//  in the original span, so allocate enough spae for that.
+	//  Note that we include room for a trailing '\0' codepoint
+
+	int num_byte = (int)(mac - mic);
+	int num_offset_alloc = num_byte + 1;
+
+	cp_offset_t * cp_offsets = (cp_offset_t *)Allocate((int)sizeof(cp_offset_t) * num_offset_alloc);
+
+	// Chew through the byte span with Try_decode_utf8
+
+	int num_cp = 0;
+	const char * mic_orig = mic;
+	while (mic < mac)
+	{
+		cp_len_t cp_len;
+		if (Try_decode_utf8((const uint8_t *)mic, (const uint8_t *)mac, &cp_len))
+		{
+			cp_offsets[num_cp].cp = cp_len.cp;
+			cp_offsets[num_cp].offset = (int)(mic - mic_orig);
+			mic += cp_len.len;
+		}
+		else
+		{
+			cp_offsets[num_cp].cp = UINT32_MAX;
+			cp_offsets[num_cp].offset = (int)(mic - mic_orig);
+			++mic;
+		}
+
+		++num_cp;
+	}
+	assert(mic == mac);
+
+	// Append a final '\0'
+
+	cp_offsets[num_cp].cp = '\0';
+	cp_offsets[num_cp].offset = (int)(mic - mic_orig);
+
+	// Copy out to sp_span_out
+
+	cp_span_out->mic = cp_offsets;
+	cp_span_out->mac = cp_offsets + num_cp;
 }
 
 
