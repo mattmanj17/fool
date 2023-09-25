@@ -301,6 +301,11 @@ static cp_len_t Peek_named_ucn(cp_len_str_t * cursor)
 
 		if (cp == '\n')
 			break;
+
+		// ohh boy, time to start hacking
+
+		if (cp == '"')
+			break;
 	}
 
 	// Check if we found '}'

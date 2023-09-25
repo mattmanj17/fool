@@ -498,6 +498,8 @@ static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor)
 
 	static const char * operators[] =
 	{
+		"%:%:",
+
 		">>=", "<<=", "...",
 
 		"|=", "||", "^=", "==", "::", ":>", "-=", "--", "->", "+=", "++", "*=",
