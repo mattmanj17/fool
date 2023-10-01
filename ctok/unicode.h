@@ -33,20 +33,20 @@ bool Try_decode_utf8(
 typedef struct
 {
 	uint32_t cp;
-	int len;
+	int num_ch;
 	const char * str;
-} cp_len_str_t;
+} lcp_t; // logical codepoint
 
 typedef struct
 {
-	cp_len_str_t * mic;
-	cp_len_str_t * mac;
-} cp_span_t;
+	lcp_t * lcp_mic;
+	lcp_t * lcp_mac;
+} lcp_span_t;
 
-void Decode_utf8_span(
+void Decode_utf8_to_lcp_span(
 	const char * mic,
 	const char * mac,
-	cp_span_t * cp_span_out);
+	lcp_span_t * lcp_span_out);
 
 
 

@@ -139,10 +139,10 @@ bool Try_decode_utf8(
 	return true;
 }
 
-void Decode_utf8_span(
+void Decode_utf8_to_lcp_span(
 	const char * mic,
 	const char * mac,
-	cp_span_t * cp_span_out)
+	lcp_span_t * lcp_span_out)
 {
 	// In the worst case, we will have a codepoint for every byte
 	//  in the original span, so allocate enough spae for that.
@@ -151,7 +151,7 @@ void Decode_utf8_span(
 	int num_byte = (int)(mac - mic);
 	int num_offset_alloc = num_byte + 1;
 
-	cp_len_str_t * cp_offsets = (cp_len_str_t *)Allocate((int)sizeof(cp_len_str_t) * num_offset_alloc);
+	lcp_span_out->lcp_mic = (lcp_t *)Allocate((int)sizeof(lcp_t) * num_offset_alloc);
 
 	// Chew through the byte span with Try_decode_utf8
 
@@ -161,16 +161,16 @@ void Decode_utf8_span(
 		cp_len_t cp_len;
 		if (Try_decode_utf8((const uint8_t *)mic, (const uint8_t *)mac, &cp_len))
 		{
-			cp_offsets[num_cp].cp = cp_len.cp;
-			cp_offsets[num_cp].len = cp_len.len;
-			cp_offsets[num_cp].str = mic;
+			lcp_span_out->lcp_mic[num_cp].cp = cp_len.cp;
+			lcp_span_out->lcp_mic[num_cp].num_ch = cp_len.len;
+			lcp_span_out->lcp_mic[num_cp].str = mic;
 			mic += cp_len.len;
 		}
 		else
 		{
-			cp_offsets[num_cp].cp = UINT32_MAX;
-			cp_offsets[num_cp].len = 1;
-			cp_offsets[num_cp].str = mic;
+			lcp_span_out->lcp_mic[num_cp].cp = UINT32_MAX;
+			lcp_span_out->lcp_mic[num_cp].num_ch = 1;
+			lcp_span_out->lcp_mic[num_cp].str = mic;
 			++mic;
 		}
 
@@ -180,14 +180,13 @@ void Decode_utf8_span(
 
 	// Append a final '\0'
 
-	cp_offsets[num_cp].cp = '\0';
-	cp_offsets[num_cp].len = 0;
-	cp_offsets[num_cp].str = mic;
+	lcp_span_out->lcp_mic[num_cp].cp = '\0';
+	lcp_span_out->lcp_mic[num_cp].num_ch = 0;
+	lcp_span_out->lcp_mic[num_cp].str = mic;
 
-	// Copy out to sp_span_out
+	// Set lcp_mac
 
-	cp_span_out->mic = cp_offsets;
-	cp_span_out->mac = cp_offsets + num_cp;
+	lcp_span_out->lcp_mac = lcp_span_out->lcp_mic + num_cp;
 }
 
 

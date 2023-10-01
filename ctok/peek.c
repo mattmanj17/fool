@@ -10,8 +10,10 @@
 
 // trigraphs
 
-cp_len_t Peek_trigraph(cp_len_str_t * cursor)
+cp_len_t Peek_trigraph(lcp_span_t span)
 {
+	const lcp_t * cursor = span.lcp_mic;
+
 	uint32_t cp0 = cursor[0].cp;
 	if (cp0 != '?')
 		return {UINT32_MAX, 0};
@@ -41,7 +43,7 @@ cp_len_t Peek_trigraph(cp_len_str_t * cursor)
 
 // Escaped line breaks
 
-int Len_escaped_end_of_line(cp_len_str_t * cursor)
+int Len_escaped_end_of_line(const lcp_t * cursor)
 {
 	if (cursor[0].cp != '\\')
 		return 0;
@@ -78,7 +80,7 @@ int Len_escaped_end_of_line(cp_len_str_t * cursor)
 	return 0;
 }
 
-int Len_escaped_end_of_lines(cp_len_str_t * mic)
+int Len_escaped_end_of_lines(const lcp_t * mic)
 {
 	int len = 0;
 
@@ -94,27 +96,42 @@ int Len_escaped_end_of_lines(cp_len_str_t * mic)
 	return len;
 }
 
-static cp_len_t Peek_escaped_line_breaks(cp_len_str_t * cursor)
+static cp_len_t Peek_escaped_line_breaks(lcp_span_t span)
 {
+	const lcp_t * cursor = span.lcp_mic;
+
 	int len_esc_eol = Len_escaped_end_of_lines(cursor);
 	if (!len_esc_eol)
 		return {UINT32_MAX, 0};
 
-	return {cursor[len_esc_eol].cp, len_esc_eol + 1};
+	if ((cursor + len_esc_eol) == span.lcp_mac)
+	{
+		// Returning a negative length here makes us drop the chars,
+		//  which is what we want. The CP field does not really matter at that point,
+		//  but setting it to the invalid value UINT32_MAX makes an amountof sense
+
+		return {UINT32_MAX, -1};
+	}
+	else
+	{
+		return {cursor[len_esc_eol].cp, len_esc_eol + 1};
+	}
 }
 
 
 
 // Convert '\r' and "\r\n" to '\n'
 
-static cp_len_t Peek_line_break(cp_len_str_t * cursor)
+static cp_len_t Peek_line_break(lcp_span_t span)
 {
+	const lcp_t * cursor = span.lcp_mic;
+
 	if (cursor[0].cp == '\r')
 	{
-		// Need to check .len because we do this after
+		// Need to check .num_ch because we do this after
 		//  Collapse(Peek_escaped_line_breaks) :/
 
-		if ((cursor[1].cp == '\n') && (cursor[1].len == 1))
+		if ((cursor[1].cp == '\n') && (cursor[1].num_ch == 1))
 		{
 			return {'\n', 2};
 		}
@@ -131,31 +148,46 @@ static cp_len_t Peek_line_break(cp_len_str_t * cursor)
 
 // Generic driver function to run a collapse function over a span
 
-typedef cp_len_t (*collapse_fn_t)(cp_len_str_t * cursor);
+typedef cp_len_t (*collapse_fn_t)(lcp_span_t span);
 
-void Collapse(collapse_fn_t collapse_fn, cp_span_t * cp_span)
+void Collapse(collapse_fn_t collapse_fn, lcp_span_t * span)
 {
-	cp_len_str_t * cursor_from = cp_span->mic;
-	cp_len_str_t * cursor_to = cp_span->mic;
+	lcp_t * cursor_from = span->lcp_mic;
+	lcp_t * cursor_to = span->lcp_mic;
 
-	while (cursor_from < cp_span->mac)
+	while (cursor_from < span->lcp_mac)
 	{
-		cp_len_t cp_len = collapse_fn(cursor_from);
-		if (cp_len.len)
+		// BUG the 'len' in cp_len here is not characters, 
+		//  but lcps ('logical' characters). This distinction
+		//  has confused/bit me before, so it is probably bad.
+
+		cp_len_t cp_len = collapse_fn({cursor_from, span->lcp_mac});
+
+		if (cp_len.len < 0)
+		{
+			// BUG this is a hack, should fix, see Peek_escaped_line_breaks
+
+			cursor_from->cp = '\0';
+			cursor_from->num_ch = 0;
+			span->lcp_mac = cursor_from;
+
+			break;
+		}
+		else if (cp_len.len > 0)
 		{
 			cursor_to->cp = cp_len.cp;
 			cursor_to->str = cursor_from->str;
 
-			int len = 0;
-			for (int i_cp = 0; i_cp < cp_len.len; ++i_cp)
+			int num_ch = 0;
+			for (int i_lcp = 0; i_lcp < cp_len.len; ++i_lcp)
 			{
-				len += cursor_from[i_cp].len;
+				num_ch += cursor_from[i_lcp].num_ch;
 			}
-			cursor_to->len = len;
+			cursor_to->num_ch = num_ch;
 
 			cursor_from += cp_len.len;
 
-			assert(cursor_to->str + cursor_to->len == cursor_from->str);
+			assert(cursor_to->str + cursor_to->num_ch == cursor_from->str);
 			++cursor_to;
 		}
 		else
@@ -165,26 +197,26 @@ void Collapse(collapse_fn_t collapse_fn, cp_span_t * cp_span)
 			++cursor_from;
 		}
 	}
-	assert(cursor_from == cp_span->mac);
+	assert(cursor_from == span->lcp_mac);
 
 	// Copy trailing '\0'
 
 	*cursor_to = *cursor_from;
-	cp_span->mac = cursor_to;
+	span->lcp_mac = cursor_to;
 }
 
 
 
 // Exposed function
 
-void Collapse_cp_span(cp_span_t * cp_span)
+void Collapse_lcp_span(lcp_span_t * lcp_span)
 {
 	// BUG ostensibly the standard says Collapse(Peek_line_break)
 	//  should happen first, but it has to happen
 	//  after Collapse(Peek_escaped_line_breaks) because of a hack
 	//  we do there to match clang
 	
-	Collapse(Peek_trigraph, cp_span);
-	Collapse(Peek_escaped_line_breaks, cp_span);
-	Collapse(Peek_line_break, cp_span);
+	Collapse(Peek_trigraph, lcp_span);
+	Collapse(Peek_escaped_line_breaks, lcp_span);
+	Collapse(Peek_line_break, lcp_span);
 }

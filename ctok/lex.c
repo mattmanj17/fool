@@ -10,27 +10,27 @@
 
 
 
-static int Len_horizontal_whitespace(cp_len_str_t * cursor);
-static int Len_whitespace(cp_len_str_t * cursor);
-static int Len_after_u(cp_len_str_t * cursor, cp_len_str_t * terminator);
-static int Len_after_L_or_U(cp_len_str_t * cursor, cp_len_str_t * terminator);
-static int Len_rest_of_str_lit(uint32_t cp_sential, cp_len_str_t * cursor, cp_len_str_t * terminator);
-static int Len_after_fslash(cp_len_str_t * cursor, cp_len_str_t * terminator);
-static int Len_rest_of_block_comment(cp_len_str_t * cursor, cp_len_str_t * terminator);
-static int Len_rest_of_line_comment(cp_len_str_t * cursor, cp_len_str_t * terminator);
-static int Len_after_dot(cp_len_str_t * cursor);
+static int Len_horizontal_whitespace(lcp_t * cursor);
+static int Len_whitespace(lcp_t * cursor);
+static int Len_after_u(lcp_t * cursor, lcp_t * terminator);
+static int Len_after_L_or_U(lcp_t * cursor, lcp_t * terminator);
+static int Len_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator);
+static int Len_after_fslash(lcp_t * cursor, lcp_t * terminator);
+static int Len_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator);
+static int Len_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator);
+static int Len_after_dot(lcp_t * cursor);
 static bool May_cp_start_id(uint32_t cp);
-static int Len_rest_of_id(cp_len_str_t * cursor);
+static int Len_rest_of_id(lcp_t * cursor);
 static bool Does_cp_extend_id(uint32_t cp);
-static cp_len_t Peek_ucn(cp_len_str_t * cursor);
-static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor);
+static cp_len_t Peek_ucn(lcp_t * cursor);
+static cp_len_t Peek_hex_ucn(lcp_t * cursor);
 static uint32_t Hex_digit_value_from_cp(uint32_t cp);
 static bool Is_cp_valid_ucn(uint32_t cp);
-static cp_len_t Peek_named_ucn(cp_len_str_t * cursor);
-static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor);
-static int Len_rest_of_ppnum(cp_len_str_t * cursor);
+static cp_len_t Peek_named_ucn(lcp_t * cursor);
+static int Len_rest_of_operator(uint32_t cp_leading, lcp_t * cursor);
+static int Len_rest_of_ppnum(lcp_t * cursor);
 
-int Len_leading_token(cp_len_str_t * cursor, cp_len_str_t * terminator)
+int Len_leading_token(lcp_t * cursor, lcp_t * terminator)
 {
 	// Special handling of horizontal WS to match clang ... :(
 
@@ -41,7 +41,7 @@ int Len_leading_token(cp_len_str_t * cursor, cp_len_str_t * terminator)
 
 	// Advance input and decide what to do
 
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 	uint32_t cp = cursor->cp;
 
 	if (cp == 'u')
@@ -124,7 +124,7 @@ int Len_leading_token(cp_len_str_t * cursor, cp_len_str_t * terminator)
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_horizontal_whitespace(cp_len_str_t * cursor)
+static int Len_horizontal_whitespace(lcp_t * cursor)
 {
 	int len = 0;
 
@@ -136,7 +136,7 @@ static int Len_horizontal_whitespace(cp_len_str_t * cursor)
 		// We only want to skip raw whitespace, not whitesapce after
 		//  escaped new lines. This is a gross hack to hatch clang.
 
-		if (cursor[len].len > 1)
+		if (cursor[len].num_ch > 1)
 			break;
 
 		++len;
@@ -145,7 +145,7 @@ static int Len_horizontal_whitespace(cp_len_str_t * cursor)
 	return len;
 }
 
-static int Len_whitespace(cp_len_str_t * cursor)
+static int Len_whitespace(lcp_t * cursor)
 {
 	int len = 0;
 
@@ -166,9 +166,9 @@ static int Len_whitespace(cp_len_str_t * cursor)
 	return len;
 }
 
-static int Len_after_u(cp_len_str_t * cursor, cp_len_str_t * terminator)
+static int Len_after_u(lcp_t * cursor, lcp_t * terminator)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	uint32_t cp = cursor->cp;
 
@@ -200,9 +200,9 @@ static int Len_after_u(cp_len_str_t * cursor, cp_len_str_t * terminator)
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_after_L_or_U(cp_len_str_t * cursor, cp_len_str_t * terminator)
+static int Len_after_L_or_U(lcp_t * cursor, lcp_t * terminator)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	uint32_t cp = cursor->cp;
 	if (cp == '"' || cp == '\'')
@@ -218,7 +218,7 @@ static int Len_after_L_or_U(cp_len_str_t * cursor, cp_len_str_t * terminator)
 	return (int)(cursor - cursor_orig);
 }
 
-static void Do_escaped_line_break_hack(cp_len_str_t * cursor)
+static void Do_escaped_line_break_hack(lcp_t * cursor)
 {
 	// BUG hack to match clang. 
 	//  We want to include any escaped line breaks at the end of this
@@ -228,7 +228,7 @@ static void Do_escaped_line_break_hack(cp_len_str_t * cursor)
 
 	if (cursor[0].str[0] == '\\')
 	{
-		int len_logical_new_line = cursor[0].len;
+		int len_logical_new_line = cursor[0].num_ch;
 		int i_ch_most = len_logical_new_line - 1;
 
 		int len_physical_new_line;
@@ -244,15 +244,15 @@ static void Do_escaped_line_break_hack(cp_len_str_t * cursor)
 
 		int len_escaped_line_break = len_logical_new_line - len_physical_new_line;
 
-		cursor[-1].len += len_escaped_line_break;
+		cursor[-1].num_ch += len_escaped_line_break;
 		cursor[0].str += len_escaped_line_break;
-		cursor[0].len -= len_escaped_line_break;
+		cursor[0].num_ch -= len_escaped_line_break;
 	}
 }
 
-static int Len_rest_of_str_lit(uint32_t cp_sential, cp_len_str_t * cursor, cp_len_str_t * terminator)
+static int Len_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	while (cursor < terminator)
 	{
@@ -294,9 +294,9 @@ static int Len_rest_of_str_lit(uint32_t cp_sential, cp_len_str_t * cursor, cp_le
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_after_fslash(cp_len_str_t * cursor, cp_len_str_t * terminator)
+static int Len_after_fslash(lcp_t * cursor, lcp_t * terminator)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	uint32_t cp = cursor->cp;
 
@@ -318,9 +318,9 @@ static int Len_after_fslash(cp_len_str_t * cursor, cp_len_str_t * terminator)
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_rest_of_block_comment(cp_len_str_t * cursor, cp_len_str_t * terminator)
+static int Len_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	while (cursor < terminator)
 	{
@@ -338,9 +338,9 @@ static int Len_rest_of_block_comment(cp_len_str_t * cursor, cp_len_str_t * termi
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_rest_of_line_comment(cp_len_str_t * cursor, cp_len_str_t * terminator)
+static int Len_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	while (cursor < terminator)
 	{
@@ -358,9 +358,9 @@ static int Len_rest_of_line_comment(cp_len_str_t * cursor, cp_len_str_t * termin
 	return (int)(cursor - cursor_orig);
 }
 
-static int Len_after_dot(cp_len_str_t * cursor)
+static int Len_after_dot(lcp_t * cursor)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	uint32_t cp = cursor->cp;
 
@@ -371,7 +371,7 @@ static int Len_after_dot(cp_len_str_t * cursor)
 	}
 	else if (cp == '.')
 	{
-		cp_len_str_t * cursor_peek = cursor;
+		lcp_t * cursor_peek = cursor;
 		++cursor_peek;
 
 		cp = cursor_peek->cp;
@@ -470,9 +470,9 @@ static bool May_cp_start_id(uint32_t cp)
 	return Is_cp_in_ranges(cp, c11_allowed, COUNT_OF(c11_allowed));
 }
 
-static int Len_rest_of_id(cp_len_str_t * cursor)
+static int Len_rest_of_id(lcp_t * cursor)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	while (true)
 	{
@@ -537,7 +537,7 @@ static bool Does_cp_extend_id(uint32_t cp)
 	return false;
 }
 
-static cp_len_t Peek_ucn(cp_len_str_t * cursor)
+static cp_len_t Peek_ucn(lcp_t * cursor)
 {
 	cp_len_t cp_len = Peek_hex_ucn(cursor);
 	if (cp_len.len)
@@ -546,7 +546,7 @@ static cp_len_t Peek_ucn(cp_len_str_t * cursor)
 	return Peek_named_ucn(cursor);
 }
 
-static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor)
+static cp_len_t Peek_hex_ucn(lcp_t * cursor)
 {
 	int len = 0;
 
@@ -713,7 +713,7 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	return true;
 }
 
-static cp_len_t Peek_named_ucn(cp_len_str_t * cursor)
+static cp_len_t Peek_named_ucn(lcp_t * cursor)
 {
 	int len = 0;
 
@@ -780,9 +780,9 @@ static cp_len_t Peek_named_ucn(cp_len_str_t * cursor)
 	return {UINT32_MAX, len};
 }
 
-static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor)
+static int Len_rest_of_operator(uint32_t cp_leading, lcp_t * cursor)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
@@ -806,7 +806,7 @@ static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor)
 		const char * str_operator = operators[i_operator];
 		size_t len = strlen(str_operator);
 
-		cp_len_str_t * cursor_peek = cursor;
+		lcp_t * cursor_peek = cursor;
 		bool found_match = true;
 
 		for (size_t i_ch = 0; i_ch < len; ++i_ch)
@@ -891,9 +891,9 @@ static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor)
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 // 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-static int Len_rest_of_ppnum(cp_len_str_t * cursor)
+static int Len_rest_of_ppnum(lcp_t * cursor)
 {
-	const cp_len_str_t * cursor_orig = cursor;
+	const lcp_t * cursor_orig = cursor;
 
 	while (true)
 	{

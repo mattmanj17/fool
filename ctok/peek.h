@@ -4,4 +4,4 @@
 
 #include "unicode.h"
 
-void Collapse_cp_span(cp_span_t * cp_span);
+void Collapse_lcp_span(lcp_span_t * lcp_span);

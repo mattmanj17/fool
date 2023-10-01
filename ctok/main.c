@@ -193,22 +193,22 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 
 	// Munch bytes to a cp_span
 
-	cp_span_t cp_span;
-	Decode_utf8_span(str_mic, str_mac, &cp_span);
-	Collapse_cp_span(&cp_span);
+	lcp_span_t lcp_span;
+	Decode_utf8_to_lcp_span(str_mic, str_mac, &lcp_span);
+	Collapse_lcp_span(&lcp_span);
 
 	// Lex!
 
-	while (cp_span.mic < cp_span.mac)
+	while (lcp_span.lcp_mic < lcp_span.lcp_mac)
 	{
 		// Peek
 
-		int num_cp_tok = Len_leading_token(cp_span.mic, cp_span.mac);
+		int num_lcp_tok = Len_leading_token(lcp_span.lcp_mic, lcp_span.lcp_mac);
 
 		// Get token bounds
 
-		const char * str_tok = cp_span.mic[0].str;
-		const char * str_tok_mac = cp_span.mic[num_cp_tok].str;
+		const char * str_tok = lcp_span.lcp_mic[0].str;
+		const char * str_tok_mac = lcp_span.lcp_mic[num_lcp_tok].str;
 		int num_ch_tok = (int)(str_tok_mac - str_tok);
 
 		// Print
@@ -230,7 +230,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 
 		// Advance
 
-		cp_span.mic += num_cp_tok;
+		lcp_span.lcp_mic += num_lcp_tok;
 	}
 }
 
