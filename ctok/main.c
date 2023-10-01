@@ -88,6 +88,14 @@ void Print_token(
 	int line,
 	int col)
 {
+	/*
+	if (line == ... && col == ...)
+	{
+		volatile int x = 0;
+		x = 1;
+	}
+	*/
+
 	printf("\"");
 	for (int i = 0; i < len; ++i)
 	{

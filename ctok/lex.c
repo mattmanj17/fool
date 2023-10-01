@@ -660,7 +660,10 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	if (cp < 0xA0 && cp != 0x24 && cp != 0x40 && cp != 0x60)
 		return false;
 
-	if (!Is_cp_valid(cp))
+	// BUG matthewd you would expect this to be if !Is_cp_valid,
+	//  but that is not what clang does...
+
+	if (Is_cp_surrogate(cp))
 		return false;
 
 	return true;
