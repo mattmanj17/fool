@@ -111,7 +111,10 @@ static cp_len_t Peek_line_break(cp_len_str_t * cursor)
 {
 	if (cursor[0].cp == '\r')
 	{
-		if (cursor[1].cp == '\n')
+		// Need to check .len because we do this after
+		//  Collapse(Peek_escaped_line_breaks) :/
+
+		if ((cursor[1].cp == '\n') && (cursor[1].len == 1))
 		{
 			return {'\n', 2};
 		}
