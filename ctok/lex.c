@@ -22,6 +22,9 @@ static int Len_after_dot(cp_len_str_t * cursor);
 static bool May_cp_start_id(uint32_t cp);
 static int Len_rest_of_id(cp_len_str_t * cursor);
 static bool Does_cp_extend_id(uint32_t cp);
+static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor);
+static uint32_t Hex_digit_value_from_cp(uint32_t cp);
+static bool Is_cp_valid_ucn(uint32_t cp);
 static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor);
 static int Len_rest_of_ppnum(cp_len_str_t * cursor);
 
@@ -38,48 +41,81 @@ int Len_leading_token(cp_len_str_t * cursor, cp_len_str_t * terminator)
 
 	const cp_len_str_t * cursor_orig = cursor;
 	uint32_t cp = cursor->cp;
-	++cursor;
 
 	if (cp == 'u')
 	{
+		++cursor;
 		cursor += Len_after_u(cursor, terminator);
 	}
 	else if (cp == 'U' || cp == 'L')
 	{
+		++cursor;
 		cursor += Len_after_L_or_U(cursor, terminator);
 	}
 	else if (cp == '"' || cp == '\'')
 	{
+		++cursor;
 		cursor += Len_rest_of_str_lit(cp, cursor, terminator);
 	}
 	else if (cp == '/')
 	{
+		++cursor;
 		cursor += Len_after_fslash(cursor, terminator);
 	}
 	else if (cp == '.')
 	{
+		++cursor;
 		cursor += Len_after_dot(cursor);
 	}
 	else if (May_cp_start_id(cp))
 	{
+		++cursor;
 		cursor += Len_rest_of_id(cursor);
 	}
 	else if (Is_cp_ascii_digit(cp))
 	{
+		++cursor;
 		cursor += Len_rest_of_ppnum(cursor);
 	}
 	else if (Is_cp_ascii_white_space(cp))
 	{
+		++cursor;
 		cursor += Len_whitespace(cursor);
 	}
 	else if (cp == '\0')
 	{
+		++cursor;
+
 		// skip whitespace after a '\0'
 
 		cursor += Len_whitespace(cursor);
 	}
+	else if (cp =='\\')
+	{
+		cp_len_t cp_len = Peek_hex_ucn(cursor);
+		if (cp_len.len)
+		{
+			cursor += cp_len.len;
+
+			if (May_cp_start_id(cp_len.cp))
+			{
+				cursor += Len_rest_of_id(cursor);
+			}
+			else
+			{
+				// Bogus UCN, return it as an unknown token
+			}
+		}
+		else
+		{
+			// Stray backslash, return as unknown token
+
+			++cursor;
+		}
+	}
 	else
 	{
+		++cursor; // BUG fix this, one arg to Len_rest_of_operator
 		cursor += Len_rest_of_operator(cp, cursor);
 	}
 
@@ -445,6 +481,16 @@ static int Len_rest_of_id(cp_len_str_t * cursor)
 			continue;
 		}
 
+		if (cp == '\\')
+		{
+			cp_len_t cp_len = Peek_hex_ucn(cursor);
+			if (cp_len.len && Does_cp_extend_id(cp_len.cp))
+			{
+				cursor += cp_len.len;
+				continue;
+			}
+		}
+
 		break;
 	}
 
@@ -487,6 +533,126 @@ static bool Does_cp_extend_id(uint32_t cp)
 		return true;
 
 	return false;
+}
+
+static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor)
+{
+	int len = 0;
+
+	// Check for leading '\\'
+
+	if (cursor[len].cp != '\\')
+		return {UINT32_MAX, 0};
+
+	// Advance past '\\'
+
+	++len;
+
+	// Look for 'u' or 'U' after '\\'
+
+	if (cursor[len].cp != 'u' && cursor[len].cp != 'U')
+		return {UINT32_MAX, 0};
+
+	// Look for 4 or 8 hex digits, based on u vs U
+
+	int num_hex_digits;
+	if (cursor[len].cp == 'u')
+	{
+		num_hex_digits = 4;
+	}
+	else
+	{
+		num_hex_digits = 8;
+	}
+
+	// Advance past u/U
+
+	++len;
+
+	// Look for correct number of hex digits
+
+	uint32_t cp_result = 0;
+	int hex_digits_read = 0;
+
+	while (hex_digits_read < num_hex_digits)
+	{
+		// Check if valid hex digit
+
+		uint32_t hex_digit_value = Hex_digit_value_from_cp(cursor[len].cp);
+		if (hex_digit_value == UINT32_MAX)
+			break;
+
+		// Fold hex digit into cp
+
+		cp_result <<= 4;
+		cp_result |= hex_digit_value;
+
+		// Keep track of how many digits we have read
+
+		++hex_digits_read;
+
+		// Advance to next digit
+
+		++len;
+	}
+
+	// If we did not read the correct number of digits after the 'u',
+	//  just treat this as a stray '\\'
+
+	if (hex_digits_read < num_hex_digits)
+		return {UINT32_MAX, 0};
+
+	// Sanity check that people are not trying to encode
+	//  something particularly weird with a UCN.
+	//  Convert any weird inputs to the error value UINT32_MAX
+
+	if (!Is_cp_valid_ucn(cp_result))
+	{
+		cp_result = UINT32_MAX;
+	}
+
+	// Return result
+
+	return {cp_result, len};
+}
+
+static uint32_t Hex_digit_value_from_cp(uint32_t cp)
+{
+	if (!Is_cp_ascii(cp))
+		return UINT32_MAX;
+
+	if (Is_cp_ascii_digit(cp))
+		return cp - '0';
+
+	if (cp < 'A')
+		return UINT32_MAX;
+
+	if (cp > 'f')
+		return UINT32_MAX;
+
+	if (cp <= 'F')
+		return cp - 'A' + 10;
+
+	if (cp >= 'a')
+		return cp - 'a' + 10;
+
+	return UINT32_MAX;
+}
+
+static bool Is_cp_valid_ucn(uint32_t cp)
+{
+	// Comment cribbed from clang
+	// C99 6.4.3p2: A universal character name shall not specify a character whose
+	//   short identifier is less than 00A0 other than 0024 ($), 0040 (@), or
+	//   0060 (`), nor one in the range D800 through DFFF inclusive.)
+
+	if (cp < 0xA0 && cp != 0x24 && cp != 0x40 && cp != 0x60)
+		return false;
+
+	if (!Is_cp_valid(cp))
+		return false;
+
+	return true;
 }
 
 static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor)
@@ -639,6 +805,19 @@ static int Len_rest_of_ppnum(cp_len_str_t * cursor)
 
 			++cursor;
 			continue;
+		}
+		else if (cp == '\\')
+		{
+			cp_len_t cp_len = Peek_hex_ucn(cursor);
+			if (cp_len.len && Does_cp_extend_id(cp_len.cp))
+			{
+				cursor += cp_len.len;
+				continue;
+			}
+			else
+			{
+				break;
+			}
 		}
 		else
 		{
