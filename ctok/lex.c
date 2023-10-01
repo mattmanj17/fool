@@ -584,14 +584,49 @@ static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor)
 
 	uint32_t cp_result = 0;
 	int hex_digits_read = 0;
+	bool delimited = false;
+	bool found_end_delimiter = false;
 
-	while (hex_digits_read < num_hex_digits)
+	while ((hex_digits_read < num_hex_digits) || delimited)
 	{
+		uint32_t cp = cursor[len].cp;
+
+		// Check for '{' (delimited ucns)
+
+		if (!delimited && hex_digits_read == 0 && cp == '{')
+		{
+			delimited = true;
+			++len;
+			continue;
+		}
+
+		// Check for '}' (delimited ucns)
+
+		if (delimited && cp == '}')
+		{
+			found_end_delimiter = true;
+			++len;
+			break;
+		}
+
 		// Check if valid hex digit
 
-		uint32_t hex_digit_value = Hex_digit_value_from_cp(cursor[len].cp);
+		uint32_t hex_digit_value = Hex_digit_value_from_cp(cp);
 		if (hex_digit_value == UINT32_MAX)
-			break;
+		{
+			if (delimited)
+			{
+				return {UINT32_MAX, 0};
+			}
+			else
+			{
+				break;
+			}
+		}
+
+		/*
+		if (cp_result & 0xF000'0000) return {UINT32_MAX, 0}; //from clang, do we need it?
+		*/
 
 		// Fold hex digit into cp
 
@@ -607,10 +642,19 @@ static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor)
 		++len;
 	}
 
-	// If we did not read the correct number of digits after the 'u',
-	//  just treat this as a stray '\\'
+	// No digits read?
 
-	if (hex_digits_read < num_hex_digits)
+	if (hex_digits_read == 0)
+		return {UINT32_MAX, 0};
+
+	// Delimited 'U' is not allowed (find somthing in clang to explain this?)
+
+	if (delimited && num_hex_digits == 8)
+		return {UINT32_MAX, 0};
+
+	// Read wrong number of digits?
+
+	if (!delimited && hex_digits_read != num_hex_digits)
 		return {UINT32_MAX, 0};
 
 	// Sanity check that people are not trying to encode
