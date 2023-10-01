@@ -22,9 +22,11 @@ static int Len_after_dot(cp_len_str_t * cursor);
 static bool May_cp_start_id(uint32_t cp);
 static int Len_rest_of_id(cp_len_str_t * cursor);
 static bool Does_cp_extend_id(uint32_t cp);
+static cp_len_t Peek_ucn(cp_len_str_t * cursor);
 static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor);
 static uint32_t Hex_digit_value_from_cp(uint32_t cp);
 static bool Is_cp_valid_ucn(uint32_t cp);
+static cp_len_t Peek_named_ucn(cp_len_str_t * cursor);
 static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor);
 static int Len_rest_of_ppnum(cp_len_str_t * cursor);
 
@@ -92,7 +94,7 @@ int Len_leading_token(cp_len_str_t * cursor, cp_len_str_t * terminator)
 	}
 	else if (cp =='\\')
 	{
-		cp_len_t cp_len = Peek_hex_ucn(cursor);
+		cp_len_t cp_len = Peek_ucn(cursor);
 		if (cp_len.len)
 		{
 			cursor += cp_len.len;
@@ -483,7 +485,7 @@ static int Len_rest_of_id(cp_len_str_t * cursor)
 
 		if (cp == '\\')
 		{
-			cp_len_t cp_len = Peek_hex_ucn(cursor);
+			cp_len_t cp_len = Peek_ucn(cursor);
 			if (cp_len.len && Does_cp_extend_id(cp_len.cp))
 			{
 				cursor += cp_len.len;
@@ -533,6 +535,15 @@ static bool Does_cp_extend_id(uint32_t cp)
 		return true;
 
 	return false;
+}
+
+static cp_len_t Peek_ucn(cp_len_str_t * cursor)
+{
+	cp_len_t cp_len = Peek_hex_ucn(cursor);
+	if (cp_len.len)
+		return cp_len;
+
+	return Peek_named_ucn(cursor);
 }
 
 static cp_len_t Peek_hex_ucn(cp_len_str_t * cursor)
@@ -653,6 +664,73 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 		return false;
 
 	return true;
+}
+
+static cp_len_t Peek_named_ucn(cp_len_str_t * cursor)
+{
+	int len = 0;
+
+	// Check for leading '\\'
+
+	if (cursor[len].cp != '\\')
+		return {UINT32_MAX, 0};
+
+	// Advance past '\\'
+
+	++len;
+
+	// Look for 'N' after '\\'
+
+	if (cursor[len].cp != 'N')
+		return {UINT32_MAX, 0};
+
+	// Advance past 'N'
+
+	++len;
+
+	// Look for '{'
+
+	if (cursor[len].cp != '{')
+		return {UINT32_MAX, 0};
+
+	// Advance
+
+	++len;
+
+	// Look for closing '}'
+
+	int len_name_start = len;
+	bool found_closing_brace = false;
+
+	while (uint32_t cp = cursor[len].cp)
+	{
+		++len;
+		if (cp == '}')
+		{
+			found_closing_brace = true;
+			break;
+		}
+
+		if (cp == '\n')
+			break;
+	}
+
+	// Check if we found '}'
+
+	if (!found_closing_brace)
+		return {UINT32_MAX, 0};
+
+	// Check if we actually got any chars between '{' and '}'
+
+	int len_name = len - len_name_start - 1;
+	if (!len_name)
+		return {UINT32_MAX, 0};
+
+	// Ok, we have \N{...}
+	//  For now, we just shrug and return it as an unknown codepoint.
+	//  Later on we are going to have to do all the name look up :/
+
+	return {UINT32_MAX, len};
 }
 
 static int Len_rest_of_operator(uint32_t cp_leading, cp_len_str_t * cursor)
@@ -808,7 +886,7 @@ static int Len_rest_of_ppnum(cp_len_str_t * cursor)
 		}
 		else if (cp == '\\')
 		{
-			cp_len_t cp_len = Peek_hex_ucn(cursor);
+			cp_len_t cp_len = Peek_ucn(cursor);
 			if (cp_len.len && Does_cp_extend_id(cp_len.cp))
 			{
 				cursor += cp_len.len;
