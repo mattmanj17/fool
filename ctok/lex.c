@@ -701,7 +701,12 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	//   short identifier is less than 00A0 other than 0024 ($), 0040 (@), or
 	//   0060 (`), nor one in the range D800 through DFFF inclusive.)
 
-	if (cp < 0xA0 && cp != 0x24 && cp != 0x40 && cp != 0x60)
+	// BUG 
+	// should be
+	//  if (cp < 0xA0 && cp != 0x24 && cp != 0x40 && cp != 0x60)
+	// but clang does somthing else :/
+
+	if (cp < 0xA0)
 		return false;
 
 	// BUG matthewd you would expect this to be if !Is_cp_valid,
