@@ -106,11 +106,9 @@ static cp_len_t Peek_escaped_line_breaks(lcp_span_t span)
 
 	if ((cursor + len_esc_eol) == span.lcp_mac)
 	{
-		// Returning a negative length here makes us drop the chars,
-		//  which is what we want. The CP field does not really matter at that point,
-		//  but setting it to the invalid value UINT32_MAX makes an amountof sense
+		// Treat trailing escaped eol as a '\0'
 
-		return {UINT32_MAX, -1};
+		return {'\0', len_esc_eol};
 	}
 	else
 	{
@@ -163,17 +161,7 @@ void Collapse(collapse_fn_t collapse_fn, lcp_span_t * span)
 
 		cp_len_t cp_len = collapse_fn({cursor_from, span->lcp_mac});
 
-		if (cp_len.len < 0)
-		{
-			// BUG this is a hack, should fix, see Peek_escaped_line_breaks
-
-			cursor_from->cp = '\0';
-			cursor_from->num_ch = 0;
-			span->lcp_mac = cursor_from;
-
-			break;
-		}
-		else if (cp_len.len > 0)
+		if (cp_len.len)
 		{
 			cursor_to->cp = cp_len.cp;
 			cursor_to->str = cursor_from->str;
