@@ -624,9 +624,10 @@ static cp_len_t Peek_hex_ucn(lcp_t * cursor)
 			}
 		}
 
-		/*
-		if (cp_result & 0xF000'0000) return {UINT32_MAX, 0}; //from clang, do we need it?
-		*/
+		// Bail out if we are about to overflow
+		
+		if (cp_result & 0xF000'0000) 
+			return {UINT32_MAX, 0};
 
 		// Fold hex digit into cp
 
@@ -647,7 +648,7 @@ static cp_len_t Peek_hex_ucn(lcp_t * cursor)
 	if (hex_digits_read == 0)
 		return {UINT32_MAX, 0};
 
-	// Delimited 'U' is not allowed (find somthing in clang to explain this?)
+	// Delimited 'U' is not allowed (find somthing in clang to explain this??)
 
 	if (delimited && num_hex_digits == 8)
 		return {UINT32_MAX, 0};
