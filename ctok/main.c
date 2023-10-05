@@ -212,10 +212,11 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 		int num_ch_tok = (int)(str_tok_mac - str_tok);
 
 		// Turbo hack to not print trailing escaped new lines
+		// (blarg trigrpahs)
 
 		bool is_trailing_line_escape =
 			(str_tok_mac == lcp_span.lcp_mac->str) &&
-			(str_tok[0] == '\\') &&
+			((str_tok[0] == '\\') || ((str_tok[0] == '?') && (str_tok[1] == '?') && (str_tok[2] == '/'))) &&
 			(lcp_span.lcp_mic[0].cp == '\0') &&
 			(num_lcp_tok == 1);
 

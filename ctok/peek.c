@@ -25,15 +25,24 @@ cp_len_t Peek_trigraph(lcp_span_t span)
 	uint32_t cp2 = cursor[2].cp;
 	switch (cp2)
 	{
-	case '<': return {'{', 3};
-	case '>': return {'}', 3};
-	case '(': return {'[', 3};
-	case ')': return {']', 3};
-	case '=': return {'#', 3};
-	case '/': return {'\\', 3};
-	case '\'': return {'^', 3};
-	case '!': return {'|', 3};
-	case '-': return {'~', 3};
+	case '<': 
+		return {'{', 3};
+	case '>': 
+		return {'}', 3};
+	case '(': 
+		return {'[', 3};
+	case ')': 
+		return {']', 3};
+	case '=': 
+		return {'#', 3};
+	case '/': 
+		return {'\\', 3};
+	case '\'': 
+		return {'^', 3};
+	case '!': 
+		return {'|', 3};
+	case '-': 
+		return {'~', 3};
 	}
 
 	return {UINT32_MAX, 0};

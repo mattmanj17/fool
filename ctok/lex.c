@@ -719,6 +719,28 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	return true;
 }
 
+typedef struct
+{
+	const char * name;
+	uint32_t cp;
+	uint32_t _padding;
+} bingo_t;
+
+bingo_t bingos[] =
+{
+	{"LATIN SMALL LETTER O WITH ACUTE", 0x000F3},
+	{"LATIN SMALL LETTER N WITH TILDE", 0x000F1},
+	{"LATIN SMALL LETTER E WITH ACUTE", 0x000E9},
+	{"LATIN SMALL LETTER A WITH ACUTE", 0x000E1},
+	{"LEFT-TO-RIGHT EMBEDDING", 0x0202A},
+	{"POP DIRECTIONAL ISOLATE", 0x02069},
+	{"RIGHT-TO-LEFT EMBEDDING", 0x0202B},
+	{"LATIN CAPITAL LETTER A WITH GRAVE", 0x000C0},
+	{"LATIN SMALL LETTER U WITH DIAERESIS", 0x000FC},
+	{"TANGSA LETTER GA", 0x16AA2},
+	{"SUBSCRIPT EQUALS SIGN", 0x0208C},
+};
+
 static cp_len_t Peek_named_ucn(lcp_t * cursor)
 {
 	int len = 0;
@@ -779,9 +801,32 @@ static cp_len_t Peek_named_ucn(lcp_t * cursor)
 	if (!len_name)
 		return {UINT32_MAX, 0};
 
-	// Ok, we have \N{...}
-	//  For now, we just shrug and return it as an unknown codepoint.
-	//  Later on we are going to have to do all the name look up :/
+	// blarg, check hard coded names
+
+	for (int iBingo = 0; iBingo < COUNT_OF(bingos); ++iBingo)
+	{
+		bingo_t bingo = bingos[iBingo];
+
+		int len_bingo_name = (int)strlen(bingo.name);
+		if (len_bingo_name != len_name)
+			continue;
+
+		bool matches = true;
+		for (int iCp = 0; iCp < len_name; ++iCp)
+		{
+			uint32_t cp_check = cursor[len_name_start + iCp].cp;
+			if (cp_check != (uint32_t)bingo.name[iCp])
+			{
+				matches = false;
+				break;
+			}
+		}
+
+		if (matches)
+			return {bingo.cp, len};
+	}
+
+	// huh?
 
 	return {UINT32_MAX, len};
 }
