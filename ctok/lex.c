@@ -10,33 +10,33 @@
 
 
 
-static lcp_t * Lcp_after_horizontal_whitespace(lcp_t * cursor);
-static lcp_t * Lcp_after_whitespace(lcp_t * cursor);
-static lcp_t * Lcp_after_leading_u(lcp_t * cursor, lcp_t * terminator);
-static lcp_t * Lcp_after_leading_L_or_U(lcp_t * cursor, lcp_t * terminator);
-static lcp_t * Lcp_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator);
-static lcp_t * Lcp_after_leading_fslash(lcp_t * cursor, lcp_t * terminator);
-static lcp_t * Lcp_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator);
-static lcp_t * Lcp_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator);
-static lcp_t * Lcp_after_leading_dot(lcp_t * cursor);
+static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor);
+static lex_t Lex_after_whitespace(lcp_t * cursor);
+static lex_t Lex_after_leading_u(lcp_t * cursor, lcp_t * terminator);
+static lex_t Lex_after_leading_L_or_U(lcp_t * cursor, lcp_t * terminator);
+static lex_t Lex_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator);
+static lex_t Lex_after_leading_fslash(lcp_t * cursor, lcp_t * terminator);
+static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator);
+static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator);
+static lex_t Lex_after_leading_dot(lcp_t * cursor);
 static bool May_cp_start_id(uint32_t cp);
-static lcp_t * Lcp_after_rest_of_id(lcp_t * cursor);
+static lex_t Lex_after_rest_of_id(lcp_t * cursor);
 static bool Does_cp_extend_id(uint32_t cp);
 static cp_len_t Peek_ucn(lcp_t * cursor);
 static cp_len_t Peek_hex_ucn(lcp_t * cursor);
 static uint32_t Hex_digit_value_from_cp(uint32_t cp);
 static bool Is_cp_valid_ucn(uint32_t cp);
 static cp_len_t Peek_named_ucn(lcp_t * cursor);
-static lcp_t * Lcp_after_rest_of_operator(uint32_t cp_leading, lcp_t * cursor);
-static lcp_t * Lcp_after_rest_of_ppnum(lcp_t * cursor);
+static lex_t Lex_after_rest_of_operator(uint32_t cp_leading, lcp_t * cursor);
+static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor);
 
-lcp_t * Lcp_after_leading_token(lcp_t * cursor, lcp_t * terminator)
+lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 {
 	// Special handling of horizontal WS to match clang ... :(
 
 	if (Is_ch_horizontal_white_space(cursor[0].str[0]))
 	{
-		return Lcp_after_horizontal_whitespace(cursor);
+		return Lex_after_horizontal_whitespace(cursor);
 	}
 
 	// Decide what to do
@@ -44,39 +44,39 @@ lcp_t * Lcp_after_leading_token(lcp_t * cursor, lcp_t * terminator)
 	uint32_t cp = cursor->cp;
 	if (cp == 'u')
 	{
-		return Lcp_after_leading_u(cursor + 1, terminator);
+		return Lex_after_leading_u(cursor + 1, terminator);
 	}
 	else if (cp == 'U' || cp == 'L')
 	{
-		return Lcp_after_leading_L_or_U(cursor + 1, terminator);
+		return Lex_after_leading_L_or_U(cursor + 1, terminator);
 	}
 	else if (cp == '"' || cp == '\'')
 	{
-		return Lcp_after_rest_of_str_lit(cp, cursor + 1, terminator);
+		return Lex_after_rest_of_str_lit(cp, cursor + 1, terminator);
 	}
 	else if (cp == '/')
 	{
-		return Lcp_after_leading_fslash(cursor + 1, terminator);
+		return Lex_after_leading_fslash(cursor + 1, terminator);
 	}
 	else if (cp == '.')
 	{
-		return Lcp_after_leading_dot(cursor + 1);
+		return Lex_after_leading_dot(cursor + 1);
 	}
 	else if (May_cp_start_id(cp))
 	{
-		return Lcp_after_rest_of_id(cursor + 1);
+		return Lex_after_rest_of_id(cursor + 1);
 	}
 	else if (Is_cp_ascii_digit(cp))
 	{
-		return Lcp_after_rest_of_ppnum(cursor + 1);
+		return Lex_after_rest_of_ppnum(cursor + 1);
 	}
 	else if (Is_cp_ascii_white_space(cp))
 	{
-		return Lcp_after_whitespace(cursor);
+		return Lex_after_whitespace(cursor);
 	}
 	else if (cp == '\0')
 	{
-		return Lcp_after_whitespace(cursor + 1);
+		return Lex_after_whitespace(cursor + 1);
 	}
 	else if (cp =='\\')
 	{
@@ -85,30 +85,30 @@ lcp_t * Lcp_after_leading_token(lcp_t * cursor, lcp_t * terminator)
 		{
 			if (May_cp_start_id(cp_len.cp))
 			{
-				return Lcp_after_rest_of_id(cursor + cp_len.len);
+				return Lex_after_rest_of_id(cursor + cp_len.len);
 			}
 			else
 			{
 				// Bogus UCN, return it as an unknown token
 
-				return cursor + cp_len.len;
+				return {cursor + cp_len.len};
 			}
 		}
 		else
 		{
 			// Stray backslash, return as unknown token
 
-			return cursor + 1;
+			return {cursor + 1};
 		}
 	}
 	else
 	{
 		// BUG fix this, one arg to Len_rest_of_operator
-		return Lcp_after_rest_of_operator(cp, cursor + 1);
+		return Lex_after_rest_of_operator(cp, cursor + 1);
 	}
 }
 
-static lcp_t * Lcp_after_horizontal_whitespace(lcp_t * cursor)
+static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor)
 {
 	while (true)
 	{
@@ -124,10 +124,10 @@ static lcp_t * Lcp_after_horizontal_whitespace(lcp_t * cursor)
 		++cursor;
 	}
 
-	return cursor;
+	return {cursor};
 }
 
-static lcp_t * Lcp_after_whitespace(lcp_t * cursor)
+static lex_t Lex_after_whitespace(lcp_t * cursor)
 {
 	while (true)
 	{
@@ -143,10 +143,10 @@ static lcp_t * Lcp_after_whitespace(lcp_t * cursor)
 		++cursor;
 	}
 
-	return cursor;
+	return {cursor};
 }
 
-static lcp_t * Lcp_after_leading_u(lcp_t * cursor, lcp_t * terminator)
+static lex_t Lex_after_leading_u(lcp_t * cursor, lcp_t * terminator)
 {
 	uint32_t cp = cursor->cp;
 
@@ -163,30 +163,30 @@ static lcp_t * Lcp_after_leading_u(lcp_t * cursor, lcp_t * terminator)
 		if (cp_quote == '"')
 		{
 			++cursor;
-			return Lcp_after_rest_of_str_lit('"', cursor, terminator);
+			return Lex_after_rest_of_str_lit('"', cursor, terminator);
 		}
 		else
 		{
-			return Lcp_after_rest_of_id(cursor);
+			return Lex_after_rest_of_id(cursor);
 		}
 	}
 	else
 	{
-		return Lcp_after_leading_L_or_U(cursor, terminator);
+		return Lex_after_leading_L_or_U(cursor, terminator);
 	}
 }
 
-static lcp_t * Lcp_after_leading_L_or_U(lcp_t * cursor, lcp_t * terminator)
+static lex_t Lex_after_leading_L_or_U(lcp_t * cursor, lcp_t * terminator)
 {
 	uint32_t cp = cursor->cp;
 	if (cp == '"' || cp == '\'')
 	{
 		++cursor;
-		return Lcp_after_rest_of_str_lit(cp, cursor, terminator);
+		return Lex_after_rest_of_str_lit(cp, cursor, terminator);
 	}
 	else
 	{
-		return Lcp_after_rest_of_id(cursor);
+		return Lex_after_rest_of_id(cursor);
 	}
 }
 
@@ -222,7 +222,7 @@ static void Do_escaped_line_break_hack(lcp_t * cursor)
 	}
 }
 
-static lcp_t * Lcp_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator)
+static lex_t Lex_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator)
 {
 	while (cursor < terminator)
 	{
@@ -261,27 +261,27 @@ static lcp_t * Lcp_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lc
 		}
 	}
 
-	return cursor;
+	return {cursor};
 }
 
-static lcp_t * Lcp_after_leading_fslash(lcp_t * cursor, lcp_t * terminator)
+static lex_t Lex_after_leading_fslash(lcp_t * cursor, lcp_t * terminator)
 {
 	uint32_t cp = cursor->cp;
 
 	switch (cp)
 	{
 	case '*':
-		return Lcp_after_rest_of_block_comment(cursor + 1, terminator);
+		return Lex_after_rest_of_block_comment(cursor + 1, terminator);
 	case '/':
-		return Lcp_after_rest_of_line_comment(cursor + 1, terminator);
+		return Lex_after_rest_of_line_comment(cursor + 1, terminator);
 	case '=':
-		return cursor + 1;
+		return {cursor + 1};
 	default:
-		return cursor;
+		return {cursor};
 	}
 }
 
-static lcp_t * Lcp_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
+static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
 {
 	while (cursor < terminator)
 	{
@@ -296,10 +296,10 @@ static lcp_t * Lcp_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminato
 		}
 	}
 
-	return cursor;
+	return {cursor};
 }
 
-static lcp_t * Lcp_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator)
+static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator)
 {
 	while (cursor < terminator)
 	{
@@ -314,26 +314,26 @@ static lcp_t * Lcp_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator
 		++cursor;
 	}
 
-	return cursor;
+	return {cursor};
 }
 
-static lcp_t * Lcp_after_leading_dot(lcp_t * cursor)
+static lex_t Lex_after_leading_dot(lcp_t * cursor)
 {
 	uint32_t cp = cursor->cp;
 
 	if (Is_cp_ascii_digit(cp))
 	{
 		++cursor;
-		return Lcp_after_rest_of_ppnum(cursor);
+		return Lex_after_rest_of_ppnum(cursor);
 	}
 	else if (cp == '.' && 
 			cursor[1].cp == '.')
 	{
-		return cursor + 2;
+		return {cursor + 2};
 	}
 	else
 	{
-		return cursor;
+		return {cursor};
 	}
 }
 
@@ -422,7 +422,7 @@ static bool May_cp_start_id(uint32_t cp)
 	return Is_cp_in_ranges(cp, c11_allowed, COUNT_OF(c11_allowed));
 }
 
-static lcp_t * Lcp_after_rest_of_id(lcp_t * cursor)
+static lex_t Lex_after_rest_of_id(lcp_t * cursor)
 {
 	while (true)
 	{
@@ -446,7 +446,7 @@ static lcp_t * Lcp_after_rest_of_id(lcp_t * cursor)
 		break;
 	}
 
-	return cursor;
+	return {cursor};
 }
 
 static bool Does_cp_extend_id(uint32_t cp)
@@ -781,7 +781,7 @@ static cp_len_t Peek_named_ucn(lcp_t * cursor)
 	return {UINT32_MAX, len};
 }
 
-static lcp_t * Lcp_after_rest_of_operator(uint32_t cp_leading, lcp_t * cursor)
+static lex_t Lex_after_rest_of_operator(uint32_t cp_leading, lcp_t * cursor)
 {
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
@@ -841,7 +841,7 @@ static lcp_t * Lcp_after_rest_of_operator(uint32_t cp_leading, lcp_t * cursor)
 		}
 	}
 
-	return cursor;
+	return {cursor};
 }
 
 
@@ -890,7 +890,7 @@ static lcp_t * Lcp_after_rest_of_operator(uint32_t cp_leading, lcp_t * cursor)
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 // 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-static lcp_t * Lcp_after_rest_of_ppnum(lcp_t * cursor)
+static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor)
 {
 	while (true)
 	{
@@ -949,5 +949,5 @@ static lcp_t * Lcp_after_rest_of_ppnum(lcp_t * cursor)
 		}
 	}
 
-	return cursor;
+	return {cursor};
 }

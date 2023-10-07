@@ -5,5 +5,9 @@
 #include "unicode.h"
 
 
+typedef struct
+{
+	lcp_t * lcp_max;
+} lex_t;
 
-lcp_t * Lcp_after_leading_token(lcp_t * cursor, lcp_t * terminator);
+lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator);

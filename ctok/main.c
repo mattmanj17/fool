@@ -203,7 +203,8 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 	{
 		// Peek
 
-		lcp_t * lcp_mic_next = Lcp_after_leading_token(lcp_span.lcp_mic, lcp_span.lcp_mac);
+		lex_t lex = Lex_leading_token(lcp_span.lcp_mic, lcp_span.lcp_mac);
+		lcp_t * lcp_mic_next = lex.lcp_max;
 
 		// Get token bounds
 
