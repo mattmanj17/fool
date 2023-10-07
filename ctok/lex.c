@@ -13,7 +13,6 @@
 static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor);
 static lex_t Lex_after_whitespace(lcp_t * cursor);
 static lex_t Lex_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator);
-static lex_t Lex_after_leading_fslash(lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_leading_dot(lcp_t * cursor);
@@ -56,11 +55,18 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 	}
 	else if (cp_0 == '"' || cp_0 == '\'')
 	{
-		return Lex_after_rest_of_str_lit(cp_0, cursor + 1, terminator);
+		++cursor;
+		return Lex_after_rest_of_str_lit(cp_0, cursor, terminator);
 	}
-	else if (cp_0 == '/')
+	else if (cp_0 == '/' && cp_1 == '*')
 	{
-		return Lex_after_leading_fslash(cursor + 1, terminator);
+		cursor += 2;
+		return Lex_after_rest_of_block_comment(cursor, terminator);
+	}
+	else if (cp_0 == '/' && cp_1 == '/')
+	{
+		cursor += 2;
+		return Lex_after_rest_of_line_comment(cursor, terminator);
 	}
 	else if (cp_0 == '.')
 	{
@@ -222,23 +228,6 @@ static lex_t Lex_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_
 	}
 
 	return {cursor};
-}
-
-static lex_t Lex_after_leading_fslash(lcp_t * cursor, lcp_t * terminator)
-{
-	uint32_t cp = cursor->cp;
-
-	switch (cp)
-	{
-	case '*':
-		return Lex_after_rest_of_block_comment(cursor + 1, terminator);
-	case '/':
-		return Lex_after_rest_of_line_comment(cursor + 1, terminator);
-	case '=':
-		return {cursor + 1};
-	default:
-		return {cursor};
-	}
 }
 
 static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
