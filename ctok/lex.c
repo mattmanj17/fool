@@ -23,7 +23,7 @@ static cp_len_t Peek_hex_ucn(lcp_t * cursor);
 static uint32_t Hex_digit_value_from_cp(uint32_t cp);
 static bool Is_cp_valid_ucn(uint32_t cp);
 static cp_len_t Peek_named_ucn(lcp_t * cursor);
-static lex_t Lex_after_rest_of_operator(uint32_t cp_leading, lcp_t * cursor);
+static lex_t Lex_punctuation(lcp_t * cursor);
 static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor);
 
 lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
@@ -113,8 +113,7 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 	}
 	else
 	{
-		// BUG fix this, one arg to Len_rest_of_operator
-		return Lex_after_rest_of_operator(cp_0, cursor + 1);
+		return Lex_punctuation(cursor);
 	}
 }
 
@@ -710,12 +709,12 @@ static cp_len_t Peek_named_ucn(lcp_t * cursor)
 	return {UINT32_MAX, len};
 }
 
-static lex_t Lex_after_rest_of_operator(uint32_t cp_leading, lcp_t * cursor)
+static lex_t Lex_punctuation(lcp_t * cursor)
 {
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
 
-	static const char * operators[] =
+	static const char * puctuations[] =
 	{
 		"%:%:",
 
@@ -729,48 +728,34 @@ static lex_t Lex_after_rest_of_operator(uint32_t cp_leading, lcp_t * cursor)
 		"-", "+", "*", "&", "#", "!", ">", "<", "%", ".", "/",
 	};
 
-	for (int i_operator = 0; i_operator < COUNT_OF(operators); ++i_operator)
+	for (int i_puctuation = 0; i_puctuation < COUNT_OF(puctuations); ++i_puctuation)
 	{
-		const char * str_operator = operators[i_operator];
-		size_t len = strlen(str_operator);
+		const char * str_puctuation = puctuations[i_puctuation];
+		size_t len = strlen(str_puctuation);
 
 		lcp_t * cursor_peek = cursor;
 		bool found_match = true;
 
 		for (size_t i_ch = 0; i_ch < len; ++i_ch)
 		{
-			char ch = str_operator[i_ch];
+			char ch = str_puctuation[i_ch];
 			uint32_t cp_ch = (uint32_t)ch;
 
-			if (i_ch == 0)
-			{
-				if (cp_leading != cp_ch)
-				{
-					found_match = false;
-					break;
-				}
-			}
-			else
-			{
-				uint32_t cp = cursor_peek->cp;
-				if (cp != cp_ch)
-				{
-					found_match = false;
-					break;
-				}
+			uint32_t cp = cursor_peek->cp;
+			++cursor_peek;
 
-				++cursor_peek;
+			if (cp != cp_ch)
+			{
+				found_match = false;
+				break;
 			}
 		}
 
 		if (found_match)
-		{
-			cursor = cursor_peek;
-			break;
-		}
+			return {cursor_peek};
 	}
 
-	return {cursor};
+	return {cursor + 1};
 }
 
 
