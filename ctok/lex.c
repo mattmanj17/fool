@@ -67,6 +67,13 @@ const char * str_from_tok(tok_t tok)
 		"hash",				// tok_hash
 		"comment",			// tok_comment
 		"hashhash",			// tok_hashhash
+		"pipeequal",		// tok_pipeequal
+		"lesslessequal",	// tok_lesslessequal
+		"ampequal",			// tok_ampequal
+		"greatergreaterequal", // tok_greatergreaterequal
+		"percentequal",		// tok_percentequal
+		"caretequal",		// tok_caretequal
+		"coloncolon",		// tok_coloncolon
 	};
 	CASSERT(COUNT_OF(s_mpTokStr) == tok_max);
 
@@ -265,6 +272,9 @@ static void Do_escaped_line_break_hack(lcp_t * cursor)
 
 static lex_t Lex_after_rest_of_str_lit(tok_t tok, uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator)
 {
+	int len = 0;
+	bool found_end = false;
+
 	while (cursor < terminator)
 	{
 		uint32_t cp = cursor->cp;
@@ -274,7 +284,6 @@ static lex_t Lex_after_rest_of_str_lit(tok_t tok, uint32_t cp_sential, lcp_t * c
 		if (cp == '\n')
 		{
 			Do_escaped_line_break_hack(cursor);
-
 			break;
 		}
 
@@ -285,7 +294,14 @@ static lex_t Lex_after_rest_of_str_lit(tok_t tok, uint32_t cp_sential, lcp_t * c
 		// Closing quote
 
 		if (cp == cp_sential)
+		{
+			found_end = true;
 			break;
+		}
+
+		// Found somthing other than open/close quote, in len
+
+		++len;
 
 		// Deal with back slash
 
@@ -302,11 +318,27 @@ static lex_t Lex_after_rest_of_str_lit(tok_t tok, uint32_t cp_sential, lcp_t * c
 		}
 	}
 
+	// Untermionated lits are invalid
+
+	if (!found_end)
+	{
+		tok = tok_unknown;
+	}
+
+	// zero length char lits are invalid
+
+	if (cp_sential == '\'' && len == 0)
+	{
+		tok = tok_unknown;
+	}
+
 	return {cursor, tok};
 }
 
 static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
 {
+	tok_t tok = tok_unknown;
+
 	while (cursor < terminator)
 	{
 		uint32_t cp0 = cursor->cp;
@@ -315,12 +347,13 @@ static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
 		uint32_t cp1 = cursor->cp;
 		if (cp0 == '*' && cp1 == '/')
 		{
+			tok = tok_comment;
 			++cursor;
 			break;
 		}
 	}
 
-	return {cursor, tok_comment};
+	return {cursor, tok};
 }
 
 static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator)
@@ -799,35 +832,35 @@ static lex_t Lex_punctuation(lcp_t * cursor)
 
 	static punctution_t puctuations[] =
 	{
-		{"%:%:", tok_unknown},
-		{">>=", tok_unknown}, 
-		{"<<=", tok_unknown}, 
+		{"%:%:", tok_hashhash},
+		{">>=", tok_greatergreaterequal},
+		{"<<=", tok_lesslessequal},
 		{"...", tok_ellipsis},
-		{"|=", tok_unknown}, 
+		{"|=", tok_pipeequal},
 		{"||", tok_pipepipe},
-		{"^=", tok_unknown}, 
+		{"^=", tok_caretequal},
 		{"==", tok_equalequal},
-		{"::", tok_unknown}, 
-		{":>", tok_unknown}, 
+		{"::", tok_coloncolon},
+		{":>", tok_r_square}, 
 		{"-=", tok_minusequal},
 		{"--", tok_minusminus},
 		{"->", tok_arrow},
 		{"+=", tok_plusequal},
 		{"++", tok_plusplus},
 		{"*=", tok_starequal},
-		{"&=", tok_unknown}, 
+		{"&=", tok_ampequal},
 		{"&&", tok_ampamp},
 		{"##", tok_hashhash},
 		{"!=", tok_exclaimequal},
 		{">=", tok_greaterequal},
 		{">>", tok_greatergreater},
 		{"<=", tok_lessequal},
-		{"<:", tok_unknown}, 
-		{"<%", tok_unknown}, 
+		{"<:", tok_l_square}, 
+		{"<%", tok_l_brace}, 
 		{"<<", tok_lessless},
-		{"%>", tok_unknown}, 
-		{"%=", tok_unknown},
-		{"%:", tok_unknown}, 
+		{"%>", tok_r_brace}, 
+		{"%=", tok_percentequal},
+		{"%:", tok_hash}, 
 		{"/=", tok_slashequal},
 		{"~", tok_tilde},
 		{"}", tok_r_brace},

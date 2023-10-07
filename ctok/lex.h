@@ -58,6 +58,13 @@ typedef enum
 	tok_hash,
 	tok_comment,
 	tok_hashhash,
+	tok_pipeequal,
+	tok_lesslessequal,
+	tok_ampequal,
+	tok_greatergreaterequal,
+	tok_percentequal,
+	tok_caretequal,
+	tok_coloncolon,
 
 	tok_max
 } tok_t;
