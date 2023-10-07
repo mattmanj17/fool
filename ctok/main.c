@@ -26,7 +26,7 @@ int wmain(int argc, wchar_t *argv[])
 	return 0;
 }
 
-static void Clean_and_print_ch(char ch)
+void Clean_and_print_ch(char ch)
 {
 	// NOTE we print ' ' as \x20 so that we can split output on spaces
 
@@ -83,25 +83,11 @@ static void Clean_and_print_ch(char ch)
 }
 
 void Print_token(
-	const char * str,
-	int len,
+	tok_t tok,
 	int line,
 	int col)
 {
-	/*
-	if (line == ... && col == ...)
-	{
-		volatile int x = 0;
-		x = 1;
-	}
-	*/
-
-	printf("\"");
-	for (int i = 0; i < len; ++i)
-	{
-		Clean_and_print_ch(str[i]);
-	}
-	printf("\"");
+	printf("%s", str_from_tok(tok));
 
 	printf(
 		" %d:%d\n",
@@ -226,8 +212,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 			// Print
 
 			Print_token(
-				str_tok,
-				num_ch_tok,
+				lex.tok,
 				line,
 				(int)(str_tok - line_start + 1));
 		}

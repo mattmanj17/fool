@@ -1,4 +1,5 @@
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -8,11 +9,78 @@
 #include "peek.h"
 #include "unicode.h"
 
+#define CASSERT(x) static_assert((x), #x)
+
+
+
+const char * str_from_tok(tok_t tok)
+{
+	static const char * s_mpTokStr[] =
+	{
+		"unknown",			// tok_unknown
+		"raw_identifier",	// tok_raw_identifier
+		"l_paren",			// tok_l_paren
+		"r_paren",			// tok_r_paren
+		"l_brace",			// tok_l_brace
+		"r_brace",			// tok_r_brace
+		"l_square",			// tok_l_square
+		"r_square",			// tok_r_square
+		"semi",				// tok_semi
+		"star",				// tok_star
+		"equal",			// tok_equal
+		"amp",				// tok_amp
+		"plusplus",			// tok_plusplus
+		"exclaimequal",		// tok_exclaimequal
+		"numeric_constant",	// tok_numeric_constant
+		"colon",			// tok_colon
+		"minus",			// tok_minus
+		"period",			// tok_period
+		"slash",			// tok_slash
+		"comma",			// tok_comma
+		"arrow",			// tok_arrow
+		"plus",				// tok_plus
+		"string_literal",	// tok_string_literal
+		"minusminus",		// tok_minusminus
+		"percent",			// tok_percent
+		"pipe",				// tok_pipe
+		"caret",			// tok_caret
+		"greater",			// tok_greater
+		"greaterequal",		// tok_greaterequal
+		"equalequal",		// tok_equalequal
+		"less",				// tok_less
+		"lessequal",		// tok_lesequal
+		"ampamp",			// tok_ampamp
+		"pipepipe",			// tok_pipepipe
+		"exclaim",			// tok_exclaim
+		"plusequal",		// tok_plusequal
+		"minusequal",		// tok_minusequal
+		"starequal",		// tok_starequal
+		"ellipsis",			// tok_ellipsis
+		"char_constant",	// tok_char_constant
+		"lessless",			// tok_lessless
+		"question",			// tok_question
+		"wide_char_constant", // tok_wide_char_constant
+		"tilde",			// tok_tilde
+		"greatergreater",	// tok_greatergreater
+		"slashequal",		// tok_slashequal
+		"wide_string_literal", // tok_wide_string_literal
+		"hash",				// tok_hash
+		"comment",			// tok_comment
+		"hashhash",			// tok_hashhash
+	};
+	CASSERT(COUNT_OF(s_mpTokStr) == tok_max);
+
+	assert(tok >= 0);
+	assert(tok < tok_max);
+
+	return s_mpTokStr[tok];
+}
+
 
 
 static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor);
 static lex_t Lex_after_whitespace(lcp_t * cursor);
-static lex_t Lex_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator);
+static lex_t Lex_after_rest_of_str_lit(tok_t tok, uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator);
 static bool May_cp_start_id(uint32_t cp);
@@ -44,18 +112,21 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 	if (cp_0 == 'u' && cp_1 == '8' && cp_2 == '"')
 	{
 		cursor += 3;
-		return Lex_after_rest_of_str_lit('"', cursor, terminator);
+		return Lex_after_rest_of_str_lit(tok_string_literal, '"', cursor, terminator);
 	}
 	else if ((cp_0 == 'u' || cp_0 == 'U' || cp_0 == 'L') &&
 			 (cp_1 == '"' || cp_1 == '\''))
 	{
 		cursor += 2;
-		return Lex_after_rest_of_str_lit(cp_1, cursor, terminator);
+
+		tok_t tok = (cp_1 == '"') ? tok_wide_string_literal : tok_wide_char_constant;
+		return Lex_after_rest_of_str_lit(tok, cp_1, cursor, terminator);
 	}
 	else if (cp_0 == '"' || cp_0 == '\'')
 	{
 		++cursor;
-		return Lex_after_rest_of_str_lit(cp_0, cursor, terminator);
+		tok_t tok = (cp_0 == '"') ? tok_string_literal : tok_char_constant;
+		return Lex_after_rest_of_str_lit(tok, cp_0, cursor, terminator);
 	}
 	else if (cp_0 == '/' && cp_1 == '*')
 	{
@@ -82,7 +153,12 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 	}
 	else if (Is_cp_ascii_white_space(cp_0))
 	{
-		return Lex_after_whitespace(cursor);
+		// this +1 is important, in case
+		//  cp_0 came after a line continuation,
+		//  because Lex_after_whitespace only skips 
+		//  physical whitespace (blek)
+
+		return Lex_after_whitespace(cursor + 1);
 	}
 	else if (cp_0 == '\0')
 	{
@@ -101,14 +177,14 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 			{
 				// Bogus UCN, return it as an unknown token
 
-				return {cursor + cp_len.len};
+				return {cursor + cp_len.len, tok_unknown};
 			}
 		}
 		else
 		{
 			// Stray backslash, return as unknown token
 
-			return {cursor + 1};
+			return {cursor + 1, tok_unknown};
 		}
 	}
 	else
@@ -133,7 +209,7 @@ static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor)
 		++cursor;
 	}
 
-	return {cursor};
+	return {cursor, tok_unknown};
 }
 
 static lex_t Lex_after_whitespace(lcp_t * cursor)
@@ -152,7 +228,7 @@ static lex_t Lex_after_whitespace(lcp_t * cursor)
 		++cursor;
 	}
 
-	return {cursor};
+	return {cursor, tok_unknown};
 }
 
 static void Do_escaped_line_break_hack(lcp_t * cursor)
@@ -187,7 +263,7 @@ static void Do_escaped_line_break_hack(lcp_t * cursor)
 	}
 }
 
-static lex_t Lex_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator)
+static lex_t Lex_after_rest_of_str_lit(tok_t tok, uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator)
 {
 	while (cursor < terminator)
 	{
@@ -226,7 +302,7 @@ static lex_t Lex_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_
 		}
 	}
 
-	return {cursor};
+	return {cursor, tok};
 }
 
 static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
@@ -244,7 +320,7 @@ static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
 		}
 	}
 
-	return {cursor};
+	return {cursor, tok_comment};
 }
 
 static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator)
@@ -262,7 +338,7 @@ static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator)
 		++cursor;
 	}
 
-	return {cursor};
+	return {cursor, tok_comment};
 }
 
 static bool May_cp_start_id(uint32_t cp)
@@ -374,7 +450,7 @@ static lex_t Lex_after_rest_of_id(lcp_t * cursor)
 		break;
 	}
 
-	return {cursor};
+	return {cursor, tok_raw_identifier};
 }
 
 static bool Does_cp_extend_id(uint32_t cp)
@@ -709,28 +785,81 @@ static cp_len_t Peek_named_ucn(lcp_t * cursor)
 	return {UINT32_MAX, len};
 }
 
+typedef struct
+{
+	const char * str;
+	tok_t tok;
+	int _padding;
+} punctution_t;
+
 static lex_t Lex_punctuation(lcp_t * cursor)
 {
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
 
-	static const char * puctuations[] =
+	static punctution_t puctuations[] =
 	{
-		"%:%:",
-
-		">>=", "<<=", "...",
-
-		"|=", "||", "^=", "==", "::", ":>", "-=", "--", "->", "+=", "++", "*=",
-		"&=", "&&", "##", "!=", ">=", ">>", "<=", "<:", "<%", "<<", "%>", "%=",
-		"%:", "/=",
-
-		"~", "}", "{", "]", "[", "?", ";", ",", ")", "(", "|", "^", "=", ":",
-		"-", "+", "*", "&", "#", "!", ">", "<", "%", ".", "/",
+		{"%:%:", tok_unknown},
+		{">>=", tok_unknown}, 
+		{"<<=", tok_unknown}, 
+		{"...", tok_ellipsis},
+		{"|=", tok_unknown}, 
+		{"||", tok_pipepipe},
+		{"^=", tok_unknown}, 
+		{"==", tok_equalequal},
+		{"::", tok_unknown}, 
+		{":>", tok_unknown}, 
+		{"-=", tok_minusequal},
+		{"--", tok_minusminus},
+		{"->", tok_arrow},
+		{"+=", tok_plusequal},
+		{"++", tok_plusplus},
+		{"*=", tok_starequal},
+		{"&=", tok_unknown}, 
+		{"&&", tok_ampamp},
+		{"##", tok_hashhash},
+		{"!=", tok_exclaimequal},
+		{">=", tok_greaterequal},
+		{">>", tok_greatergreater},
+		{"<=", tok_lessequal},
+		{"<:", tok_unknown}, 
+		{"<%", tok_unknown}, 
+		{"<<", tok_lessless},
+		{"%>", tok_unknown}, 
+		{"%=", tok_unknown},
+		{"%:", tok_unknown}, 
+		{"/=", tok_slashequal},
+		{"~", tok_tilde},
+		{"}", tok_r_brace},
+		{"{", tok_l_brace},
+		{"]", tok_r_square}, 
+		{"[", tok_l_square}, 
+		{"?", tok_question},
+		{";", tok_semi},
+		{",", tok_comma},
+		{")", tok_r_paren}, 
+		{"(", tok_l_paren}, 
+		{"|", tok_pipe},
+		{"^", tok_caret},
+		{"=", tok_equal}, 
+		{":", tok_colon},
+		{"-", tok_minus},
+		{"+", tok_plus},
+		{"*", tok_star}, 
+		{"&", tok_amp},
+		{"#", tok_hash},
+		{"!", tok_exclaim},
+		{">", tok_greater},
+		{"<", tok_less},
+		{"%", tok_percent},
+		{".", tok_period},
+		{"/", tok_slash},
 	};
 
 	for (int i_puctuation = 0; i_puctuation < COUNT_OF(puctuations); ++i_puctuation)
 	{
-		const char * str_puctuation = puctuations[i_puctuation];
+		punctution_t punctuation = puctuations[i_puctuation];
+		const char * str_puctuation = punctuation.str;
 		size_t len = strlen(str_puctuation);
 
 		lcp_t * cursor_peek = cursor;
@@ -752,10 +881,10 @@ static lex_t Lex_punctuation(lcp_t * cursor)
 		}
 
 		if (found_match)
-			return {cursor_peek};
+			return {cursor_peek, punctuation.tok};
 	}
 
-	return {cursor + 1};
+	return {cursor + 1, tok_unknown};
 }
 
 
@@ -863,5 +992,5 @@ static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor)
 		}
 	}
 
-	return {cursor};
+	return {cursor, tok_numeric_constant};
 }
