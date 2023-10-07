@@ -15,7 +15,6 @@ static lex_t Lex_after_whitespace(lcp_t * cursor);
 static lex_t Lex_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator);
-static lex_t Lex_after_leading_dot(lcp_t * cursor);
 static bool May_cp_start_id(uint32_t cp);
 static lex_t Lex_after_rest_of_id(lcp_t * cursor);
 static bool Does_cp_extend_id(uint32_t cp);
@@ -68,9 +67,10 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 		cursor += 2;
 		return Lex_after_rest_of_line_comment(cursor, terminator);
 	}
-	else if (cp_0 == '.')
+	else if (cp_0 == '.' && Is_cp_ascii_digit(cp_1))
 	{
-		return Lex_after_leading_dot(cursor + 1);
+		cursor += 2;
+		return Lex_after_rest_of_ppnum(cursor);
 	}
 	else if (May_cp_start_id(cp_0))
 	{
@@ -264,26 +264,6 @@ static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator)
 	}
 
 	return {cursor};
-}
-
-static lex_t Lex_after_leading_dot(lcp_t * cursor)
-{
-	uint32_t cp = cursor->cp;
-
-	if (Is_cp_ascii_digit(cp))
-	{
-		++cursor;
-		return Lex_after_rest_of_ppnum(cursor);
-	}
-	else if (cp == '.' && 
-			cursor[1].cp == '.')
-	{
-		return {cursor + 2};
-	}
-	else
-	{
-		return {cursor};
-	}
 }
 
 static bool May_cp_start_id(uint32_t cp)
