@@ -65,6 +65,11 @@ typedef enum
 	tok_percentequal,
 	tok_caretequal,
 	tok_coloncolon,
+	tok_utf16_string_literal,
+	tok_utf16_char_constant,
+	tok_utf32_string_literal,
+	tok_utf32_char_constant,
+	tok_utf8_string_literal,
 
 	tok_max
 } tok_t;

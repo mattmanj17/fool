@@ -74,6 +74,11 @@ const char * str_from_tok(tok_t tok)
 		"percentequal",		// tok_percentequal
 		"caretequal",		// tok_caretequal
 		"coloncolon",		// tok_coloncolon
+		"utf16_string_literal", // tok_utf16_string_literal
+		"utf16_char_constant", // tok_utf16_char_constant
+		"utf32_string_literal", // tok_utf32_string_literal
+		"utf32_char_constant",	// tok_utf32_char_constant
+		"utf8_string_literal", // tok_utf8_string_literal
 	};
 	CASSERT(COUNT_OF(s_mpTokStr) == tok_max);
 
@@ -119,14 +124,28 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 	if (cp_0 == 'u' && cp_1 == '8' && cp_2 == '"')
 	{
 		cursor += 3;
-		return Lex_after_rest_of_str_lit(tok_string_literal, '"', cursor, terminator);
+		return Lex_after_rest_of_str_lit(tok_utf8_string_literal, '"', cursor, terminator);
 	}
 	else if ((cp_0 == 'u' || cp_0 == 'U' || cp_0 == 'L') &&
 			 (cp_1 == '"' || cp_1 == '\''))
 	{
 		cursor += 2;
 
-		tok_t tok = (cp_1 == '"') ? tok_wide_string_literal : tok_wide_char_constant;
+		tok_t tok;
+		
+		switch (cp_0)
+		{
+		case 'u':
+			tok = (cp_1 == '"') ? tok_utf16_string_literal : tok_utf16_char_constant;
+			break;
+		case 'U':
+			tok = (cp_1 == '"') ? tok_utf32_string_literal : tok_utf32_char_constant;
+			break;
+		default: // 'L'
+			tok = (cp_1 == '"') ? tok_wide_string_literal : tok_wide_char_constant;
+			break;
+		}
+		
 		return Lex_after_rest_of_str_lit(tok, cp_1, cursor, terminator);
 	}
 	else if (cp_0 == '"' || cp_0 == '\'')
