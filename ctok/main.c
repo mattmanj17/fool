@@ -203,12 +203,12 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 	{
 		// Peek
 
-		int num_lcp_tok = Len_leading_token(lcp_span.lcp_mic, lcp_span.lcp_mac);
+		lcp_t * lcp_mic_next = Lcp_after_leading_token(lcp_span.lcp_mic, lcp_span.lcp_mac);
 
 		// Get token bounds
 
 		const char * str_tok = lcp_span.lcp_mic[0].str;
-		const char * str_tok_mac = lcp_span.lcp_mic[num_lcp_tok].str;
+		const char * str_tok_mac = lcp_mic_next->str;
 		int num_ch_tok = (int)(str_tok_mac - str_tok);
 
 		// Turbo hack to not print trailing escaped new lines
@@ -218,7 +218,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 			(str_tok_mac == lcp_span.lcp_mac->str) &&
 			((str_tok[0] == '\\') || ((str_tok[0] == '?') && (str_tok[1] == '?') && (str_tok[2] == '/'))) &&
 			(lcp_span.lcp_mic[0].cp == '\0') &&
-			(num_lcp_tok == 1);
+			((lcp_mic_next - lcp_span.lcp_mic) == 1);
 
 		if (!is_trailing_line_escape)
 		{
@@ -242,7 +242,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 
 		// Advance
 
-		lcp_span.lcp_mic += num_lcp_tok;
+		lcp_span.lcp_mic = lcp_mic_next;
 	}
 }
 
