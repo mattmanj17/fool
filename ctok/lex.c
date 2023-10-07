@@ -12,8 +12,6 @@
 
 static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor);
 static lex_t Lex_after_whitespace(lcp_t * cursor);
-static lex_t Lex_after_leading_u(lcp_t * cursor, lcp_t * terminator);
-static lex_t Lex_after_leading_L_or_U(lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_rest_of_str_lit(uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_leading_fslash(lcp_t * cursor, lcp_t * terminator);
 static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator);
@@ -41,44 +39,50 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 
 	// Decide what to do
 
-	uint32_t cp = cursor->cp;
-	if (cp == 'u')
+	uint32_t cp_0 = cursor[0].cp;
+	uint32_t cp_1 = (cp_0) ? cursor[1].cp : '\0';
+	uint32_t cp_2 = (cp_1) ? cursor[2].cp : '\0';
+
+	if (cp_0 == 'u' && cp_1 == '8' && cp_2 == '"')
 	{
-		return Lex_after_leading_u(cursor + 1, terminator);
+		cursor += 3;
+		return Lex_after_rest_of_str_lit('"', cursor, terminator);
 	}
-	else if (cp == 'U' || cp == 'L')
+	else if ((cp_0 == 'u' || cp_0 == 'U' || cp_0 == 'L') &&
+			 (cp_1 == '"' || cp_1 == '\''))
 	{
-		return Lex_after_leading_L_or_U(cursor + 1, terminator);
+		cursor += 2;
+		return Lex_after_rest_of_str_lit(cp_1, cursor, terminator);
 	}
-	else if (cp == '"' || cp == '\'')
+	else if (cp_0 == '"' || cp_0 == '\'')
 	{
-		return Lex_after_rest_of_str_lit(cp, cursor + 1, terminator);
+		return Lex_after_rest_of_str_lit(cp_0, cursor + 1, terminator);
 	}
-	else if (cp == '/')
+	else if (cp_0 == '/')
 	{
 		return Lex_after_leading_fslash(cursor + 1, terminator);
 	}
-	else if (cp == '.')
+	else if (cp_0 == '.')
 	{
 		return Lex_after_leading_dot(cursor + 1);
 	}
-	else if (May_cp_start_id(cp))
+	else if (May_cp_start_id(cp_0))
 	{
 		return Lex_after_rest_of_id(cursor + 1);
 	}
-	else if (Is_cp_ascii_digit(cp))
+	else if (Is_cp_ascii_digit(cp_0))
 	{
 		return Lex_after_rest_of_ppnum(cursor + 1);
 	}
-	else if (Is_cp_ascii_white_space(cp))
+	else if (Is_cp_ascii_white_space(cp_0))
 	{
 		return Lex_after_whitespace(cursor);
 	}
-	else if (cp == '\0')
+	else if (cp_0 == '\0')
 	{
 		return Lex_after_whitespace(cursor + 1);
 	}
-	else if (cp =='\\')
+	else if (cp_0 =='\\')
 	{
 		cp_len_t cp_len = Peek_ucn(cursor);
 		if (cp_len.len)
@@ -104,7 +108,7 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 	else
 	{
 		// BUG fix this, one arg to Len_rest_of_operator
-		return Lex_after_rest_of_operator(cp, cursor + 1);
+		return Lex_after_rest_of_operator(cp_0, cursor + 1);
 	}
 }
 
@@ -144,50 +148,6 @@ static lex_t Lex_after_whitespace(lcp_t * cursor)
 	}
 
 	return {cursor};
-}
-
-static lex_t Lex_after_leading_u(lcp_t * cursor, lcp_t * terminator)
-{
-	uint32_t cp = cursor->cp;
-
-	if (cp == '8')
-	{
-		++cursor;
-
-		// In c11 (ostensibly what we are targeting),
-		//  you can only have u8 before double quotes
-
-		// Bug commonize with Lex_after_L_or_U
-
-		uint32_t cp_quote = cursor->cp;
-		if (cp_quote == '"')
-		{
-			++cursor;
-			return Lex_after_rest_of_str_lit('"', cursor, terminator);
-		}
-		else
-		{
-			return Lex_after_rest_of_id(cursor);
-		}
-	}
-	else
-	{
-		return Lex_after_leading_L_or_U(cursor, terminator);
-	}
-}
-
-static lex_t Lex_after_leading_L_or_U(lcp_t * cursor, lcp_t * terminator)
-{
-	uint32_t cp = cursor->cp;
-	if (cp == '"' || cp == '\'')
-	{
-		++cursor;
-		return Lex_after_rest_of_str_lit(cp, cursor, terminator);
-	}
-	else
-	{
-		return Lex_after_rest_of_id(cursor);
-	}
 }
 
 static void Do_escaped_line_break_hack(lcp_t * cursor)
