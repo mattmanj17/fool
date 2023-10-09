@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "count_of.h"
 #include "lex.h"
 #include "file.h"
 #include "unicode.h"
@@ -82,6 +83,25 @@ static void Clean_and_print_ch(char ch)
 	}
 }
 
+static bool is_keyword(
+	const char * str,
+	int len)
+{
+	static const char * keywords[] =
+	{
+		"return",
+		"int",
+	};
+
+	for (int i_keyword = 0; i_keyword < COUNT_OF(keywords); ++i_keyword)
+	{
+		if (strncmp(keywords[i_keyword], str, (size_t)len) == 0)
+			return true;
+	}
+
+	return false;
+}
+
 static void Print_token(
 	tok_t tok,
 	const char * str,
@@ -89,13 +109,33 @@ static void Print_token(
 	int line,
 	int col)
 {
+	// skip whitespace
+
 	switch (tok)
 	{
 	case tok_whitespace:
 		return;
 	}
 
-	printf("%s", str_from_tok(tok));
+	// convert raw ids to keywords
+
+	if (tok == tok_raw_identifier)
+	{
+		if (is_keyword(str, len))
+		{
+			printf("%.*s", len, str);
+		}
+		else
+		{
+			printf("identifier");
+		}
+	}
+	else
+	{
+		printf("%s", str_from_tok(tok));
+	}
+
+	// token text
 
 	printf(" \"");
 	for (int i = 0; i < len; ++i)
@@ -103,6 +143,8 @@ static void Print_token(
 		Clean_and_print_ch(str[i]);
 	}
 	printf("\"");
+
+	// token loc
 
 	printf(
 		" Loc=<%d:%d>\n",
