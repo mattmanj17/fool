@@ -8,7 +8,6 @@
 
 typedef enum
 {
-	tok_unknown,
 	tok_raw_identifier,
 	tok_l_paren,
 	tok_r_paren,
@@ -70,6 +69,14 @@ typedef enum
 	tok_utf32_string_literal,
 	tok_utf32_char_constant,
 	tok_utf8_string_literal,
+
+	tok_bogus_ucn,
+	tok_stray_backslash,
+	tok_whitespace,
+	tok_unterminated_quote,
+	tok_zero_length_char_lit,
+	tok_unterminated_block_comment,
+	tok_unknown_byte,
 
 	tok_max
 } tok_t;

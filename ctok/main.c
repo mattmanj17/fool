@@ -89,6 +89,12 @@ static void Print_token(
 	int line,
 	int col)
 {
+	switch (tok)
+	{
+	case tok_whitespace:
+		return;
+	}
+
 	printf("%s", str_from_tok(tok));
 
 	printf(" \"");

@@ -17,68 +17,75 @@ const char * str_from_tok(tok_t tok)
 {
 	static const char * s_mpTokStr[] =
 	{
-		"unknown",			// tok_unknown
-		"raw_identifier",	// tok_raw_identifier
-		"l_paren",			// tok_l_paren
-		"r_paren",			// tok_r_paren
-		"l_brace",			// tok_l_brace
-		"r_brace",			// tok_r_brace
-		"l_square",			// tok_l_square
-		"r_square",			// tok_r_square
-		"semi",				// tok_semi
-		"star",				// tok_star
-		"equal",			// tok_equal
-		"amp",				// tok_amp
-		"plusplus",			// tok_plusplus
-		"exclaimequal",		// tok_exclaimequal
-		"numeric_constant",	// tok_numeric_constant
-		"colon",			// tok_colon
-		"minus",			// tok_minus
-		"period",			// tok_period
-		"slash",			// tok_slash
-		"comma",			// tok_comma
-		"arrow",			// tok_arrow
-		"plus",				// tok_plus
-		"string_literal",	// tok_string_literal
-		"minusminus",		// tok_minusminus
-		"percent",			// tok_percent
-		"pipe",				// tok_pipe
-		"caret",			// tok_caret
-		"greater",			// tok_greater
-		"greaterequal",		// tok_greaterequal
-		"equalequal",		// tok_equalequal
-		"less",				// tok_less
-		"lessequal",		// tok_lesequal
-		"ampamp",			// tok_ampamp
-		"pipepipe",			// tok_pipepipe
-		"exclaim",			// tok_exclaim
-		"plusequal",		// tok_plusequal
-		"minusequal",		// tok_minusequal
-		"starequal",		// tok_starequal
-		"ellipsis",			// tok_ellipsis
-		"char_constant",	// tok_char_constant
-		"lessless",			// tok_lessless
-		"question",			// tok_question
-		"wide_char_constant", // tok_wide_char_constant
-		"tilde",			// tok_tilde
-		"greatergreater",	// tok_greatergreater
-		"slashequal",		// tok_slashequal
-		"wide_string_literal", // tok_wide_string_literal
-		"hash",				// tok_hash
-		"comment",			// tok_comment
-		"hashhash",			// tok_hashhash
-		"pipeequal",		// tok_pipeequal
-		"lesslessequal",	// tok_lesslessequal
-		"ampequal",			// tok_ampequal
-		"greatergreaterequal", // tok_greatergreaterequal
-		"percentequal",		// tok_percentequal
-		"caretequal",		// tok_caretequal
-		"coloncolon",		// tok_coloncolon
-		"utf16_string_literal", // tok_utf16_string_literal
-		"utf16_char_constant", // tok_utf16_char_constant
-		"utf32_string_literal", // tok_utf32_string_literal
-		"utf32_char_constant",	// tok_utf32_char_constant
-		"utf8_string_literal", // tok_utf8_string_literal
+		"raw_identifier",				// tok_raw_identifier
+		"l_paren",						// tok_l_paren
+		"r_paren",						// tok_r_paren
+		"l_brace",						// tok_l_brace
+		"r_brace",						// tok_r_brace
+		"l_square",						// tok_l_square
+		"r_square",						// tok_r_square
+		"semi",							// tok_semi
+		"star",							// tok_star
+		"equal",						// tok_equal
+		"amp",							// tok_amp
+		"plusplus",						// tok_plusplus
+		"exclaimequal",					// tok_exclaimequal
+		"numeric_constant",				// tok_numeric_constant
+		"colon",						// tok_colon
+		"minus",						// tok_minus
+		"period",						// tok_period
+		"slash",						// tok_slash
+		"comma",						// tok_comma
+		"arrow",						// tok_arrow
+		"plus",							// tok_plus
+		"string_literal",				// tok_string_literal
+		"minusminus",					// tok_minusminus
+		"percent",						// tok_percent
+		"pipe",							// tok_pipe
+		"caret",						// tok_caret
+		"greater",						// tok_greater
+		"greaterequal",					// tok_greaterequal
+		"equalequal",					// tok_equalequal
+		"less",							// tok_less
+		"lessequal",					// tok_lesequal
+		"ampamp",						// tok_ampamp
+		"pipepipe",						// tok_pipepipe
+		"exclaim",						// tok_exclaim
+		"plusequal",					// tok_plusequal
+		"minusequal",					// tok_minusequal
+		"starequal",					// tok_starequal
+		"ellipsis",						// tok_ellipsis
+		"char_constant",				// tok_char_constant
+		"lessless",						// tok_lessless
+		"question",						// tok_question
+		"wide_char_constant",			// tok_wide_char_constant
+		"tilde",						// tok_tilde
+		"greatergreater",				// tok_greatergreater
+		"slashequal",					// tok_slashequal
+		"wide_string_literal",			// tok_wide_string_literal
+		"hash",							// tok_hash
+		"comment",						// tok_comment
+		"hashhash",						// tok_hashhash
+		"pipeequal",					// tok_pipeequal
+		"lesslessequal",				// tok_lesslessequal
+		"ampequal",						// tok_ampequal
+		"greatergreaterequal",			// tok_greatergreaterequal
+		"percentequal",					// tok_percentequal
+		"caretequal",					// tok_caretequal
+		"coloncolon",					// tok_coloncolon
+		"utf16_string_literal",			// tok_utf16_string_literal
+		"utf16_char_constant",			// tok_utf16_char_constant
+		"utf32_string_literal",			// tok_utf32_string_literal
+		"utf32_char_constant",			// tok_utf32_char_constant
+		"utf8_string_literal",			// tok_utf8_string_literal
+
+		"bogus_ucn",					// tok_bogus_ucn
+		"stray_backslash",				// tok_stray_backslash
+		"whitespace",					// tok_whitespace
+		"unterminated_quote",			// tok_unterminated_quote
+		"zero_length_char_lit",			// tok_zero_length_char_lit
+		"unterminated_block_comment",	// tok_unterminated_block_comment
+		"unknown_byte",					// tok_unknown_byte
 	};
 	CASSERT(COUNT_OF(s_mpTokStr) == tok_max);
 
@@ -203,14 +210,14 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 			{
 				// Bogus UCN, return it as an unknown token
 
-				return {cursor + cp_len.len, tok_unknown};
+				return {cursor + cp_len.len, tok_bogus_ucn};
 			}
 		}
 		else
 		{
 			// Stray backslash, return as unknown token
 
-			return {cursor + 1, tok_unknown};
+			return {cursor + 1, tok_stray_backslash};
 		}
 	}
 	else
@@ -235,7 +242,7 @@ static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor)
 		++cursor;
 	}
 
-	return {cursor, tok_unknown};
+	return {cursor, tok_whitespace};
 }
 
 static lex_t Lex_after_whitespace(lcp_t * cursor)
@@ -254,7 +261,7 @@ static lex_t Lex_after_whitespace(lcp_t * cursor)
 		++cursor;
 	}
 
-	return {cursor, tok_unknown};
+	return {cursor, tok_whitespace};
 }
 
 static void Do_escaped_line_break_hack(lcp_t * cursor)
@@ -337,18 +344,18 @@ static lex_t Lex_after_rest_of_str_lit(tok_t tok, uint32_t cp_sential, lcp_t * c
 		}
 	}
 
-	// Untermionated lits are invalid
+	// Unterminated lits are invalid
 
 	if (!found_end)
 	{
-		tok = tok_unknown;
+		tok = tok_unterminated_quote;
 	}
 
 	// zero length char lits are invalid
 
 	if (cp_sential == '\'' && len == 0)
 	{
-		tok = tok_unknown;
+		tok = tok_zero_length_char_lit;
 	}
 
 	return {cursor, tok};
@@ -356,7 +363,7 @@ static lex_t Lex_after_rest_of_str_lit(tok_t tok, uint32_t cp_sential, lcp_t * c
 
 static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
 {
-	tok_t tok = tok_unknown;
+	tok_t tok = tok_unterminated_block_comment;
 
 	while (cursor < terminator)
 	{
@@ -939,7 +946,7 @@ static lex_t Lex_punctuation(lcp_t * cursor)
 			return {cursor_peek, punctuation.tok};
 	}
 
-	return {cursor + 1, tok_unknown};
+	return {cursor + 1, tok_unknown_byte};
 }
 
 
