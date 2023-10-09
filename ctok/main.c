@@ -10,7 +10,7 @@
 
 
 
-void Try_print_tokens_in_file(const wchar_t * fpath);
+static void Try_print_tokens_in_file(const wchar_t * fpath);
 
 
 
@@ -26,7 +26,7 @@ int wmain(int argc, wchar_t *argv[])
 	return 0;
 }
 
-void Clean_and_print_ch(char ch)
+static void Clean_and_print_ch(char ch)
 {
 	// NOTE we print ' ' as \x20 so that we can split output on spaces
 
@@ -82,20 +82,29 @@ void Clean_and_print_ch(char ch)
 	}
 }
 
-void Print_token(
+static void Print_token(
 	tok_t tok,
+	const char * str,
+	int len,
 	int line,
 	int col)
 {
 	printf("%s", str_from_tok(tok));
 
+	printf(" \"");
+	for (int i = 0; i < len; ++i)
+	{
+		Clean_and_print_ch(str[i]);
+	}
+	printf("\"");
+
 	printf(
-		" %d:%d\n",
+		" Loc=<%d:%d>\n",
 		line,
 		col);
 }
 
-int Len_eol(const char * str)
+static int Len_eol(const char * str)
 {
 	char ch = str[0];
 
@@ -213,6 +222,8 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 
 			Print_token(
 				lex.tok,
+				str_tok,
+				num_ch_tok,
 				line,
 				(int)(str_tok - line_start + 1));
 		}
@@ -232,7 +243,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 	}
 }
 
-bool Starts_with_invalid_BOM(const bounded_c_str_t * bstr)
+static bool Starts_with_invalid_BOM(const bounded_c_str_t * bstr)
 {
 	typedef struct
 	{
@@ -289,7 +300,7 @@ bool Starts_with_invalid_BOM(const bounded_c_str_t * bstr)
 	return false;
 }
 
-void Try_print_tokens_in_file(const wchar_t * fpath)
+static void Try_print_tokens_in_file(const wchar_t * fpath)
 {
 	bounded_c_str_t bstr;
 	bool success = Try_read_file_at_path_to_buffer(fpath, &bstr);
