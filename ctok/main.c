@@ -109,14 +109,6 @@ static void Print_token(
 	int line,
 	int col)
 {
-	// skip whitespace
-
-	switch (tok)
-	{
-	case tok_whitespace:
-		return;
-	}
-
 	// convert raw ids to keywords
 
 	if (tok == tok_raw_identifier)
@@ -264,16 +256,28 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 			(lcp_span.lcp_mic[0].cp == '\0') &&
 			((lcp_mic_next - lcp_span.lcp_mic) == 1);
 
+		int col = (int)(str_tok - line_start + 1);
+
 		if (!is_trailing_line_escape)
 		{
-			// Print
+			if (lex.tok == tok_whitespace)
+			{
+				// scuffed eof handling...
 
-			Print_token(
-				lex.tok,
-				str_tok,
-				num_ch_tok,
-				line,
-				(int)(str_tok - line_start + 1));
+				if (str_tok_mac == lcp_span.lcp_mac->str)
+				{
+					printf("eof \"\" Loc=<%d:%d>\n", line, col);
+				}
+			}
+			else
+			{
+				Print_token(
+					lex.tok,
+					str_tok,
+					num_ch_tok,
+					line,
+					col);
+			}
 		}
 
 		// Handle eol
