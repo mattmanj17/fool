@@ -1,5 +1,5 @@
 
-
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -8,6 +8,8 @@
 #include "file.h"
 #include "unicode.h"
 #include "peek.h"
+
+#define CASSERT(x) static_assert((x), #x)
 
 
 
@@ -83,23 +85,168 @@ static void Clean_and_print_ch(char ch)
 	}
 }
 
-static bool is_keyword(
-	const char * str,
-	int len)
+typedef enum 
 {
+	keyword_return,
+	keyword_int,
+	keyword_if,
+	keyword_else,
+	keyword_while,
+	keyword_for,
+	keyword_do,
+	keyword_goto,
+	keyword_struct,
+	keyword_typedef,
+	keyword_char,
+	keyword_break,
+	keyword_continue,
+	keyword_sizeof,
+	keyword_void,
+	keyword_unsigned,
+	keyword__Bool,
+	keyword_short,
+	keyword_extern,
+	keyword_const,
+	keyword_long,
+	keyword_restrict,
+	keyword_double,
+	keyword_float,
+	keyword_union,
+	keyword_switch,
+	keyword_case,
+	keyword_default,
+	keyword_enum,
+	keyword_static,
+	keyword_signed,
+	keyword_volatile,
+	keyword_generic,
+	keyword_static_assert,
+
+	keyword__cdecl,
+	keyword__inline,
+	keyword__builtin_va_arg,
+	keyword__attribute__,
+
+	keyword_max,
+	keyword_min = 0,
+
+	keyword_nil = -1,
+} keyword_t;
+
+static const char * str_from_keyword(keyword_t keyword)
+{
+	/*
+		misc not hit
+
+		auto
+		inline
+		register
+
+		_Alignas
+		_Alignof
+		_Atomic
+		_Complex
+		_Imaginary
+		_Noreturn
+		_Thread_local
+	*/
+
 	static const char * keywords[] =
 	{
 		"return",
 		"int",
-	};
+		"if",
+		"else",
+		"while",
+		"for",
+		"do",
+		"goto",
+		"struct",
+		"typedef",
+		"char",
+		"break",
+		"continue",
+		"sizeof",
+		"void",
+		"unsigned",
+		"_Bool",
+		"short",
+		"extern",
+		"const",
+		"long",
+		"restrict",
+		"double",
+		"float",
+		"union",
+		"switch",
+		"case",
+		"default",
+		"enum",
+		"static",
+		"signed",
+		"volatile",
+		"_Generic",
+		"_Static_assert",
 
-	for (int i_keyword = 0; i_keyword < COUNT_OF(keywords); ++i_keyword)
+		"__cdecl",
+		"__inline",
+		"__builtin_va_arg",
+		"__attribute__",
+	};
+	CASSERT(COUNT_OF(keywords) == keyword_max);
+
+	assert(keyword >= keyword_min);
+	assert(keyword < keyword_max);
+
+	return keywords[keyword];
+}
+
+static keyword_t keyword_from_str(
+	const char * str,
+	int len)
+{
+	for (keyword_t keyword = keyword_min;
+		keyword < keyword_max;
+		keyword = (keyword_t)(keyword + 1))
 	{
-		if (strncmp(keywords[i_keyword], str, (size_t)len) == 0)
-			return true;
+		const char * str_kw = str_from_keyword(keyword);
+
+		if (strlen(str_kw) != (size_t)len)
+			continue;
+
+		if (strncmp(str_kw, str, (size_t)len) == 0)
+			return keyword;
 	}
 
-	return false;
+	return keyword_nil;
+}
+
+static const char * str_display_from_keyword(keyword_t keyword)
+{
+	// blek
+
+	if (keyword == keyword__inline)
+		return "inline";
+
+	if (keyword == keyword__attribute__)
+		return "__attribute";
+	
+	return str_from_keyword(keyword);
+}
+
+static void Print_id_kind(
+	const char * str,
+	int len)
+{
+	keyword_t keyword = keyword_from_str(str, len);
+	if (keyword != keyword_nil)
+	{
+		printf("%s", str_display_from_keyword(keyword));
+	}
+	else
+	{
+		printf("identifier");
+	}
 }
 
 static void Print_token(
@@ -113,14 +260,7 @@ static void Print_token(
 
 	if (tok == tok_raw_identifier)
 	{
-		if (is_keyword(str, len))
-		{
-			printf("%.*s", len, str);
-		}
-		else
-		{
-			printf("identifier");
-		}
+		Print_id_kind(str, len);
 	}
 	else
 	{
