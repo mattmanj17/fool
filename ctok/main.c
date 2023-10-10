@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <wchar.h>
 
 #include "count_of.h"
 #include "lex.h"
@@ -13,20 +14,36 @@
 
 
 
-static void Try_print_tokens_in_file(const wchar_t * fpath);
+static void Try_print_tokens_in_file(const wchar_t * fpath, bool raw);
 
 
 
 int wmain(int argc, wchar_t *argv[])
 {
-	if (argc != 2)
+	if (argc == 3)
+	{
+		if (wcscmp(argv[1], L"-raw") != 0)
+		{
+			printf("bad argumens, expected '-raw <file path>'\n");
+			return 1;
+		}
+		else
+		{
+			Try_print_tokens_in_file(argv[2], true);
+			return 0;
+		}
+	}
+
+	else if (argc != 2)
 	{
 		printf("wrong number of arguments, only expected a file path\n");
 		return 1;
 	}
-	
-	Try_print_tokens_in_file(argv[1]);
-	return 0;
+	else
+	{
+		Try_print_tokens_in_file(argv[1], false);
+		return 0;
+	}
 }
 
 static void Clean_and_print_ch(char ch)
@@ -254,17 +271,40 @@ static void Print_token(
 	const char * str,
 	int len,
 	int line,
-	int col)
+	int col,
+	bool raw)
 {
 	// convert raw ids to keywords
 
-	if (tok == tok_raw_identifier)
+	if (raw)
 	{
-		Print_id_kind(str, len);
+		switch (tok)
+		{
+		case tok_bogus_ucn:
+		case tok_stray_backslash:
+		case tok_whitespace:
+		case tok_unterminated_quote:
+		case tok_zero_length_char_lit:
+		case tok_unterminated_block_comment:
+		case tok_unknown_byte:
+			printf("unknown");
+			break;
+
+		default:
+			printf("%s", str_from_tok(tok));
+			break;
+		}
 	}
 	else
 	{
-		printf("%s", str_from_tok(tok));
+		if (tok == tok_raw_identifier)
+		{
+			Print_id_kind(str, len);
+		}
+		else
+		{
+			printf("%s", str_from_tok(tok));
+		}
 	}
 
 	// token text
@@ -342,7 +382,7 @@ static eol_info_t Inspect_span_for_eol(const char * mic, const char * mac)
 	return eol_info;
 }
 
-static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
+static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 {
 	const char * str_mic = bstr->cursor;
 	const char * str_mac = bstr->terminator;
@@ -400,7 +440,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 
 		if (!is_trailing_line_escape)
 		{
-			if (lex.tok == tok_whitespace)
+			if (!raw && lex.tok == tok_whitespace)
 			{
 				// scuffed eof handling...
 
@@ -416,7 +456,8 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr)
 					str_tok,
 					num_ch_tok,
 					line,
-					col);
+					col,
+					raw);
 			}
 		}
 
@@ -492,7 +533,7 @@ static bool Starts_with_invalid_BOM(const bounded_c_str_t * bstr)
 	return false;
 }
 
-static void Try_print_tokens_in_file(const wchar_t * fpath)
+static void Try_print_tokens_in_file(const wchar_t * fpath, bool raw)
 {
 	bounded_c_str_t bstr;
 	bool success = Try_read_file_at_path_to_buffer(fpath, &bstr);
@@ -513,5 +554,5 @@ static void Try_print_tokens_in_file(const wchar_t * fpath)
 
 	// Print tokens
 
-	Print_toks_in_ch_range(&bstr);
+	Print_toks_in_ch_range(&bstr, raw);
 }
