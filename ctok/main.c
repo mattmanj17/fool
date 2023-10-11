@@ -144,6 +144,12 @@ typedef enum
 	keyword__builtin_va_arg,
 	keyword__attribute__,
 
+	keyword__asm,
+	keyword__asm__,
+	keyword__volatile__,
+
+	keyword_auto,
+
 	keyword_max,
 	keyword_min = 0,
 
@@ -209,6 +215,12 @@ static const char * str_from_keyword(keyword_t keyword)
 		"__inline",
 		"__builtin_va_arg",
 		"__attribute__",
+
+		"__asm",
+		"__asm__",
+		"__volatile__",
+
+		"auto",
 	};
 	CASSERT(COUNT_OF(keywords) == keyword_max);
 
@@ -242,13 +254,24 @@ static const char * str_display_from_keyword(keyword_t keyword)
 {
 	// blek
 
-	if (keyword == keyword__inline)
+	switch (keyword)
+	{
+	case keyword__inline:
 		return "inline";
 
-	if (keyword == keyword__attribute__)
+	case keyword__attribute__:
 		return "__attribute";
-	
-	return str_from_keyword(keyword);
+
+	case keyword__asm:
+	case keyword__asm__:
+		return "asm";
+
+	case keyword__volatile__:
+		return "volatile";
+
+	default:
+		return str_from_keyword(keyword);
+	}	
 }
 
 static void Print_id_kind(
@@ -264,64 +287,6 @@ static void Print_id_kind(
 	{
 		printf("identifier");
 	}
-}
-
-static void Print_token(
-	tok_t tok,
-	const char * str,
-	int len,
-	int line,
-	int col,
-	bool raw)
-{
-	// convert raw ids to keywords
-
-	if (raw)
-	{
-		switch (tok)
-		{
-		case tok_bogus_ucn:
-		case tok_stray_backslash:
-		case tok_whitespace:
-		case tok_unterminated_quote:
-		case tok_zero_length_char_lit:
-		case tok_unterminated_block_comment:
-		case tok_unknown_byte:
-			printf("unknown");
-			break;
-
-		default:
-			printf("%s", str_from_tok(tok));
-			break;
-		}
-	}
-	else
-	{
-		if (tok == tok_raw_identifier)
-		{
-			Print_id_kind(str, len);
-		}
-		else
-		{
-			printf("%s", str_from_tok(tok));
-		}
-	}
-
-	// token text
-
-	printf(" \"");
-	for (int i = 0; i < len; ++i)
-	{
-		Clean_and_print_ch(str[i]);
-	}
-	printf("\"");
-
-	// token loc
-
-	printf(
-		" Loc=<%d:%d>\n",
-		line,
-		col);
 }
 
 static int Len_eol(const char * str)
@@ -382,6 +347,130 @@ static eol_info_t Inspect_span_for_eol(const char * mic, const char * mac)
 	return eol_info;
 }
 
+static void Print_token(
+	tok_t tok,
+	const char * str_tok,
+	int num_ch_tok,
+	int line,
+	const char * line_start)
+{
+	// Skip certain tokens
+
+	switch (tok)
+	{
+	case tok_bogus_ucn:
+	case tok_unterminated_quote:
+	case tok_zero_length_char_lit:
+	case tok_unterminated_block_comment:
+	case tok_whitespace:
+	case tok_comment:
+		return;
+	}
+
+	// token kind
+
+	if (tok == tok_raw_identifier)
+	{
+		Print_id_kind(str_tok, num_ch_tok);
+	}
+	else if (tok == tok_unknown_byte || tok == tok_stray_backslash)
+	{
+		printf("unknown");
+	}
+	else
+	{
+		printf("%s", str_from_tok(tok));
+	}
+
+	// token text
+
+	printf(" \"");
+	for (int i = 0; i < num_ch_tok; ++i)
+	{
+		Clean_and_print_ch(str_tok[i]);
+	}
+	printf("\"");
+
+	// token loc
+
+	int col = (int)(str_tok - line_start + 1);
+
+	printf(
+		" Loc=<%d:%d>\n",
+		line,
+		col);
+}
+
+static void Print_token_raw(
+	tok_t tok,
+	const char * str_tok,
+	int num_ch_tok,
+	int line,
+	const char * line_start)
+{
+	// Token Kind
+
+	switch (tok)
+	{
+	case tok_bogus_ucn:
+	case tok_stray_backslash:
+	case tok_whitespace:
+	case tok_unterminated_quote:
+	case tok_zero_length_char_lit:
+	case tok_unterminated_block_comment:
+	case tok_unknown_byte:
+		printf("unknown");
+		break;
+
+	default:
+		printf("%s", str_from_tok(tok));
+		break;
+	}
+
+	// token text
+
+	printf(" \"");
+	for (int i = 0; i < num_ch_tok; ++i)
+	{
+		Clean_and_print_ch(str_tok[i]);
+	}
+	printf("\"");
+
+	// token loc
+
+	int col = (int)(str_tok - line_start + 1);
+
+	printf(
+		" Loc=<%d:%d>\n",
+		line,
+		col);
+}
+
+// clang goo...
+// If the file ends with a newline, form the EOF token on the newline itself,
+// rather than "on the line following it", which doesn't exist.  This makes
+// diagnostics relating to the end of file include the last line that the user
+// actually typed, which is better.
+static const char * eof_pos(const char * mic, const char * mac)
+{
+	if (mac != mic &&
+		(mac[-1] == '\n' || mac[-1] == '\r'))
+	{
+		--mac;
+
+		// Handle \n\r and \r\n:
+
+		if (mac != mic &&
+			(mac[-1] == '\n' || mac[-1] == '\r') &&
+			mac[-1] != mac[0])
+		{
+			--mac;
+		}
+	}
+
+	return mac;
+}
+
 static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 {
 	const char * str_mic = bstr->cursor;
@@ -414,65 +503,86 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 
 	// Lex!
 
-	while (lcp_span.lcp_mic < lcp_span.lcp_mac)
+	while (true)
 	{
 		// Peek
 
 		lex_t lex = Lex_leading_token(lcp_span.lcp_mic, lcp_span.lcp_mac);
-		lcp_t * lcp_mic_next = lex.lcp_max;
 
-		// Get token bounds
+		lcp_t * lcp_mic_next = lex.lcp_max;
 
 		const char * str_tok = lcp_span.lcp_mic[0].str;
 		const char * str_tok_mac = lcp_mic_next->str;
 		int num_ch_tok = (int)(str_tok_mac - str_tok);
+		bool is_last_tok = (str_tok_mac == lcp_span.lcp_mac->str);
 
-		// Turbo hack to not print trailing escaped new lines
-		// (blarg trigrpahs)
+		// print token
 
-		bool is_trailing_line_escape =
-			(str_tok_mac == lcp_span.lcp_mac->str) &&
-			((str_tok[0] == '\\') || ((str_tok[0] == '?') && (str_tok[1] == '?') && (str_tok[2] == '/'))) &&
-			(lcp_span.lcp_mic[0].cp == '\0') &&
-			((lcp_mic_next - lcp_span.lcp_mic) == 1);
-
-		int col = (int)(str_tok - line_start + 1);
-
-		if (!is_trailing_line_escape)
+		if (raw)
 		{
-			if (!raw && lex.tok == tok_whitespace)
-			{
-				// scuffed eof handling...
+			// Turbo hack to not print trailing escaped new lines
 
-				if (str_tok_mac == lcp_span.lcp_mac->str)
-				{
-					printf("eof \"\" Loc=<%d:%d>\n", line, col);
-				}
-			}
-			else
+			bool is_trailing_line_escape =
+				is_last_tok &&
+				((str_tok[0] == '\\') || ((str_tok[0] == '?') && (str_tok[1] == '?') && (str_tok[2] == '/'))) &&
+				(lcp_span.lcp_mic[0].cp == '\0');
+
+			if (!is_trailing_line_escape)
 			{
-				Print_token(
+				Print_token_raw(
 					lex.tok,
 					str_tok,
 					num_ch_tok,
 					line,
-					col,
-					raw);
+					line_start);
 			}
 		}
-
-		// Handle eol
-
-		eol_info_t eol_info = Inspect_span_for_eol(str_tok, str_tok + num_ch_tok);
-		if (eol_info.num_eol)
+		else
 		{
-			line += eol_info.num_eol;
-			line_start = str_tok + eol_info.offset_to_new_line_start;
+			Print_token(
+				lex.tok,
+				str_tok,
+				num_ch_tok,
+				line,
+				line_start);
 		}
 
-		// Advance
+		// Cache stuff
 
-		lcp_span.lcp_mic = lcp_mic_next;
+		if (is_last_tok)
+		{
+			if (!raw)
+			{
+				const char * end_pos = eof_pos(str_tok, str_tok_mac);
+
+				eol_info_t eol_info = Inspect_span_for_eol(str_tok, end_pos);
+				if (eol_info.num_eol)
+				{
+					line += eol_info.num_eol;
+					line_start = str_tok + eol_info.offset_to_new_line_start;
+				}
+
+				int col = (int)(end_pos - line_start + 1);
+				printf("eof \"\" Loc=<%d:%d>\n", line, col);
+			}
+
+			break;
+		}
+		else
+		{
+			// Handle eol
+
+			eol_info_t eol_info = Inspect_span_for_eol(str_tok, str_tok + num_ch_tok);
+			if (eol_info.num_eol)
+			{
+				line += eol_info.num_eol;
+				line_start = str_tok + eol_info.offset_to_new_line_start;
+			}
+
+			// Advance
+
+			lcp_span.lcp_mic = lcp_mic_next;
+		}
 	}
 }
 
