@@ -497,9 +497,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 
 	// Munch bytes to a cp_span
 
-	lcp_span_t lcp_span;
-	Decode_utf8_to_lcp_span(str_mic, str_mac, &lcp_span);
-	Collapse_lcp_span(&lcp_span);
+	lcp_span_t lcp_span = Decode_logical_code_points(str_mic, str_mac);
 
 	// Lex!
 

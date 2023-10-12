@@ -4,6 +4,7 @@
 
 #include "peek.h"
 
+#include "alloc.h"
 #include "unicode.h"
 
 
@@ -203,10 +204,57 @@ void Collapse(collapse_fn_t collapse_fn, lcp_span_t * span)
 }
 
 
+static void Decode_utf8_to_lcp_span(
+	const char * mic,
+	const char * mac,
+	lcp_span_t * lcp_span_out)
+{
+	// In the worst case, we will have a codepoint for every byte
+	//  in the original span, so allocate enough spae for that.
+	//  Note that we include room for a trailing '\0' codepoint
 
-// Exposed function
+	int num_byte = (int)(mac - mic);
+	int num_offset_alloc = num_byte + 1;
 
-void Collapse_lcp_span(lcp_span_t * lcp_span)
+	lcp_span_out->lcp_mic = (lcp_t *)Allocate((int)sizeof(lcp_t) * num_offset_alloc);
+
+	// Chew through the byte span with Try_decode_utf8
+
+	int num_cp = 0;
+	while (mic < mac)
+	{
+		cp_len_t cp_len;
+		if (Try_decode_utf8((const uint8_t *)mic, (const uint8_t *)mac, &cp_len))
+		{
+			lcp_span_out->lcp_mic[num_cp].cp = cp_len.cp;
+			lcp_span_out->lcp_mic[num_cp].num_ch = cp_len.len;
+			lcp_span_out->lcp_mic[num_cp].str = mic;
+			mic += cp_len.len;
+		}
+		else
+		{
+			lcp_span_out->lcp_mic[num_cp].cp = UINT32_MAX;
+			lcp_span_out->lcp_mic[num_cp].num_ch = 1;
+			lcp_span_out->lcp_mic[num_cp].str = mic;
+			++mic;
+		}
+
+		++num_cp;
+	}
+	assert(mic == mac);
+
+	// Append a final '\0'
+
+	lcp_span_out->lcp_mic[num_cp].cp = '\0';
+	lcp_span_out->lcp_mic[num_cp].num_ch = 0;
+	lcp_span_out->lcp_mic[num_cp].str = mic;
+
+	// Set lcp_mac
+
+	lcp_span_out->lcp_mac = lcp_span_out->lcp_mic + num_cp;
+}
+
+static void Collapse_lcp_span(lcp_span_t * lcp_span)
 {
 	// BUG ostensibly the standard says Collapse(Peek_line_break)
 	//  should happen first, but it has to happen
@@ -216,4 +264,12 @@ void Collapse_lcp_span(lcp_span_t * lcp_span)
 	Collapse(Peek_trigraph, lcp_span);
 	Collapse(Peek_escaped_line_breaks, lcp_span);
 	Collapse(Peek_line_break, lcp_span);
+}
+
+lcp_span_t Decode_logical_code_points(const char * mic, const char * mac)
+{
+	lcp_span_t span;
+	Decode_utf8_to_lcp_span(mic, mac, &span);
+	Collapse_lcp_span(&span);
+	return span;
 }
