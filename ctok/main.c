@@ -348,7 +348,7 @@ static eol_info_t Inspect_span_for_eol(const char * mic, const char * mac)
 }
 
 static void Print_token(
-	tok_t tok,
+	token_kind_t tokk,
 	const char * str_tok,
 	int num_ch_tok,
 	int line,
@@ -356,30 +356,30 @@ static void Print_token(
 {
 	// Skip certain tokens
 
-	switch (tok)
+	switch (tokk)
 	{
-	case tok_bogus_ucn:
-	case tok_unterminated_quote:
-	case tok_zero_length_char_lit:
-	case tok_unterminated_block_comment:
-	case tok_whitespace:
-	case tok_comment:
+	case tokk_bogus_ucn:
+	case tokk_unterminated_quote:
+	case tokk_zero_length_char_lit:
+	case tokk_unterminated_block_comment:
+	case tokk_whitespace:
+	case tokk_comment:
 		return;
 	}
 
 	// token kind
 
-	if (tok == tok_raw_identifier)
+	if (tokk == tokk_raw_identifier)
 	{
 		Print_id_kind(str_tok, num_ch_tok);
 	}
-	else if (tok == tok_unknown_byte || tok == tok_stray_backslash)
+	else if (tokk == tokk_unknown_byte || tokk == tokk_stray_backslash)
 	{
 		printf("unknown");
 	}
 	else
 	{
-		printf("%s", str_from_tok(tok));
+		printf("%s", str_from_tokk(tokk));
 	}
 
 	// token text
@@ -402,7 +402,7 @@ static void Print_token(
 }
 
 static void Print_token_raw(
-	tok_t tok,
+	token_kind_t tokk,
 	const char * str_tok,
 	int num_ch_tok,
 	int line,
@@ -410,20 +410,20 @@ static void Print_token_raw(
 {
 	// Token Kind
 
-	switch (tok)
+	switch (tokk)
 	{
-	case tok_bogus_ucn:
-	case tok_stray_backslash:
-	case tok_whitespace:
-	case tok_unterminated_quote:
-	case tok_zero_length_char_lit:
-	case tok_unterminated_block_comment:
-	case tok_unknown_byte:
+	case tokk_bogus_ucn:
+	case tokk_stray_backslash:
+	case tokk_whitespace:
+	case tokk_unterminated_quote:
+	case tokk_zero_length_char_lit:
+	case tokk_unterminated_block_comment:
+	case tokk_unknown_byte:
 		printf("unknown");
 		break;
 
 	default:
-		printf("%s", str_from_tok(tok));
+		printf("%s", str_from_tokk(tokk));
 		break;
 	}
 
@@ -530,7 +530,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 			if (!is_trailing_line_escape)
 			{
 				Print_token_raw(
-					lex.tok,
+					lex.tokk,
 					str_tok,
 					num_ch_tok,
 					line,
@@ -540,7 +540,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 		else
 		{
 			Print_token(
-				lex.tok,
+				lex.tokk,
 				str_tok,
 				num_ch_tok,
 				line,
