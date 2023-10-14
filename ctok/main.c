@@ -693,18 +693,38 @@ static bool FPeekCarriageReturn(
 	return false;
 }
 
+typedef enum
+{
+	COLLAPSEK_Trigraph,
+	COLLAPSEK_EscapedLineBreaks,
+	COLLAPSEK_CarriageReturn,
+} COLLAPSEK;
 
+static bool FPeekCollapse(
+	COLLAPSEK collapsek,
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
+	uint32_t * pU32Peek,
+	lcp_t ** ppLcpEndPeek)
+{
+	switch (collapsek)
+	{
+	case COLLAPSEK_Trigraph:
+		return FPeekTrigraph(pLcpBegin, pLcpEnd, pU32Peek, ppLcpEndPeek);
 
-// Generic driver function to run a collapse function over a span
+	case COLLAPSEK_EscapedLineBreaks:
+		return FPeekEscapedLineBreaks(pLcpBegin, pLcpEnd, pU32Peek, ppLcpEndPeek);
 
-typedef bool (*peek_fn_t)(//!!!FIXME_typedef_audit
-	lcp_t * pLcpBegin, 
-	lcp_t * pLcpEnd, 
-	uint32_t * pU32Peek, 
-	lcp_t ** ppLcpEndPeek);
+	case COLLAPSEK_CarriageReturn:
+		return FPeekCarriageReturn(pLcpBegin, pLcpEnd, pU32Peek, ppLcpEndPeek);
+
+	default:
+		return false;
+	}
+}
 
 static void Collapse(
-	peek_fn_t FPeek, 
+	COLLAPSEK collapsek,
 	lcp_t * pLcpBegin, 
 	lcp_t ** ppLcpEnd)
 {
@@ -717,7 +737,14 @@ static void Collapse(
 	{
 		uint32_t u32Peek;
 		lcp_t * pLcpEndPeek;
-		bool fPeek = FPeek(pLcpFrom, pLcpEnd, &u32Peek, &pLcpEndPeek);
+		
+		bool fPeek = FPeekCollapse(
+						collapsek, 
+						pLcpBegin, 
+						pLcpEnd, 
+						&u32Peek, 
+						&pLcpEndPeek);
+
 		if (!fPeek)
 		{
 			u32Peek = pLcpFrom->cp;
@@ -804,14 +831,14 @@ static bool FTryDecodeUtf8ToLogicalCharacters(
 
 static void Collapse_lcp_span(lcp_t * pLcpBegin, lcp_t ** ppLcpEnd)
 {
-	// BUG ostensibly the standard says Collapse(FPeekCarriageReturn)
+	// BUG ostensibly the standard says COLLAPSEK_CarriageReturn
 	//  should happen first, but it has to happen
-	//  after Collapse(FPeekEscapedLineBreaks) because of a hack
+	//  after COLLAPSEK_EscapedLineBreaks because of a hack
 	//  we do there to match clang
 
-	Collapse(FPeekTrigraph, pLcpBegin, ppLcpEnd);
-	Collapse(FPeekEscapedLineBreaks, pLcpBegin, ppLcpEnd);
-	Collapse(FPeekCarriageReturn, pLcpBegin, ppLcpEnd);
+	Collapse(COLLAPSEK_Trigraph, pLcpBegin, ppLcpEnd);
+	Collapse(COLLAPSEK_EscapedLineBreaks, pLcpBegin, ppLcpEnd);
+	Collapse(COLLAPSEK_CarriageReturn, pLcpBegin, ppLcpEnd);
 }
 
 static bool FTryDecodeLogicalCodePoints(
