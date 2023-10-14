@@ -728,47 +728,44 @@ static void Collapse(
 	lcp_t * pLcpBegin, 
 	lcp_t ** ppLcpEnd)
 {
-	lcp_t * pLcpFrom = pLcpBegin;
-	lcp_t * pLcpTo = pLcpBegin;
-
 	lcp_t * pLcpEnd = *ppLcpEnd;
+	lcp_t * pLcpDest = pLcpBegin;
 
-	while (pLcpFrom < pLcpEnd)
+	while (pLcpBegin < pLcpEnd)
 	{
 		uint32_t u32Peek;
 		lcp_t * pLcpEndPeek;
-		
 		bool fPeek = FPeekCollapse(
 						collapsek, 
-						pLcpBegin, 
+						pLcpBegin,
 						pLcpEnd, 
 						&u32Peek, 
 						&pLcpEndPeek);
 
 		if (!fPeek)
 		{
-			u32Peek = pLcpFrom->cp;
-			pLcpEndPeek = pLcpFrom + 1;
+			u32Peek = pLcpBegin->cp;
+			pLcpEndPeek = pLcpBegin + 1;
 
-			assert(cursor_from->str_end == pLcpEndPeek->str_begin);
+			assert(pLcpBegin->str_end == pLcpEndPeek->str_begin);
 		}
 
-		pLcpTo->cp = u32Peek;
-		pLcpTo->str_begin = pLcpFrom->str_begin;
-		pLcpTo->str_end = pLcpEndPeek->str_begin;
+		pLcpDest->cp = u32Peek;
+		pLcpDest->str_begin = pLcpBegin->str_begin;
+		pLcpDest->str_end = pLcpEndPeek->str_begin;
 
-		pLcpFrom = pLcpEndPeek;
-		++pLcpTo;
+		pLcpBegin = pLcpEndPeek;
+		++pLcpDest;
 	}
-	assert(pLcpFrom == pLcpEnd);
+	assert(pLcpBegin == pLcpEnd);
 
 	// Copy trailing '\0'
 
-	*pLcpTo = *pLcpFrom;
+	*pLcpDest = *pLcpEnd;
 
-	// Write out end
+	// Write out new end
 
-	*ppLcpEnd = pLcpTo;
+	*ppLcpEnd = pLcpDest;
 }
 
 
