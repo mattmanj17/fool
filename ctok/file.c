@@ -2,7 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "alloc.h"
 #include "file.h"
 
 static bool Try_read_file_to_buffer(FILE * file, bounded_c_str_t * bstr)
@@ -31,7 +30,12 @@ static bool Try_read_file_to_buffer(FILE * file, bounded_c_str_t * bstr)
 		exit(1);
 	}
 
-	void * allocation = Allocate(len_file + 1);
+	void * allocation = calloc((size_t)(len_file + 1), 1);
+	if (!allocation)
+	{
+		printf("ALLOCATION FAILED");
+		exit(1);
+	}
 
 	size_t bytes_read = fread(allocation, 1, (size_t)len_file, file);
 	if (bytes_read != (size_t)len_file)

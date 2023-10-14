@@ -1,10 +1,10 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "peek.h"
-
-#include "alloc.h"
 #include "unicode.h"
 
 
@@ -213,10 +213,15 @@ static void Decode_utf8_to_lcp_span(
 	//  in the original span, so allocate enough spae for that.
 	//  Note that we include room for a trailing '\0' codepoint
 
-	int num_byte = (int)(mac - mic);
-	int num_offset_alloc = num_byte + 1;
+	int num_ch = (int)(mac - mic);
+	int num_alloc = num_ch + 1;
 
-	lcp_span_out->lcp_mic = (lcp_t *)Allocate((int)sizeof(lcp_t) * num_offset_alloc);
+	lcp_span_out->lcp_mic = (lcp_t *)calloc(sizeof(lcp_t) * num_alloc, 1);
+	if (!lcp_span_out->lcp_mic)
+	{
+		printf("ALLOCATION FAILED");
+		exit(1);
+	}
 
 	// Chew through the byte span with Try_decode_utf8
 
