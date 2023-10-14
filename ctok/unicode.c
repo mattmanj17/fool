@@ -8,23 +8,14 @@
 
 
 
-// cp_min_most_t
-
-bool Is_cp_in_range(
-	uint32_t cp,
-	cp_min_most_t range)
-{
-	return cp >= range.cp_min && cp <= range.cp_most;
-}
-
 bool Is_cp_in_ranges(
 	uint32_t cp,
-	const cp_min_most_t * ranges,
+	const uint32_t(*ranges)[2],
 	int num_ranges)
 {
 	for (int i = 0; i < num_ranges; ++i)
 	{
-		if (Is_cp_in_range(cp, ranges[i]))
+		if (cp >= ranges[i][0] && cp <= ranges[i][1])
 			return true;
 	}
 
@@ -210,7 +201,7 @@ bool Is_ch_white_space(char ch)
 
 bool Is_cp_unicode_whitespace(uint32_t cp)
 {
-	static const cp_min_most_t unicode_whitespace[] =
+	static const uint32_t unicode_whitespace[][2] =
 	{
 		{ 0x0085, 0x0085 }, 
 		{ 0x00A0, 0x00A0 }, 

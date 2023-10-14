@@ -2,19 +2,9 @@
 
 #include <stdint.h>
 
-typedef struct
-{
-	uint32_t cp_min;
-	uint32_t cp_most;
-} cp_min_most_t;
-
-bool Is_cp_in_range(
-	uint32_t cp,
-	cp_min_most_t range);
-
 bool Is_cp_in_ranges(
 	uint32_t cp,
-	const cp_min_most_t * ranges,
+	const uint32_t (*ranges)[2],
 	int num_ranges);
 
 bool Try_decode_utf8(

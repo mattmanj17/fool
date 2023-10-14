@@ -431,7 +431,7 @@ static bool May_cp_start_id(uint32_t cp)
 
 	// These codepoints are not allowed as the start of an id
 
-	static const cp_min_most_t c11_disallowed_initial[] =
+	static const uint32_t c11_disallowed_initial[][2] =
 	{
 		{ 0x0300, 0x036F },
 		{ 0x1DC0, 0x1DFF },
@@ -444,7 +444,7 @@ static bool May_cp_start_id(uint32_t cp)
 
 	// These code points are allowed to start an id (minus ones from c11_disallowed_initial)
 
-	static const cp_min_most_t c11_allowed[] =
+	static const uint32_t c11_allowed[][2] =
 	{
 		// 1
 		{ 0x00A8, 0x00A8 }, { 0x00AA, 0x00AA }, { 0x00AD, 0x00AD },
