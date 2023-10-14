@@ -869,7 +869,9 @@ static void Peek_named_ucn(
 		}
 	}
 
-	// huh? unknown named ucn?
+	// huh? unknown named ucn? return valid len, but bogus cp
+
+	*pLen = len;
 }
 
 typedef struct//!!!FIXME_typedef_audit
