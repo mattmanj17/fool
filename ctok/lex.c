@@ -94,44 +94,47 @@ const char * str_from_tokk(token_kind_t tokk)
 
 
 
-static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor);
-static lex_t Lex_after_whitespace(lcp_t * cursor);
-static lex_t Lex_after_rest_of_str_lit(token_kind_t tokk, uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator);
-static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator);
-static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator);
+static token_kind_t Lex_after_horizontal_whitespace(lcp_t * cursor, lcp_t ** ppLcpTokEnd);
+static token_kind_t Lex_after_whitespace(lcp_t * cursor, lcp_t ** ppLcpTokEnd);
+static token_kind_t Lex_after_rest_of_str_lit(token_kind_t tokk, uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator, lcp_t ** ppLcpTokEnd);
+static token_kind_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator, lcp_t ** ppLcpTokEnd);
+static token_kind_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator, lcp_t ** ppLcpTokEnd);
 static bool May_cp_start_id(uint32_t cp);
-static lex_t Lex_after_rest_of_id(lcp_t * cursor);
+static token_kind_t Lex_after_rest_of_id(lcp_t * cursor, lcp_t ** ppLcpTokEnd);
 static bool Does_cp_extend_id(uint32_t cp);
 static void Peek_ucn(lcp_t * cursor, uint32_t * pCp, int * pLen);
 static uint32_t Hex_digit_value_from_cp(uint32_t cp);
 static bool Is_cp_valid_ucn(uint32_t cp);
-static lex_t Lex_punctuation(lcp_t * cursor);
-static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor);
+static token_kind_t Lex_punctuation(lcp_t * cursor, lcp_t ** ppLcpTokEnd);
+static token_kind_t Lex_after_rest_of_ppnum(lcp_t * cursor, lcp_t ** ppLcpTokEnd);
 
-lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
+token_kind_t TokkPeek(
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
+	lcp_t ** ppLcpTokEnd)
 {
 	// Special handling of horizontal WS to match clang ... :(
 
-	if (Is_ch_horizontal_white_space(cursor[0].str[0]))
+	if (Is_ch_horizontal_white_space(pLcpBegin[0].str[0]))
 	{
-		return Lex_after_horizontal_whitespace(cursor);
+		return Lex_after_horizontal_whitespace(pLcpBegin, ppLcpTokEnd);
 	}
 
 	// Decide what to do
 
-	uint32_t cp_0 = cursor[0].cp;
-	uint32_t cp_1 = (cp_0) ? cursor[1].cp : '\0';
-	uint32_t cp_2 = (cp_1) ? cursor[2].cp : '\0';
+	uint32_t cp_0 = pLcpBegin[0].cp;
+	uint32_t cp_1 = (cp_0) ? pLcpBegin[1].cp : '\0';
+	uint32_t cp_2 = (cp_1) ? pLcpBegin[2].cp : '\0';
 
 	if (cp_0 == 'u' && cp_1 == '8' && cp_2 == '"')
 	{
-		cursor += 3;
-		return Lex_after_rest_of_str_lit(tokk_utf8_string_literal, '"', cursor, terminator);
+		pLcpBegin += 3;
+		return Lex_after_rest_of_str_lit(tokk_utf8_string_literal, '"', pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
 	else if ((cp_0 == 'u' || cp_0 == 'U' || cp_0 == 'L') &&
 			 (cp_1 == '"' || cp_1 == '\''))
 	{
-		cursor += 2;
+		pLcpBegin += 2;
 
 		token_kind_t tokk;
 		
@@ -148,36 +151,36 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 			break;
 		}
 		
-		return Lex_after_rest_of_str_lit(tokk, cp_1, cursor, terminator);
+		return Lex_after_rest_of_str_lit(tokk, cp_1, pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 == '"' || cp_0 == '\'')
 	{
-		++cursor;
+		++pLcpBegin;
 		token_kind_t tokk = (cp_0 == '"') ? tokk_string_literal : tokk_char_constant;
-		return Lex_after_rest_of_str_lit(tokk, cp_0, cursor, terminator);
+		return Lex_after_rest_of_str_lit(tokk, cp_0, pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 == '/' && cp_1 == '*')
 	{
-		cursor += 2;
-		return Lex_after_rest_of_block_comment(cursor, terminator);
+		pLcpBegin += 2;
+		return Lex_after_rest_of_block_comment(pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 == '/' && cp_1 == '/')
 	{
-		cursor += 2;
-		return Lex_after_rest_of_line_comment(cursor, terminator);
+		pLcpBegin += 2;
+		return Lex_after_rest_of_line_comment(pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 == '.' && Is_cp_ascii_digit(cp_1))
 	{
-		cursor += 2;
-		return Lex_after_rest_of_ppnum(cursor);
+		pLcpBegin += 2;
+		return Lex_after_rest_of_ppnum(pLcpBegin, ppLcpTokEnd);
 	}
 	else if (May_cp_start_id(cp_0))
 	{
-		return Lex_after_rest_of_id(cursor + 1);
+		return Lex_after_rest_of_id(pLcpBegin + 1, ppLcpTokEnd);
 	}
 	else if (Is_cp_ascii_digit(cp_0))
 	{
-		return Lex_after_rest_of_ppnum(cursor + 1);
+		return Lex_after_rest_of_ppnum(pLcpBegin + 1, ppLcpTokEnd);
 	}
 	else if (Is_cp_ascii_white_space(cp_0))
 	{
@@ -186,44 +189,48 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 		//  because Lex_after_whitespace only skips 
 		//  physical whitespace (blek)
 
-		return Lex_after_whitespace(cursor + 1);
+		return Lex_after_whitespace(pLcpBegin + 1, ppLcpTokEnd);
 	}
 	else if (cp_0 == '\0')
 	{
-		return Lex_after_whitespace(cursor + 1);
+		return Lex_after_whitespace(pLcpBegin + 1, ppLcpTokEnd);
 	}
 	else if (cp_0 =='\\')
 	{
 		uint32_t cp;
 		int len;
-		Peek_ucn(cursor, &cp, &len);
+		Peek_ucn(pLcpBegin, &cp, &len);
 		if (len)
 		{
 			if (May_cp_start_id(cp))
 			{
-				return Lex_after_rest_of_id(cursor + len);
+				return Lex_after_rest_of_id(pLcpBegin + len, ppLcpTokEnd);
 			}
 			else
 			{
 				// Bogus UCN, return it as an unknown token
 
-				return {cursor + len, tokk_bogus_ucn};
+				*ppLcpTokEnd = pLcpBegin + len;
+				return tokk_bogus_ucn;
 			}
 		}
 		else
 		{
 			// Stray backslash, return as unknown token
 
-			return {cursor + 1, tokk_stray_backslash};
+			*ppLcpTokEnd = pLcpBegin + 1;
+			return tokk_stray_backslash;
 		}
 	}
 	else
 	{
-		return Lex_punctuation(cursor);
+		return Lex_punctuation(pLcpBegin, ppLcpTokEnd);
 	}
 }
 
-static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor)
+static token_kind_t Lex_after_horizontal_whitespace(
+	lcp_t * cursor, 
+	lcp_t ** ppLcpTokEnd)
 {
 	while (true)
 	{
@@ -239,10 +246,11 @@ static lex_t Lex_after_horizontal_whitespace(lcp_t * cursor)
 		++cursor;
 	}
 
-	return {cursor, tokk_whitespace};
+	*ppLcpTokEnd = cursor;
+	return tokk_whitespace;
 }
 
-static lex_t Lex_after_whitespace(lcp_t * cursor)
+static token_kind_t Lex_after_whitespace(lcp_t * cursor, lcp_t ** ppLcpTokEnd)
 {
 	while (true)
 	{
@@ -258,7 +266,8 @@ static lex_t Lex_after_whitespace(lcp_t * cursor)
 		++cursor;
 	}
 
-	return {cursor, tokk_whitespace};
+	*ppLcpTokEnd = cursor;
+	return tokk_whitespace;
 }
 
 static void Do_escaped_line_break_hack(lcp_t * cursor)
@@ -293,7 +302,12 @@ static void Do_escaped_line_break_hack(lcp_t * cursor)
 	}
 }
 
-static lex_t Lex_after_rest_of_str_lit(token_kind_t tokk, uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator)
+static token_kind_t Lex_after_rest_of_str_lit(
+	token_kind_t tokk,
+	uint32_t cp_sential,
+	lcp_t * cursor,
+	lcp_t * terminator,
+	lcp_t ** ppLcpTokEnd)
 {
 	int len = 0;
 	bool found_end = false;
@@ -355,10 +369,14 @@ static lex_t Lex_after_rest_of_str_lit(token_kind_t tokk, uint32_t cp_sential, l
 		tokk = tokk_zero_length_char_lit;
 	}
 
-	return {cursor, tokk};
+	*ppLcpTokEnd = cursor;
+	return tokk;
 }
 
-static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
+static token_kind_t Lex_after_rest_of_block_comment(
+	lcp_t * cursor, 
+	lcp_t * terminator, 
+	lcp_t ** ppLcpTokEnd)
 {
 	token_kind_t tokk = tokk_unterminated_block_comment;
 
@@ -376,10 +394,14 @@ static lex_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator)
 		}
 	}
 
-	return {cursor, tokk};
+	*ppLcpTokEnd = cursor;
+	return tokk;
 }
 
-static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator)
+static token_kind_t Lex_after_rest_of_line_comment(
+	lcp_t * cursor, 
+	lcp_t * terminator, 
+	lcp_t ** ppLcpTokEnd)
 {
 	while (cursor < terminator)
 	{
@@ -394,7 +416,8 @@ static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator)
 		++cursor;
 	}
 
-	return {cursor, tokk_comment};
+	*ppLcpTokEnd = cursor;
+	return tokk_comment;
 }
 
 static bool May_cp_start_id(uint32_t cp)
@@ -482,7 +505,9 @@ static bool May_cp_start_id(uint32_t cp)
 	return Is_cp_in_ranges(cp, c11_allowed, COUNT_OF(c11_allowed));
 }
 
-static lex_t Lex_after_rest_of_id(lcp_t * cursor)
+static token_kind_t Lex_after_rest_of_id(
+	lcp_t * cursor, 
+	lcp_t ** ppLcpTokEnd)
 {
 	while (true)
 	{
@@ -507,7 +532,8 @@ static lex_t Lex_after_rest_of_id(lcp_t * cursor)
 		break;
 	}
 
-	return {cursor, tokk_raw_identifier};
+	*ppLcpTokEnd = cursor;
+	return tokk_raw_identifier;
 }
 
 static bool Does_cp_extend_id(uint32_t cp)
@@ -735,7 +761,9 @@ typedef struct//!!!FIXME_typedef_audit
 	int _padding;
 } punctution_t;
 
-static lex_t Lex_punctuation(lcp_t * cursor)
+static token_kind_t Lex_punctuation(
+	lcp_t * cursor, 
+	lcp_t ** ppLcpTokEnd)
 {
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
@@ -751,7 +779,7 @@ static lex_t Lex_punctuation(lcp_t * cursor)
 		{"^=", tokk_caretequal},
 		{"==", tokk_equalequal},
 		{"::", tokk_coloncolon},
-		{":>", tokk_r_square}, 
+		{":>", tokk_r_square},
 		{"-=", tokk_minusequal},
 		{"--", tokk_minusminus},
 		{"->", tokk_arrow},
@@ -765,30 +793,30 @@ static lex_t Lex_punctuation(lcp_t * cursor)
 		{">=", tokk_greaterequal},
 		{">>", tokk_greatergreater},
 		{"<=", tokk_lessequal},
-		{"<:", tokk_l_square}, 
-		{"<%", tokk_l_brace}, 
+		{"<:", tokk_l_square},
+		{"<%", tokk_l_brace},
 		{"<<", tokk_lessless},
-		{"%>", tokk_r_brace}, 
+		{"%>", tokk_r_brace},
 		{"%=", tokk_percentequal},
-		{"%:", tokk_hash}, 
+		{"%:", tokk_hash},
 		{"/=", tokk_slashequal},
 		{"~", tokk_tilde},
 		{"}", tokk_r_brace},
 		{"{", tokk_l_brace},
-		{"]", tokk_r_square}, 
-		{"[", tokk_l_square}, 
+		{"]", tokk_r_square},
+		{"[", tokk_l_square},
 		{"?", tokk_question},
 		{";", tokk_semi},
 		{",", tokk_comma},
-		{")", tokk_r_paren}, 
-		{"(", tokk_l_paren}, 
+		{")", tokk_r_paren},
+		{"(", tokk_l_paren},
 		{"|", tokk_pipe},
 		{"^", tokk_caret},
-		{"=", tokk_equal}, 
+		{"=", tokk_equal},
 		{":", tokk_colon},
 		{"-", tokk_minus},
 		{"+", tokk_plus},
-		{"*", tokk_star}, 
+		{"*", tokk_star},
 		{"&", tokk_amp},
 		{"#", tokk_hash},
 		{"!", tokk_exclaim},
@@ -824,10 +852,14 @@ static lex_t Lex_punctuation(lcp_t * cursor)
 		}
 
 		if (found_match)
-			return {cursor_peek, punctuation.tokk};
+		{
+			*ppLcpTokEnd = cursor_peek;
+			return punctuation.tokk;
+		}
 	}
 
-	return {cursor + 1, tokk_unknown_byte};
+	*ppLcpTokEnd = cursor + 1;
+	return tokk_unknown_byte;
 }
 
 
@@ -876,7 +908,9 @@ static lex_t Lex_punctuation(lcp_t * cursor)
 // Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 // 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor)
+static token_kind_t Lex_after_rest_of_ppnum(
+	lcp_t * cursor,
+	lcp_t ** ppLcpTokEnd)
 {
 	while (true)
 	{
@@ -937,5 +971,6 @@ static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor)
 		}
 	}
 
-	return {cursor, tokk_numeric_constant};
+	*ppLcpTokEnd = cursor;
+	return tokk_numeric_constant;
 }

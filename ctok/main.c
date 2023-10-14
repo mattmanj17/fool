@@ -872,12 +872,11 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 	{
 		// Peek
 
-		lex_t lex = Lex_leading_token(lcp_span.lcp_mic, lcp_span.lcp_mac);
-
-		lcp_t * lcp_mic_next = lex.lcp_max;
+		lcp_t * pLcpTokEnd;
+		token_kind_t tokk = TokkPeek(lcp_span.lcp_mic, lcp_span.lcp_mac, &pLcpTokEnd);
 
 		const char * str_tok = lcp_span.lcp_mic[0].str;
-		const char * str_tok_mac = lcp_mic_next->str;
+		const char * str_tok_mac = pLcpTokEnd->str;
 		int num_ch_tok = (int)(str_tok_mac - str_tok);
 		bool is_last_tok = (str_tok_mac == lcp_span.lcp_mac->str);
 
@@ -895,7 +894,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 			if (!is_trailing_line_escape)
 			{
 				Print_token_raw(
-					lex.tokk,
+					tokk,
 					str_tok,
 					num_ch_tok,
 					line,
@@ -905,7 +904,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 		else
 		{
 			Print_token(
-				lex.tokk,
+				tokk,
 				str_tok,
 				num_ch_tok,
 				line,
@@ -946,7 +945,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 
 			// Advance
 
-			lcp_span.lcp_mic = lcp_mic_next;
+			lcp_span.lcp_mic = pLcpTokEnd;
 		}
 	}
 }

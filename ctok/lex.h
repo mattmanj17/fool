@@ -86,11 +86,7 @@ const char * str_from_tokk(token_kind_t tokk);
 
 
 
-typedef struct//!!!FIXME_typedef_audit
-{
-	lcp_t * lcp_max;
-	token_kind_t tokk;
-	int _padding;
-} lex_t;
-
-lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator);
+token_kind_t TokkPeek(
+	lcp_t * pLcpBegin, 
+	lcp_t * pLcpEnd, 
+	lcp_t ** ppLcpTokEnd);
