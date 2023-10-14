@@ -4,7 +4,7 @@
 
 #include "unicode.h"
 
-typedef struct
+typedef struct //!!!FIXME_typedef_audit
 {
 	uint32_t cp;
 	int num_ch;

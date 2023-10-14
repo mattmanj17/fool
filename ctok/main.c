@@ -10,7 +10,7 @@
 #include "unicode.h"
 #include "lcp.h"
 
-typedef struct
+typedef struct//!!!FIXME_typedef_audit
 {
 	lcp_t * lcp_mic;
 	lcp_t * lcp_mac;
@@ -18,7 +18,7 @@ typedef struct
 
 
 
-typedef struct
+typedef struct//!!!FIXME_typedef_audit
 {
 	char * cursor;
 	const char * terminator;
@@ -175,7 +175,7 @@ static void Clean_and_print_ch(char ch)
 	}
 }
 
-typedef enum 
+typedef enum //!!!FIXME_typedef_audit
 {
 	keyword_return,
 	keyword_int,
@@ -387,7 +387,7 @@ static int Len_eol(const char * str)
 	}
 }
 
-typedef struct
+typedef struct//!!!FIXME_typedef_audit
 {
 	int num_eol;
 	int offset_to_new_line_start;
@@ -712,7 +712,7 @@ static void Peek_line_break(
 
 // Generic driver function to run a collapse function over a span
 
-typedef void (*collapse_fn_t)(lcp_span_t span, uint32_t * pCp, int * pLen);
+typedef void (*collapse_fn_t)(lcp_span_t span, uint32_t * pCp, int * pLen);//!!!FIXME_typedef_audit
 
 static void Collapse(collapse_fn_t collapse_fn, lcp_span_t * span)
 {
@@ -953,7 +953,7 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 
 static bool Starts_with_invalid_BOM(const bounded_c_str_t * bstr)
 {
-	typedef struct
+	typedef struct//!!!FIXME_typedef_audit
 	{
 		const char * name;
 		const char * bytes;

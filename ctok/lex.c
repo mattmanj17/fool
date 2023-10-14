@@ -749,7 +749,7 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	return true;
 }
 
-typedef struct
+typedef struct//!!!FIXME_typedef_audit
 {
 	const char * name;
 	uint32_t cp;
@@ -872,7 +872,7 @@ static void Peek_named_ucn(
 	// huh? unknown named ucn?
 }
 
-typedef struct
+typedef struct//!!!FIXME_typedef_audit
 {
 	const char * str;
 	token_kind_t tokk;

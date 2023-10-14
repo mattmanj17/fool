@@ -7,7 +7,7 @@
 
 
 
-typedef enum
+typedef enum//!!!FIXME_typedef_audit
 {
 	tokk_raw_identifier,
 	tokk_l_paren,
@@ -86,7 +86,7 @@ const char * str_from_tokk(token_kind_t tokk);
 
 
 
-typedef struct
+typedef struct//!!!FIXME_typedef_audit
 {
 	lcp_t * lcp_max;
 	token_kind_t tokk;
