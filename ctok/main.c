@@ -5,12 +5,11 @@
 #include <string.h>
 #include <wchar.h>
 
-#include "count_of.h"
+#include "common.h"
 #include "lex.h"
 #include "unicode.h"
 #include "peek.h"
 
-#define CASSERT(x) static_assert((x), #x)
 
 
 typedef struct

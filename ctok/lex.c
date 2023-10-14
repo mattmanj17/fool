@@ -5,11 +5,9 @@
 
 #include "lex.h"
 
-#include "count_of.h"
+#include "common.h"
 #include "peek.h"
 #include "unicode.h"
-
-#define CASSERT(x) static_assert((x), #x)
 
 
 
