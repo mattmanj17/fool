@@ -103,10 +103,8 @@ static bool May_cp_start_id(uint32_t cp);
 static lex_t Lex_after_rest_of_id(lcp_t * cursor);
 static bool Does_cp_extend_id(uint32_t cp);
 static void Peek_ucn(lcp_t * cursor, uint32_t * pCp, int * pLen);
-static void Peek_hex_ucn(lcp_t * cursor, uint32_t * pCp, int * pLen);
 static uint32_t Hex_digit_value_from_cp(uint32_t cp);
 static bool Is_cp_valid_ucn(uint32_t cp);
-static void Peek_named_ucn(lcp_t * cursor, uint32_t * pCp, int * pLen);
 static lex_t Lex_punctuation(lcp_t * cursor);
 static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor);
 
@@ -555,25 +553,6 @@ static void Peek_ucn(
 	uint32_t * pCp,
 	int * pLen)
 {
-	uint32_t cp;
-	int len;
-	Peek_hex_ucn(cursor, &cp, &len);
-	if (len)
-	{
-		*pCp = cp;
-		*pLen = len;
-	}
-	else
-	{
-		Peek_named_ucn(cursor, pCp, pLen);
-	}
-}
-
-static void Peek_hex_ucn(
-	lcp_t * cursor,
-	uint32_t * pCp,
-	int * pLen)
-{
 	*pCp = UINT32_MAX;
 	*pLen = 0;
 
@@ -747,131 +726,6 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 		return false;
 
 	return true;
-}
-
-typedef struct//!!!FIXME_typedef_audit
-{
-	const char * name;
-	uint32_t cp;
-	uint32_t _padding;
-} bingo_t;
-
-bingo_t bingos[] =
-{
-	{"LATIN SMALL LETTER O WITH ACUTE", 0x000F3},
-	{"LATIN SMALL LETTER N WITH TILDE", 0x000F1},
-	{"LATIN SMALL LETTER E WITH ACUTE", 0x000E9},
-	{"LATIN SMALL LETTER A WITH ACUTE", 0x000E1},
-	{"LEFT-TO-RIGHT EMBEDDING", 0x0202A},
-	{"POP DIRECTIONAL ISOLATE", 0x02069},
-	{"RIGHT-TO-LEFT EMBEDDING", 0x0202B},
-	{"LATIN CAPITAL LETTER A WITH GRAVE", 0x000C0},
-	{"LATIN SMALL LETTER U WITH DIAERESIS", 0x000FC},
-	{"TANGSA LETTER GA", 0x16AA2},
-	{"SUBSCRIPT EQUALS SIGN", 0x0208C},
-	{"WASTEBASKET", 0x1F5D1},
-	{"MATHEMATICAL SANS-SERIF BOLD ITALIC PARTIAL DIFFERENTIAL", 0x1D7C3},
-	{"GREEK CAPITAL LETTER ALPHA", 0x00391}
-};
-
-static void Peek_named_ucn(
-	lcp_t * cursor,
-	uint32_t * pCp,
-	int * pLen)
-{
-	*pCp = UINT32_MAX;
-	*pLen = 0;
-
-	int len = 0;
-
-	// Check for leading '\\'
-
-	if (cursor[len].cp != '\\')
-		return;
-
-	// Advance past '\\'
-
-	++len;
-
-	// Look for 'N' after '\\'
-
-	if (cursor[len].cp != 'N')
-		return;
-
-	// Advance past 'N'
-
-	++len;
-
-	// Look for '{'
-
-	if (cursor[len].cp != '{')
-		return;
-
-	// Advance
-
-	++len;
-
-	// Look for closing '}'
-
-	int len_name_start = len;
-	bool found_closing_brace = false;
-
-	while (uint32_t cp = cursor[len].cp)
-	{
-		++len;
-		if (cp == '}')
-		{
-			found_closing_brace = true;
-			break;
-		}
-
-		if (cp == '\n')
-			break;
-	}
-
-	// Check if we found '}'
-
-	if (!found_closing_brace)
-		return;
-
-	// Check if we actually got any chars between '{' and '}'
-
-	int len_name = len - len_name_start - 1;
-	if (!len_name)
-		return;
-
-	// blarg, check hard coded names
-
-	for (int iBingo = 0; iBingo < COUNT_OF(bingos); ++iBingo)
-	{
-		bingo_t bingo = bingos[iBingo];
-
-		int len_bingo_name = (int)strlen(bingo.name);
-		if (len_bingo_name != len_name)
-			continue;
-
-		bool matches = true;
-		for (int iCp = 0; iCp < len_name; ++iCp)
-		{
-			uint32_t cp_check = cursor[len_name_start + iCp].cp;
-			if (cp_check != (uint32_t)bingo.name[iCp])
-			{
-				matches = false;
-				break;
-			}
-		}
-
-		if (matches)
-		{
-			*pCp = bingo.cp;
-			*pLen = len;
-			return;
-		}
-	}
-
-	// huh? unknown named ucn? return valid len, but bogus cp
-
-	*pLen = len;
 }
 
 typedef struct//!!!FIXME_typedef_audit
