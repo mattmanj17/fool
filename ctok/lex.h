@@ -3,7 +3,7 @@
 #include <stdbool.h>
 
 #include "unicode.h"
-#include "peek.h"
+#include "lcp.h"
 
 
 

@@ -6,7 +6,6 @@
 #include "lex.h"
 
 #include "common.h"
-#include "peek.h"
 #include "unicode.h"
 
 
