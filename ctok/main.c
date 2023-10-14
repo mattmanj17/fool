@@ -16,74 +16,56 @@ typedef struct//!!!FIXME_typedef_audit
 	lcp_t * lcp_mac;
 } lcp_span_t;
 
-
-
-typedef struct//!!!FIXME_typedef_audit
+static bool FTryReadWholeFile(
+	FILE * file,
+	const char ** ppChBegin,
+	const char ** ppChEnd)
 {
-	char * cursor;
-	const char * terminator;
-} bounded_c_str_t;
-
-static bool Try_read_file_to_buffer(FILE * file, bounded_c_str_t * bstr)
-{
-	bstr->cursor = NULL;
-	bstr->terminator = NULL;
-
 	int err = fseek(file, 0, SEEK_END);
 	if (err)
-	{
-		printf("fseek failed");
-		exit(1);
-	}
+		return false;
 
 	long len_file = ftell(file);
 	if (len_file < 0)
-	{
-		printf("ftell failed");
-		exit(1);
-	}
+		return false;
 
 	err = fseek(file, 0, SEEK_SET);
 	if (err)
-	{
-		printf("fseek failed");
-		exit(1);
-	}
+		return false;
 
-	void * allocation = calloc((size_t)(len_file + 1), 1);
-	if (!allocation)
-	{
-		printf("ALLOCATION FAILED");
-		exit(1);
-	}
+	// We allocated a trailing '\0' for sanity
 
-	size_t bytes_read = fread(allocation, 1, (size_t)len_file, file);
+	char * pChAlloc = (char *)calloc((size_t)(len_file + 1), 1);
+	if (!pChAlloc)
+		return false;
+
+	size_t bytes_read = fread(pChAlloc, 1, (size_t)len_file, file);
 	if (bytes_read != (size_t)len_file)
 	{
-		printf("fread failed");
-		exit(1);
+		free(pChAlloc);
+		return false;
 	}
 
-	bstr->cursor = (char *)allocation;
-	bstr->terminator = bstr->cursor + len_file;
+	*ppChBegin = pChAlloc;
+	*ppChEnd = pChAlloc + len_file;
 
 	return true;
 }
 
-static bool Try_read_file_at_path_to_buffer(const wchar_t * fpath, bounded_c_str_t * bstr)
+static bool FTryReadWholeFileAtPath(
+	const wchar_t * fpath, 
+	const char ** ppChBegin,
+	const char ** ppChEnd)
 {
-	bstr->cursor = NULL;
-	bstr->terminator = NULL;
-
 	FILE * file = _wfopen(fpath, L"rb");
 	if (!file)
 		return false;
 
-	bool success = Try_read_file_to_buffer(file, bstr);
+	bool fRead = FTryReadWholeFile(file, ppChBegin, ppChEnd);
 
 	fclose(file); // BUG (matthewd) ignoring return value?
 
-	return success;
+	return fRead;
 }
 
 
@@ -838,10 +820,13 @@ static lcp_span_t Decode_logical_code_points(const char * mic, const char * mac)
 	return span;
 }
 
-static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
+static void Print_toks_in_ch_range(
+	const char * pChBegin,
+	const char * pChEnd,
+	bool raw)
 {
-	const char * str_mic = bstr->cursor;
-	const char * str_mac = bstr->terminator;
+	const char * str_mic = pChBegin;
+	const char * str_mac = pChEnd;
 	const char * line_start = str_mic;
 	int line = 1;
 
@@ -952,8 +937,9 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 
 static void Try_print_tokens_in_file(const wchar_t * fpath, bool raw)
 {
-	bounded_c_str_t bstr;
-	bool success = Try_read_file_at_path_to_buffer(fpath, &bstr);
+	const char * pChBegin;
+	const char * pChEnd;
+	bool success = FTryReadWholeFileAtPath(fpath, &pChBegin, &pChEnd);
 	if (!success)
 	{
 		printf("Failed to read file '%ls'.\n", fpath);
@@ -962,5 +948,5 @@ static void Try_print_tokens_in_file(const wchar_t * fpath, bool raw)
 
 	// Print tokens
 
-	Print_toks_in_ch_range(&bstr, raw);
+	Print_toks_in_ch_range(pChBegin, pChEnd, raw);
 }
