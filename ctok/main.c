@@ -951,63 +951,6 @@ static void Print_toks_in_ch_range(const bounded_c_str_t * bstr, bool raw)
 	}
 }
 
-static bool Starts_with_invalid_BOM(const bounded_c_str_t * bstr)
-{
-	typedef struct//!!!FIXME_typedef_audit
-	{
-		const char * name;
-		const char * bytes;
-		int len;
-
-		int _padding;
-	} bom_t;
-
-	static bom_t s_boms[10] =
-	{
-		{"UTF-32 (BE)", "\x00\x00\xFE\xFF", 4},
-		{"UTF-32 (LE)", "\xFF\xFE\x00\x00", 4},
-		{"UTF-16 (BE)", "\xFE\xFF", 2},
-		{"UTF-16 (LE)", "\xFF\xFE", 2},
-		{"UTF-7", "\x2B\x2F\x76", 3},
-		{"UTF-1", "\xF7\x64\x4C", 3},
-		{"UTF-EBCDIC", "\xDD\x73\x66\x73", 4},
-		{"SCSU", "\x0E\xFE\xFF", 3},
-		{"BOCU-1", "\xFB\xEE\x28", 3},
-		{"GB-18030", "\x84\x31\x95\x33", 4},
-	};
-
-	int cCh = (int)(bstr->terminator - bstr->cursor);
-
-	for (int iBom = 0; iBom < 10; ++iBom)
-	{
-		bom_t * bom = &s_boms[iBom];
-		if (bom->len > cCh)
-			continue;
-
-		bool match = true;
-		for (int iCh = 0; iCh < bom->len; ++iCh)
-		{
-			if (bstr->cursor[iCh] != bom->bytes[iCh])
-			{
-				match = false;
-				break;
-			}
-		}
-
-		if (match)
-		{
-			printf(
-				"File started with invalid byte order mark. "
-				"This file seems to be encoded in %s, which is not supported.",
-				bom->name);
-
-			return true;
-		}
-	}
-
-	return false;
-}
-
 static void Try_print_tokens_in_file(const wchar_t * fpath, bool raw)
 {
 	bounded_c_str_t bstr;
@@ -1015,15 +958,6 @@ static void Try_print_tokens_in_file(const wchar_t * fpath, bool raw)
 	if (!success)
 	{
 		printf("Failed to read file '%ls'.\n", fpath);
-		return;
-	}
-
-	// Check for invalid BOM
-
-	if (Starts_with_invalid_BOM(&bstr))
-	{
-		// Err msg printed in Starts_with_invalid_BOM...
-
 		return;
 	}
 
