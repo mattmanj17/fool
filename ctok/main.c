@@ -363,37 +363,39 @@ static int Len_eol(const char * str)
 	}
 }
 
-typedef struct//!!!FIXME_typedef_audit
+// BUG if we care about having random access to line info, 
+//  we would need a smarter answer than InspectSpanForEol...
+
+static void InspectSpanForEol(
+	const char * pChBegin, 
+	const char * pChEnd,
+	int * pCLine,
+	const char ** ppStartOfLine)
 {
-	int num_eol;
-	int offset_to_new_line_start;
-} eol_info_t;
+	int cLine = 0;
+	const char * pStartOfLine = NULL;
 
-static eol_info_t Inspect_span_for_eol(const char * mic, const char * mac)
-{
-	const char * mic_orig = mic;
-
-	eol_info_t eol_info;
-	eol_info.num_eol = 0;
-	eol_info.offset_to_new_line_start = 0;
-
-	while (mic < mac)
+	while (pChBegin < pChEnd)
 	{
-		int len_eol = Len_eol(mic);
+		// BUG what if pChEnd straddles an EOL?
+
+		int len_eol = Len_eol(pChBegin);
 
 		if (len_eol)
 		{
-			mic += len_eol;
-			++eol_info.num_eol;
-			eol_info.offset_to_new_line_start = (int)(mic - mic_orig);
+			pChBegin += len_eol;
+
+			++cLine;
+			pStartOfLine = pChBegin;
 		}
 		else
 		{
-			++mic;
+			++pChBegin;
 		}
 	}
 
-	return eol_info;
+	*pCLine = cLine;
+	*ppStartOfLine = pStartOfLine;
 }
 
 static void Print_token(
@@ -938,11 +940,14 @@ static void Print_toks_in_ch_range(
 			{
 				const char * end_pos = eof_pos(str_tok, str_tok_mac);
 
-				eol_info_t eol_info = Inspect_span_for_eol(str_tok, end_pos);
-				if (eol_info.num_eol)
+				int cLine;
+				const char * pStartOfLine;
+				InspectSpanForEol(str_tok, end_pos, &cLine, &pStartOfLine);
+
+				if (cLine)
 				{
-					line += eol_info.num_eol;
-					line_start = str_tok + eol_info.offset_to_new_line_start;
+					line += cLine;
+					line_start = pStartOfLine;
 				}
 
 				int col = (int)(end_pos - line_start + 1);
@@ -955,11 +960,14 @@ static void Print_toks_in_ch_range(
 		{
 			// Handle eol
 
-			eol_info_t eol_info = Inspect_span_for_eol(str_tok, str_tok + num_ch_tok);
-			if (eol_info.num_eol)
+			int cLine;
+			const char * pStartOfLine;
+			InspectSpanForEol(str_tok, str_tok + num_ch_tok, &cLine, &pStartOfLine);
+
+			if (cLine)
 			{
-				line += eol_info.num_eol;
-				line_start = str_tok + eol_info.offset_to_new_line_start;
+				line += cLine;
+				line_start = pStartOfLine;
 			}
 
 			// Advance
