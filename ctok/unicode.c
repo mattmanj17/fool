@@ -66,7 +66,8 @@ static int Num_bytes_to_encode_cp(uint32_t cp);
 bool Try_decode_utf8(
 	const uint8_t * mic,
 	const uint8_t * mac,
-	cp_len_t * cp_len_out)
+	uint32_t * pCp,
+	int * pLen)
 {
 	// Check if we have no bytes at all
 
@@ -133,8 +134,8 @@ bool Try_decode_utf8(
 
 	// We did it, copy to cp_len_out and return true
 
-	cp_len_out->cp = cp;
-	cp_len_out->len = bytes_to_read;
+	*pCp = cp;
+	*pLen = bytes_to_read;
 	return true;
 }
 

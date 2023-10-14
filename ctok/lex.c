@@ -102,11 +102,11 @@ static lex_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator);
 static bool May_cp_start_id(uint32_t cp);
 static lex_t Lex_after_rest_of_id(lcp_t * cursor);
 static bool Does_cp_extend_id(uint32_t cp);
-static cp_len_t Peek_ucn(lcp_t * cursor);
-static cp_len_t Peek_hex_ucn(lcp_t * cursor);
+static void Peek_ucn(lcp_t * cursor, uint32_t * pCp, int * pLen);
+static void Peek_hex_ucn(lcp_t * cursor, uint32_t * pCp, int * pLen);
 static uint32_t Hex_digit_value_from_cp(uint32_t cp);
 static bool Is_cp_valid_ucn(uint32_t cp);
-static cp_len_t Peek_named_ucn(lcp_t * cursor);
+static void Peek_named_ucn(lcp_t * cursor, uint32_t * pCp, int * pLen);
 static lex_t Lex_punctuation(lcp_t * cursor);
 static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor);
 
@@ -196,18 +196,20 @@ lex_t Lex_leading_token(lcp_t * cursor, lcp_t * terminator)
 	}
 	else if (cp_0 =='\\')
 	{
-		cp_len_t cp_len = Peek_ucn(cursor);
-		if (cp_len.len)
+		uint32_t cp;
+		int len;
+		Peek_ucn(cursor, &cp, &len);
+		if (len)
 		{
-			if (May_cp_start_id(cp_len.cp))
+			if (May_cp_start_id(cp))
 			{
-				return Lex_after_rest_of_id(cursor + cp_len.len);
+				return Lex_after_rest_of_id(cursor + len);
 			}
 			else
 			{
 				// Bogus UCN, return it as an unknown token
 
-				return {cursor + cp_len.len, tokk_bogus_ucn};
+				return {cursor + len, tokk_bogus_ucn};
 			}
 		}
 		else
@@ -486,19 +488,20 @@ static lex_t Lex_after_rest_of_id(lcp_t * cursor)
 {
 	while (true)
 	{
-		uint32_t cp = cursor->cp;
-		if (Does_cp_extend_id(cp))
+		if (Does_cp_extend_id(cursor->cp))
 		{
 			++cursor;
 			continue;
 		}
 
-		if (cp == '\\')
+		if (cursor->cp == '\\')
 		{
-			cp_len_t cp_len = Peek_ucn(cursor);
-			if (cp_len.len && Does_cp_extend_id(cp_len.cp))
+			uint32_t cp;
+			int len;
+			Peek_ucn(cursor, &cp, &len);
+			if (len && Does_cp_extend_id(cp))
 			{
-				cursor += cp_len.len;
+				cursor += len;
 				continue;
 			}
 		}
@@ -547,23 +550,39 @@ static bool Does_cp_extend_id(uint32_t cp)
 	return false;
 }
 
-static cp_len_t Peek_ucn(lcp_t * cursor)
+static void Peek_ucn(
+	lcp_t * cursor,
+	uint32_t * pCp,
+	int * pLen)
 {
-	cp_len_t cp_len = Peek_hex_ucn(cursor);
-	if (cp_len.len)
-		return cp_len;
-
-	return Peek_named_ucn(cursor);
+	uint32_t cp;
+	int len;
+	Peek_hex_ucn(cursor, &cp, &len);
+	if (len)
+	{
+		*pCp = cp;
+		*pLen = len;
+	}
+	else
+	{
+		Peek_named_ucn(cursor, pCp, pLen);
+	}
 }
 
-static cp_len_t Peek_hex_ucn(lcp_t * cursor)
+static void Peek_hex_ucn(
+	lcp_t * cursor,
+	uint32_t * pCp,
+	int * pLen)
 {
+	*pCp = UINT32_MAX;
+	*pLen = 0;
+
 	int len = 0;
 
 	// Check for leading '\\'
 
 	if (cursor[len].cp != '\\')
-		return {UINT32_MAX, 0};
+		return;
 
 	// Advance past '\\'
 
@@ -572,7 +591,7 @@ static cp_len_t Peek_hex_ucn(lcp_t * cursor)
 	// Look for 'u' or 'U' after '\\'
 
 	if (cursor[len].cp != 'u' && cursor[len].cp != 'U')
-		return {UINT32_MAX, 0};
+		return;
 
 	// Look for 4 or 8 hex digits, based on u vs U
 
@@ -626,7 +645,7 @@ static cp_len_t Peek_hex_ucn(lcp_t * cursor)
 		{
 			if (delimited)
 			{
-				return {UINT32_MAX, 0};
+				return;
 			}
 			else
 			{
@@ -637,7 +656,7 @@ static cp_len_t Peek_hex_ucn(lcp_t * cursor)
 		// Bail out if we are about to overflow
 
 		if (cp_result & 0xF000'0000)
-			return {UINT32_MAX, 0};
+			return;
 
 		// Fold hex digit into cp
 
@@ -656,17 +675,17 @@ static cp_len_t Peek_hex_ucn(lcp_t * cursor)
 	// No digits read?
 
 	if (hex_digits_read == 0)
-		return {UINT32_MAX, 0};
+		return;
 
 	// Delimited 'U' is not allowed (find somthing in clang to explain this??)
 
 	if (delimited && num_hex_digits == 8)
-		return {UINT32_MAX, 0};
+		return;
 
 	// Read wrong number of digits?
 
 	if (!delimited && hex_digits_read != num_hex_digits)
-		return {UINT32_MAX, 0};
+		return;
 
 	// Sanity check that people are not trying to encode
 	//  something particularly weird with a UCN.
@@ -679,7 +698,8 @@ static cp_len_t Peek_hex_ucn(lcp_t * cursor)
 
 	// Return result
 
-	return {cp_result, len};
+	*pCp = cp_result;
+	*pLen = len;
 }
 
 static uint32_t Hex_digit_value_from_cp(uint32_t cp)
@@ -754,14 +774,20 @@ bingo_t bingos[] =
 	{"GREEK CAPITAL LETTER ALPHA", 0x00391}
 };
 
-static cp_len_t Peek_named_ucn(lcp_t * cursor)
+static void Peek_named_ucn(
+	lcp_t * cursor,
+	uint32_t * pCp,
+	int * pLen)
 {
+	*pCp = UINT32_MAX;
+	*pLen = 0;
+
 	int len = 0;
 
 	// Check for leading '\\'
 
 	if (cursor[len].cp != '\\')
-		return {UINT32_MAX, 0};
+		return;
 
 	// Advance past '\\'
 
@@ -770,7 +796,7 @@ static cp_len_t Peek_named_ucn(lcp_t * cursor)
 	// Look for 'N' after '\\'
 
 	if (cursor[len].cp != 'N')
-		return {UINT32_MAX, 0};
+		return;
 
 	// Advance past 'N'
 
@@ -779,7 +805,7 @@ static cp_len_t Peek_named_ucn(lcp_t * cursor)
 	// Look for '{'
 
 	if (cursor[len].cp != '{')
-		return {UINT32_MAX, 0};
+		return;
 
 	// Advance
 
@@ -806,13 +832,13 @@ static cp_len_t Peek_named_ucn(lcp_t * cursor)
 	// Check if we found '}'
 
 	if (!found_closing_brace)
-		return {UINT32_MAX, 0};
+		return;
 
 	// Check if we actually got any chars between '{' and '}'
 
 	int len_name = len - len_name_start - 1;
 	if (!len_name)
-		return {UINT32_MAX, 0};
+		return;
 
 	// blarg, check hard coded names
 
@@ -836,12 +862,14 @@ static cp_len_t Peek_named_ucn(lcp_t * cursor)
 		}
 
 		if (matches)
-			return {bingo.cp, len};
+		{
+			*pCp = bingo.cp;
+			*pLen = len;
+			return;
+		}
 	}
 
-	// huh?
-
-	return {UINT32_MAX, len};
+	// huh? unknown named ucn?
 }
 
 typedef struct
@@ -1032,10 +1060,12 @@ static lex_t Lex_after_rest_of_ppnum(lcp_t * cursor)
 		}
 		else if (cp == '\\')
 		{
-			cp_len_t cp_len = Peek_ucn(cursor);
-			if (cp_len.len && Does_cp_extend_id(cp_len.cp))
+			uint32_t cpUcn;
+			int len;
+			Peek_ucn(cursor, &cpUcn, &len);
+			if (len && Does_cp_extend_id(cpUcn))
 			{
-				cursor += cp_len.len;
+				cursor += len;
 				continue;
 			}
 			else

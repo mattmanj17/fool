@@ -546,42 +546,47 @@ static const char * eof_pos(const char * mic, const char * mac)
 
 // trigraphs
 
-static cp_len_t Peek_trigraph(lcp_span_t span)
+static void Peek_trigraph(
+	lcp_span_t span,
+	uint32_t * pCp,
+	int * pLen)
 {
+	*pCp = UINT32_MAX;
+	*pLen = 0;
+
 	const lcp_t * cursor = span.lcp_mic;
 
-	uint32_t cp0 = cursor[0].cp;
-	if (cp0 != '?')
-		return {UINT32_MAX, 0};
+	if (cursor[0].cp != '?')
+		return;
 
-	uint32_t cp1 = cursor[1].cp;
-	if (cp1 != '?')
-		return {UINT32_MAX, 0};
+	if (cursor[1].cp != '?')
+		return;
 
-	uint32_t cp2 = cursor[2].cp;
-	switch (cp2)
+	uint32_t pairs[][2] =
 	{
-	case '<':
-		return {'{', 3};
-	case '>':
-		return {'}', 3};
-	case '(':
-		return {'[', 3};
-	case ')':
-		return {']', 3};
-	case '=':
-		return {'#', 3};
-	case '/':
-		return {'\\', 3};
-	case '\'':
-		return {'^', 3};
-	case '!':
-		return {'|', 3};
-	case '-':
-		return {'~', 3};
+		{ '<', '{' },
+		{ '>', '}' },
+		{ '(', '[' },
+		{ ')', ']' },
+		{ '=', '#' },
+		{ '/', '\\' },
+		{ '\'', '^' },
+		{ '!', '|' },
+		{ '-', '~' },
+	};
+
+	for (int iPair = 0; iPair < COUNT_OF(pairs); ++iPair)
+	{
+		uint32_t * pair = pairs[iPair];
+		if (pair[0] == cursor[2].cp)
+		{
+			*pCp = pair[1];
+			*pLen = 3;
+			return;
+		}
 	}
 
-	return {UINT32_MAX, 0};
+	return;
 }
 
 
@@ -641,23 +646,31 @@ static int Len_escaped_end_of_lines(const lcp_t * mic)
 	return len;
 }
 
-static cp_len_t Peek_escaped_line_breaks(lcp_span_t span)
+static void Peek_escaped_line_breaks(
+	lcp_span_t span,
+	uint32_t * pCp,
+	int * pLen)
 {
+	*pCp = UINT32_MAX;
+	*pLen = 0;
+
 	const lcp_t * cursor = span.lcp_mic;
 
 	int len_esc_eol = Len_escaped_end_of_lines(cursor);
 	if (!len_esc_eol)
-		return {UINT32_MAX, 0};
+		return;
 
 	if ((cursor + len_esc_eol) == span.lcp_mac)
 	{
 		// Treat trailing escaped eol as a '\0'
 
-		return {'\0', len_esc_eol};
+		*pCp = '\0';
+		*pLen = len_esc_eol;
 	}
 	else
 	{
-		return {cursor[len_esc_eol].cp, len_esc_eol + 1};
+		*pCp = cursor[len_esc_eol].cp;
+		*pLen = len_esc_eol + 1;
 	}
 }
 
@@ -665,33 +678,41 @@ static cp_len_t Peek_escaped_line_breaks(lcp_span_t span)
 
 // Convert '\r' and "\r\n" to '\n'
 
-static cp_len_t Peek_line_break(lcp_span_t span)
+static void Peek_line_break(
+	lcp_span_t span,
+	uint32_t * pCp,
+	int * pLen)
 {
 	const lcp_t * cursor = span.lcp_mic;
 
 	if (cursor[0].cp == '\r')
 	{
+		*pCp = '\n';
+
 		// Need to check .num_ch because we do this after
 		//  Collapse(Peek_escaped_line_breaks) :/
 
 		if ((cursor[1].cp == '\n') && (cursor[1].num_ch == 1))
 		{
-			return {'\n', 2};
+			*pLen = 2;
 		}
 		else
 		{
-			return {'\n', 1};
+			*pLen = 1;
 		}
+
+		return;
 	}
 
-	return {UINT32_MAX, 0};
+	*pCp = UINT32_MAX;
+	*pLen = 0;
 }
 
 
 
 // Generic driver function to run a collapse function over a span
 
-typedef cp_len_t(*collapse_fn_t)(lcp_span_t span);
+typedef void (*collapse_fn_t)(lcp_span_t span, uint32_t * pCp, int * pLen);
 
 static void Collapse(collapse_fn_t collapse_fn, lcp_span_t * span)
 {
@@ -704,21 +725,23 @@ static void Collapse(collapse_fn_t collapse_fn, lcp_span_t * span)
 		//  but lcps ('logical' characters). This distinction
 		//  has confused/bit me before, so it is probably bad.
 
-		cp_len_t cp_len = collapse_fn({cursor_from, span->lcp_mac});
+		uint32_t cp;
+		int len;
+		collapse_fn({cursor_from, span->lcp_mac}, &cp, &len);
 
-		if (cp_len.len)
+		if (len)
 		{
-			cursor_to->cp = cp_len.cp;
+			cursor_to->cp = cp;
 			cursor_to->str = cursor_from->str;
 
 			int num_ch = 0;
-			for (int i_lcp = 0; i_lcp < cp_len.len; ++i_lcp)
+			for (int i_lcp = 0; i_lcp < len; ++i_lcp)
 			{
 				num_ch += cursor_from[i_lcp].num_ch;
 			}
 			cursor_to->num_ch = num_ch;
 
-			cursor_from += cp_len.len;
+			cursor_from += len;
 
 			assert(cursor_to->str + cursor_to->num_ch == cursor_from->str);
 			++cursor_to;
@@ -763,13 +786,14 @@ static void Decode_utf8_to_lcp_span(
 	int num_cp = 0;
 	while (mic < mac)
 	{
-		cp_len_t cp_len;
-		if (Try_decode_utf8((const uint8_t *)mic, (const uint8_t *)mac, &cp_len))
+		uint32_t cp;
+		int len;
+		if (Try_decode_utf8((const uint8_t *)mic, (const uint8_t *)mac, &cp, &len))
 		{
-			lcp_span_out->lcp_mic[num_cp].cp = cp_len.cp;
-			lcp_span_out->lcp_mic[num_cp].num_ch = cp_len.len;
+			lcp_span_out->lcp_mic[num_cp].cp = cp;
+			lcp_span_out->lcp_mic[num_cp].num_ch = len;
 			lcp_span_out->lcp_mic[num_cp].str = mic;
-			mic += cp_len.len;
+			mic += len;
 		}
 		else
 		{

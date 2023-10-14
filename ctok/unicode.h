@@ -17,20 +17,11 @@ bool Is_cp_in_ranges(
 	const cp_min_most_t * ranges,
 	int num_ranges);
 
-
-
-typedef struct
-{
-	uint32_t cp;
-	int len;
-} cp_len_t;
-
 bool Try_decode_utf8(
 	const uint8_t * mic,
 	const uint8_t * mac,
-	cp_len_t * cp_len_out);
-
-
+	uint32_t * pCp,
+	int * pLen);
 
 bool Is_cp_valid(uint32_t cp);
 bool Is_cp_surrogate(uint32_t cp);
