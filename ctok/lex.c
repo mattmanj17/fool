@@ -115,7 +115,7 @@ token_kind_t TokkPeek(
 {
 	// Special handling of horizontal WS to match clang ... :(
 
-	if (Is_ch_horizontal_white_space(pLcpBegin[0].str[0]))
+	if (Is_ch_horizontal_white_space(pLcpBegin[0].str_begin[0]))
 	{
 		return Lex_after_horizontal_whitespace(pLcpBegin, ppLcpTokEnd);
 	}
@@ -240,7 +240,7 @@ static token_kind_t Lex_after_horizontal_whitespace(
 		// We only want to skip raw whitespace, not whitesapce after
 		//  escaped new lines. This is a gross hack to hatch clang.
 
-		if (cursor->num_ch > 1)
+		if ((cursor->str_end - cursor->str_begin) > 1)
 			break;
 
 		++cursor;
@@ -259,7 +259,7 @@ static token_kind_t Lex_after_whitespace(lcp_t * cursor, lcp_t ** ppLcpTokEnd)
 		//  but still being able to include "\r\n"
 		//  This is a gross hack to match clang
 
-		char ch = cursor->str[0];
+		char ch = cursor->str_begin[0];
 		if (!Is_ch_white_space(ch))
 			break;
 
@@ -278,14 +278,14 @@ static void Do_escaped_line_break_hack(lcp_t * cursor)
 	//  everything except the trailing (physical) '\n', onto the last logical character
 	//  in the string, cursor[-1]. This is awful.
 
-	if (cursor[0].str[0] == '\\')
+	if (cursor[0].str_begin[0] == '\\')
 	{
-		int len_logical_new_line = cursor[0].num_ch;
+		int len_logical_new_line = (int)(cursor[0].str_end - cursor[0].str_begin);
 		int i_ch_most = len_logical_new_line - 1;
 
 		int len_physical_new_line;
-		if (cursor[0].str[i_ch_most] == '\n' &&
-			cursor[0].str[i_ch_most - 1] == '\r')
+		if (cursor[0].str_begin[i_ch_most] == '\n' &&
+			cursor[0].str_begin[i_ch_most - 1] == '\r')
 		{
 			len_physical_new_line = 2;
 		}
@@ -296,9 +296,8 @@ static void Do_escaped_line_break_hack(lcp_t * cursor)
 
 		int len_escaped_line_break = len_logical_new_line - len_physical_new_line;
 
-		cursor[-1].num_ch += len_escaped_line_break;
-		cursor[0].str += len_escaped_line_break;
-		cursor[0].num_ch -= len_escaped_line_break;
+		cursor[-1].str_end += len_escaped_line_break;
+		cursor[0].str_begin += len_escaped_line_break;
 	}
 }
 

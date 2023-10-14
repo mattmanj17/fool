@@ -10,12 +10,6 @@
 #include "unicode.h"
 #include "lcp.h"
 
-typedef struct//!!!FIXME_typedef_audit
-{
-	lcp_t * lcp_mic;
-	lcp_t * lcp_mac;
-} lcp_span_t;
-
 static bool FTryReadWholeFile(
 	FILE * file,
 	const char ** ppChBegin,
@@ -528,21 +522,22 @@ static const char * eof_pos(const char * mic, const char * mac)
 
 // trigraphs
 
-static void Peek_trigraph(
-	lcp_span_t span,
-	uint32_t * pCp,
-	int * pLen)
+static bool FPeekTrigraph(
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
+	uint32_t * pU32Peek,
+	lcp_t ** ppLcpEndPeek)
 {
-	*pCp = UINT32_MAX;
-	*pLen = 0;
+	int cLcp = (int)(pLcpEnd - pLcpBegin);
+	(void) cLcp;
 
-	const lcp_t * cursor = span.lcp_mic;
+	assert(cLcp > 0);
+	if (pLcpBegin[0].cp != '?')
+		return false;
 
-	if (cursor[0].cp != '?')
-		return;
-
-	if (cursor[1].cp != '?')
-		return;
+	assert(cLcp > 1);
+	if (pLcpBegin[1].cp != '?')
+		return false;
 
 	uint32_t pairs[][2] =
 	{
@@ -557,18 +552,20 @@ static void Peek_trigraph(
 		{ '-', '~' },
 	};
 
+	assert(cLcp > 2);
+
 	for (int iPair = 0; iPair < COUNT_OF(pairs); ++iPair)
 	{
 		uint32_t * pair = pairs[iPair];
-		if (pair[0] == cursor[2].cp)
+		if (pair[0] == pLcpBegin[2].cp)
 		{
-			*pCp = pair[1];
-			*pLen = 3;
-			return;
+			*pU32Peek = pair[1];
+			*ppLcpEndPeek = pLcpBegin + 3;
+			return true;
 		}
 	}
 
-	return;
+	return false;
 }
 
 
@@ -628,196 +625,206 @@ static int Len_escaped_end_of_lines(const lcp_t * mic)
 	return len;
 }
 
-static void Peek_escaped_line_breaks(
-	lcp_span_t span,
-	uint32_t * pCp,
-	int * pLen)
+static bool FPeekEscapedLineBreaks(
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
+	uint32_t * pU32Peek,
+	lcp_t ** ppLcpEndPeek)
 {
-	*pCp = UINT32_MAX;
-	*pLen = 0;
-
-	const lcp_t * cursor = span.lcp_mic;
-
-	int len_esc_eol = Len_escaped_end_of_lines(cursor);
+	int len_esc_eol = Len_escaped_end_of_lines(pLcpBegin);
 	if (!len_esc_eol)
-		return;
+		return false;
 
-	if ((cursor + len_esc_eol) == span.lcp_mac)
+	if ((pLcpBegin + len_esc_eol) == pLcpEnd)
 	{
 		// Treat trailing escaped eol as a '\0'
 
-		*pCp = '\0';
-		*pLen = len_esc_eol;
+		*pU32Peek = '\0';
+		*ppLcpEndPeek = pLcpBegin + len_esc_eol;
 	}
 	else
 	{
-		*pCp = cursor[len_esc_eol].cp;
-		*pLen = len_esc_eol + 1;
+		*pU32Peek = pLcpBegin[len_esc_eol].cp;
+		*ppLcpEndPeek = pLcpBegin + len_esc_eol + 1;
 	}
+
+	return true;
 }
 
 
 
 // Convert '\r' and "\r\n" to '\n'
 
-static void Peek_line_break(
-	lcp_span_t span,
-	uint32_t * pCp,
-	int * pLen)
+static bool FPeekCarriageReturn(
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
+	uint32_t * pU32Peek,
+	lcp_t ** ppLcpEndPeek)
 {
-	const lcp_t * cursor = span.lcp_mic;
+	(void)pLcpEnd;
 
-	if (cursor[0].cp == '\r')
+	assert(pLcpEnd - pLcpBegin > 0);
+
+	if (pLcpBegin[0].cp == '\r')
 	{
-		*pCp = '\n';
+		*pU32Peek = '\n';
 
-		// Need to check .num_ch because we do this after
-		//  Collapse(Peek_escaped_line_breaks) :/
+		// Need to check cCh because we do this after
+		//  Collapse(FPeekEscapedLineBreaks) :/
 
-		if ((cursor[1].cp == '\n') && (cursor[1].num_ch == 1))
+		assert(pLcpEnd - pLcpBegin > 1);
+
+		lcp_t * pLcpAfterCr = &pLcpBegin[1];
+		uint32_t cp = pLcpAfterCr->cp;
+		int cCh = (int)(pLcpAfterCr->str_end - pLcpAfterCr->str_begin);
+
+		if (cp == '\n' && cCh == 1)
 		{
-			*pLen = 2;
+			*ppLcpEndPeek = pLcpBegin + 2;
 		}
 		else
 		{
-			*pLen = 1;
+			*ppLcpEndPeek = pLcpBegin + 1;
 		}
 
-		return;
+		return true;
 	}
 
-	*pCp = UINT32_MAX;
-	*pLen = 0;
+	return false;
 }
 
 
 
 // Generic driver function to run a collapse function over a span
 
-typedef void (*collapse_fn_t)(lcp_span_t span, uint32_t * pCp, int * pLen);//!!!FIXME_typedef_audit
+typedef bool (*peek_fn_t)(//!!!FIXME_typedef_audit
+	lcp_t * pLcpBegin, 
+	lcp_t * pLcpEnd, 
+	uint32_t * pU32Peek, 
+	lcp_t ** ppLcpEndPeek);
 
-static void Collapse(collapse_fn_t collapse_fn, lcp_span_t * span)
+static void Collapse(
+	peek_fn_t FPeek, 
+	lcp_t * pLcpBegin, 
+	lcp_t ** ppLcpEnd)
 {
-	lcp_t * cursor_from = span->lcp_mic;
-	lcp_t * cursor_to = span->lcp_mic;
+	lcp_t * pLcpFrom = pLcpBegin;
+	lcp_t * pLcpTo = pLcpBegin;
 
-	while (cursor_from < span->lcp_mac)
+	lcp_t * pLcpEnd = *ppLcpEnd;
+
+	while (pLcpFrom < pLcpEnd)
 	{
-		// BUG the 'len' in cp_len here is not characters, 
-		//  but lcps ('logical' characters). This distinction
-		//  has confused/bit me before, so it is probably bad.
-
-		uint32_t cp;
-		int len;
-		collapse_fn({cursor_from, span->lcp_mac}, &cp, &len);
-
-		if (len)
+		uint32_t u32Peek;
+		lcp_t * pLcpEndPeek;
+		bool fPeek = FPeek(pLcpFrom, pLcpEnd, &u32Peek, &pLcpEndPeek);
+		if (!fPeek)
 		{
-			cursor_to->cp = cp;
-			cursor_to->str = cursor_from->str;
+			u32Peek = pLcpFrom->cp;
+			pLcpEndPeek = pLcpFrom + 1;
 
-			int num_ch = 0;
-			for (int i_lcp = 0; i_lcp < len; ++i_lcp)
-			{
-				num_ch += cursor_from[i_lcp].num_ch;
-			}
-			cursor_to->num_ch = num_ch;
-
-			cursor_from += len;
-
-			assert(cursor_to->str + cursor_to->num_ch == cursor_from->str);
-			++cursor_to;
+			assert(cursor_from->str_end == pLcpEndPeek->str_begin);
 		}
-		else
-		{
-			*cursor_to = *cursor_from;
-			++cursor_to;
-			++cursor_from;
-		}
+
+		pLcpTo->cp = u32Peek;
+		pLcpTo->str_begin = pLcpFrom->str_begin;
+		pLcpTo->str_end = pLcpEndPeek->str_begin;
+
+		pLcpFrom = pLcpEndPeek;
+		++pLcpTo;
 	}
-	assert(cursor_from == span->lcp_mac);
+	assert(pLcpFrom == pLcpEnd);
 
 	// Copy trailing '\0'
 
-	*cursor_to = *cursor_from;
-	span->lcp_mac = cursor_to;
+	*pLcpTo = *pLcpFrom;
+
+	// Write out end
+
+	*ppLcpEnd = pLcpTo;
 }
 
 
-static void Decode_utf8_to_lcp_span(
-	const char * mic,
-	const char * mac,
-	lcp_span_t * lcp_span_out)
+static bool FTryDecodeUtf8ToLogicalCharacters(
+	const char * pChBegin,
+	const char * pChEnd,
+	lcp_t ** ppLcpBegin,
+	lcp_t ** ppLcpEnd)
 {
 	// In the worst case, we will have a codepoint for every byte
-	//  in the original span, so allocate enough spae for that.
+	//  in the original span, so allocate enough space for that.
 	//  Note that we include room for a trailing '\0' codepoint
 
-	int num_ch = (int)(mac - mic);
-	int num_alloc = num_ch + 1;
+	int cCh = (int)(pChEnd - pChBegin);
+	int cAlloc = cCh + 1;
 
-	lcp_span_out->lcp_mic = (lcp_t *)calloc(sizeof(lcp_t) * num_alloc, 1);
-	if (!lcp_span_out->lcp_mic)
-	{
-		printf("ALLOCATION FAILED");
-		exit(1);
-	}
+	lcp_t * pLcpBegin = (lcp_t *)calloc(sizeof(lcp_t) * cAlloc, 1);
+	if (!pLcpBegin)
+		return false;
 
 	// Chew through the byte span with Try_decode_utf8
 
-	int num_cp = 0;
-	while (mic < mac)
+	int cLcp = 0;
+	while (pChBegin < pChEnd)
 	{
 		uint32_t cp;
-		int len;
-		if (Try_decode_utf8((const uint8_t *)mic, (const uint8_t *)mac, &cp, &len))
+		const char * pChEndCp;
+		if (Try_decode_utf8(pChBegin, pChEnd, &cp, &pChEndCp))
 		{
-			lcp_span_out->lcp_mic[num_cp].cp = cp;
-			lcp_span_out->lcp_mic[num_cp].num_ch = len;
-			lcp_span_out->lcp_mic[num_cp].str = mic;
-			mic += len;
+			pLcpBegin[cLcp].cp = cp;
+			pLcpBegin[cLcp].str_begin = pChBegin;
+			pLcpBegin[cLcp].str_end = pChEndCp;
+			pChBegin = pChEndCp;
 		}
 		else
 		{
-			lcp_span_out->lcp_mic[num_cp].cp = UINT32_MAX;
-			lcp_span_out->lcp_mic[num_cp].num_ch = 1;
-			lcp_span_out->lcp_mic[num_cp].str = mic;
-			++mic;
+			pLcpBegin[cLcp].cp = UINT32_MAX;
+			pLcpBegin[cLcp].str_begin = pChBegin;
+			pLcpBegin[cLcp].str_end = pChBegin + 1;
+			++pChBegin;
 		}
 
-		++num_cp;
+		++cLcp;
 	}
-	assert(mic == mac);
+	assert(pChBegin == pChEnd);
 
 	// Append a final '\0'
 
-	lcp_span_out->lcp_mic[num_cp].cp = '\0';
-	lcp_span_out->lcp_mic[num_cp].num_ch = 0;
-	lcp_span_out->lcp_mic[num_cp].str = mic;
+	pLcpBegin[cLcp].cp = '\0';
+	pLcpBegin[cLcp].str_begin = pChEnd;
+	pLcpBegin[cLcp].str_end = pChEnd;
 
-	// Set lcp_mac
+	// return
 
-	lcp_span_out->lcp_mac = lcp_span_out->lcp_mic + num_cp;
+	*ppLcpBegin = pLcpBegin;
+	*ppLcpEnd = pLcpBegin + cLcp;
+
+	return true;
 }
 
-static void Collapse_lcp_span(lcp_span_t * lcp_span)
+static void Collapse_lcp_span(lcp_t * pLcpBegin, lcp_t ** ppLcpEnd)
 {
-	// BUG ostensibly the standard says Collapse(Peek_line_break)
+	// BUG ostensibly the standard says Collapse(FPeekCarriageReturn)
 	//  should happen first, but it has to happen
-	//  after Collapse(Peek_escaped_line_breaks) because of a hack
+	//  after Collapse(FPeekEscapedLineBreaks) because of a hack
 	//  we do there to match clang
 
-	Collapse(Peek_trigraph, lcp_span);
-	Collapse(Peek_escaped_line_breaks, lcp_span);
-	Collapse(Peek_line_break, lcp_span);
+	Collapse(FPeekTrigraph, pLcpBegin, ppLcpEnd);
+	Collapse(FPeekEscapedLineBreaks, pLcpBegin, ppLcpEnd);
+	Collapse(FPeekCarriageReturn, pLcpBegin, ppLcpEnd);
 }
 
-static lcp_span_t Decode_logical_code_points(const char * mic, const char * mac)
+static bool FTryDecodeLogicalCodePoints(
+	const char * pChBegin, 
+	const char * pChEnd,
+	lcp_t ** ppLcpBegin,
+	lcp_t ** ppLcpEnd)
 {
-	lcp_span_t span;
-	Decode_utf8_to_lcp_span(mic, mac, &span);
-	Collapse_lcp_span(&span);
-	return span;
+	if (!FTryDecodeUtf8ToLogicalCharacters(pChBegin, pChEnd, ppLcpBegin, ppLcpEnd))
+		return false;
+	
+	Collapse_lcp_span(*ppLcpBegin, ppLcpEnd);
+	return true;
 }
 
 static void Print_toks_in_ch_range(
@@ -849,7 +856,10 @@ static void Print_toks_in_ch_range(
 
 	// Munch bytes to a cp_span
 
-	lcp_span_t lcp_span = Decode_logical_code_points(str_mic, str_mac);
+	lcp_t * pLcpBegin;
+	lcp_t * pLcpEnd;
+	if (!FTryDecodeLogicalCodePoints(str_mic, str_mac, &pLcpBegin, &pLcpEnd))
+		return;
 
 	// Lex!
 
@@ -858,12 +868,12 @@ static void Print_toks_in_ch_range(
 		// Peek
 
 		lcp_t * pLcpTokEnd;
-		token_kind_t tokk = TokkPeek(lcp_span.lcp_mic, lcp_span.lcp_mac, &pLcpTokEnd);
+		token_kind_t tokk = TokkPeek(pLcpBegin, pLcpEnd, &pLcpTokEnd);
 
-		const char * str_tok = lcp_span.lcp_mic[0].str;
-		const char * str_tok_mac = pLcpTokEnd->str;
+		const char * str_tok = pLcpBegin[0].str_begin;
+		const char * str_tok_mac = pLcpTokEnd->str_begin;
 		int num_ch_tok = (int)(str_tok_mac - str_tok);
-		bool is_last_tok = (str_tok_mac == lcp_span.lcp_mac->str);
+		bool is_last_tok = (pLcpTokEnd == pLcpEnd);
 
 		// print token
 
@@ -874,7 +884,7 @@ static void Print_toks_in_ch_range(
 			bool is_trailing_line_escape =
 				is_last_tok &&
 				((str_tok[0] == '\\') || ((str_tok[0] == '?') && (str_tok[1] == '?') && (str_tok[2] == '/'))) &&
-				(lcp_span.lcp_mic[0].cp == '\0');
+				(pLcpBegin[0].cp == '\0');
 
 			if (!is_trailing_line_escape)
 			{
@@ -930,7 +940,7 @@ static void Print_toks_in_ch_range(
 
 			// Advance
 
-			lcp_span.lcp_mic = pLcpTokEnd;
+			pLcpBegin = pLcpTokEnd;
 		}
 	}
 }

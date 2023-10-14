@@ -8,10 +8,10 @@ bool Is_cp_in_ranges(
 	int num_ranges);
 
 bool Try_decode_utf8(
-	const uint8_t * mic,
-	const uint8_t * mac,
+	const char * pChBegin,
+	const char * pChEnd,
 	uint32_t * pCp,
-	int * pLen);
+	const char ** ppChEndCp);
 
 bool Is_cp_valid(uint32_t cp);
 bool Is_cp_surrogate(uint32_t cp);

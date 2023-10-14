@@ -55,20 +55,20 @@ static bool Is_valid_trailing_byte(uint8_t byte);
 static int Num_bytes_to_encode_cp(uint32_t cp);
 
 bool Try_decode_utf8(
-	const uint8_t * mic,
-	const uint8_t * mac,
+	const char * pChBegin,
+	const char * pChEnd,
 	uint32_t * pCp,
-	int * pLen)
+	const char ** ppChEndCp)
 {
 	// Check if we have no bytes at all
 
-	int bytes_available = (int)(mac - mic);
+	int bytes_available = (int)(pChEnd - pChBegin);
 	if (bytes_available == 0)
 		return false;
 
 	// Check if first byte is too high
 
-	uint8_t first_byte = mic[0];
+	uint8_t first_byte = (uint8_t)pChBegin[0];
 	if (first_byte >= 0b1111'1000)
 		return false;
 
@@ -87,7 +87,7 @@ bool Try_decode_utf8(
 
 	for (int i = 1; i < bytes_to_read; ++i)
 	{
-		uint8_t trailing_byte = mic[i];
+		uint8_t trailing_byte = (uint8_t)pChBegin[i];
 		if (!Is_valid_trailing_byte(trailing_byte))
 			return false;
 	}
@@ -106,7 +106,7 @@ bool Try_decode_utf8(
 
 	for (int i = 1; i < bytes_to_read; ++i)
 	{
-		uint8_t trailing_bits = mic[i];
+		uint8_t trailing_bits = (uint8_t)pChBegin[i];
 		trailing_bits &= 0b0011'1111;
 
 		cp <<= 6;
@@ -126,7 +126,7 @@ bool Try_decode_utf8(
 	// We did it, copy to cp_len_out and return true
 
 	*pCp = cp;
-	*pLen = bytes_to_read;
+	*ppChEndCp = pChBegin + bytes_to_read;
 	return true;
 }
 
