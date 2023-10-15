@@ -2,8 +2,6 @@
 
 #include <stdint.h>
 
-#include "unicode.h"
-
 typedef struct //!!!FIXME_typedef_audit
 {
 	const char * str_begin;
@@ -11,3 +9,9 @@ typedef struct //!!!FIXME_typedef_audit
 	uint32_t cp;
 	int _padding;
 } lcp_t; // logical codepoint
+
+bool FTryDecodeLogicalCodePoints(
+	const char * pChBegin,
+	const char * pChEnd,
+	lcp_t ** ppLcpBegin,
+	lcp_t ** ppLcpEnd);
