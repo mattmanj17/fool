@@ -83,15 +83,13 @@ void PrintRawTokens(const wchar_t * file_path, const char * pChBegin, const char
 
 		switch (tokk)
 		{
-		case tokk_hz_whitespace:
-			break;
-
 		case tokk_multi_line_whitespace:
 			fIsAtStartOfLine = true;
 			break;
 
 		//case tokk_line_comment:
 		//case tokk_block_comment:
+		//case tokk_hz_whitespace:
 		default:
 			fIsAtStartOfLine = false;
 			break;
