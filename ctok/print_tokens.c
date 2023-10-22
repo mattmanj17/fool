@@ -200,34 +200,47 @@ static void Print_token(
 	bool fIsUnclean = false;
 
 	printf(" '");
-	for (lcp_t * lcp = lcp_tok; lcp < lcp_tok_end; ++lcp)
+	if (tokk == tokk_block_comment)
 	{
-		if (lcp->fIsDirty)
+		const char * str_tok = lcp_tok->str_begin;
+		const char * str_tok_end = lcp_tok_end->str_begin;
+
+		for (const char * pCh = str_tok; pCh < str_tok_end; ++pCh)
 		{
-			fIsUnclean = true;
+			putchar(*pCh);
 		}
-
-		// ugh
-
-		if (lcp->cp == '\n' && lcp->str_begin[0] == '\r')
+	}
+	else
+	{
+		for (lcp_t * lcp = lcp_tok; lcp < lcp_tok_end; ++lcp)
 		{
-			putchar('\r');
-
-			if (lcp->str_begin[1] == '\n')
+			if (lcp->fIsDirty)
 			{
-				putchar('\n');
+				fIsUnclean = true;
 			}
 
-			continue;
-		}
+			// ugh
 
-		char ach[4];
-		int len;
-		CP_to_utf8(lcp->cp, ach, &len);
+			if (lcp->cp == '\n' && lcp->str_begin[0] == '\r')
+			{
+				putchar('\r');
 
-		for (int i = 0; i < len; ++i)
-		{
-			putchar(ach[i]);
+				if (lcp->str_begin[1] == '\n')
+				{
+					putchar('\n');
+				}
+
+				continue;
+			}
+
+			char ach[4];
+			int len;
+			CP_to_utf8(lcp->cp, ach, &len);
+
+			for (int i = 0; i < len; ++i)
+			{
+				putchar(ach[i]);
+			}
 		}
 	}
 	printf("'");
@@ -252,7 +265,7 @@ static void Print_token(
 
 	// UnClean
 
-	if (fIsUnclean)
+	if (fIsUnclean && (tokk != tokk_block_comment))
 	{
 		printf(" [UnClean='");
 
