@@ -121,7 +121,7 @@ token_kind_t TokkPeek(
 {
 	// Special handling of horizontal WS to match clang ... :(
 
-	if (Is_ch_horizontal_white_space(pLcpBegin[0].str_begin[0]))
+	if (!pLcpBegin[0].fIsDirty && Is_cp_ascii_horizontal_white_space(pLcpBegin[0].cp))
 	{
 		return Lex_after_horizontal_whitespace(pLcpBegin, ppLcpTokEnd);
 	}
@@ -250,7 +250,7 @@ static token_kind_t Lex_after_horizontal_whitespace(
 		// We only want to skip raw whitespace, not whitesapce after
 		//  escaped new lines. This is a gross hack to hatch clang.
 
-		if ((cursor->str_end - cursor->str_begin) > 1)
+		if (cursor->fIsDirty)
 			break;
 
 		++cursor;
@@ -264,16 +264,18 @@ static token_kind_t Lex_after_whitespace(token_kind_t tokk, lcp_t * cursor, lcp_
 {
 	while (true)
 	{
-		// We look at the raw char starting the cp,
+		// We look at fIsDirty,
 		//  in order to avoid including stuff like "\\\n\n",
 		//  but still being able to include "\r\n"
 		//  This is a gross hack to match clang
 
-		char ch = cursor->str_begin[0];
-		if (!Is_ch_white_space(ch))
+		if (cursor->fIsDirty)
 			break;
 
-		if (!Is_ch_horizontal_white_space(ch))
+		if (!Is_cp_ascii_white_space(cursor->cp))
+			break;
+
+		if (!Is_cp_ascii_horizontal_white_space(cursor->cp))
 		{
 			tokk = tokk_multi_line_whitespace;
 		}

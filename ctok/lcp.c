@@ -86,6 +86,7 @@ bool FTryDecodeLogicalCodePoints(
 			pLcpBegin[cLcp].cp = cp;
 			pLcpBegin[cLcp].str_begin = pChBegin;
 			pLcpBegin[cLcp].str_end = pChEndCp;
+			pLcpBegin[cLcp].fIsDirty = false;
 			pChBegin = pChEndCp;
 		}
 		else
@@ -93,6 +94,7 @@ bool FTryDecodeLogicalCodePoints(
 			pLcpBegin[cLcp].cp = UINT32_MAX;
 			pLcpBegin[cLcp].str_begin = pChBegin;
 			pLcpBegin[cLcp].str_end = pChBegin + 1;
+			pLcpBegin[cLcp].fIsDirty = false;
 			++pChBegin;
 		}
 
@@ -105,6 +107,7 @@ bool FTryDecodeLogicalCodePoints(
 	pLcpBegin[cLcp].cp = '\0';
 	pLcpBegin[cLcp].str_begin = pChEnd;
 	pLcpBegin[cLcp].str_end = pChEnd;
+	pLcpBegin[cLcp].fIsDirty = false;
 
 	// Set ppLcpEnd
 
@@ -112,14 +115,9 @@ bool FTryDecodeLogicalCodePoints(
 
 	// Collapse trigraphs/etc
 
-	// BUG ostensibly the standard says COLLAPSEK_CarriageReturn
-	//  should happen first, but it has to happen
-	//  after COLLAPSEK_EscapedLineBreaks because of a hack
-	//  we do there to match clang
-
+	Collapse(COLLAPSEK_CarriageReturn, pLcpBegin, ppLcpEnd);
 	Collapse(COLLAPSEK_Trigraph, pLcpBegin, ppLcpEnd);
 	Collapse(COLLAPSEK_EscapedLineBreaks, pLcpBegin, ppLcpEnd);
-	Collapse(COLLAPSEK_CarriageReturn, pLcpBegin, ppLcpEnd);
 
 	// Set ppLcpBegin and return
 
@@ -150,10 +148,13 @@ static void Collapse(
 			&u32Peek,
 			&pLcpEndPeek);
 
+		bool fIsDirty = (collapsek == COLLAPSEK_Trigraph) || (collapsek == COLLAPSEK_EscapedLineBreaks);
+
 		if (!fPeek)
 		{
 			u32Peek = pLcpBegin->cp;
 			pLcpEndPeek = pLcpBegin + 1;
+			fIsDirty = false;
 
 			assert(pLcpBegin->str_end == pLcpEndPeek->str_begin);
 		}
@@ -161,6 +162,7 @@ static void Collapse(
 		pLcpDest->cp = u32Peek;
 		pLcpDest->str_begin = pLcpBegin->str_begin;
 		pLcpDest->str_end = pLcpEndPeek->str_begin;
+		pLcpDest->fIsDirty = fIsDirty;
 
 		pLcpBegin = pLcpEndPeek;
 		++pLcpDest;
@@ -253,22 +255,13 @@ static bool FPeekCarriageReturn(
 {
 	(void)pLcpEnd;
 
-	assert(pLcpEnd - pLcpBegin > 0);
-
+	assert((pLcpEnd - pLcpBegin) > 0);
 	if (pLcpBegin[0].cp == '\r')
 	{
 		*pU32Peek = '\n';
 
-		// Need to check cCh because we do this after
-		//  Collapse(FPeekEscapedLineBreaks) :/
-
-		assert(pLcpEnd - pLcpBegin > 1);
-
-		lcp_t * pLcpAfterCr = &pLcpBegin[1];
-		uint32_t cp = pLcpAfterCr->cp;
-		int cCh = (int)(pLcpAfterCr->str_end - pLcpAfterCr->str_begin);
-
-		if (cp == '\n' && cCh == 1)
+		assert((pLcpEnd - pLcpBegin) > 1);
+		if (pLcpBegin[1].cp == '\n')
 		{
 			*ppLcpEndPeek = pLcpBegin + 2;
 		}
@@ -336,18 +329,8 @@ static int Len_escaped_end_of_line(const lcp_t * cursor)
 		++len;
 	}
 
-	// BUG clang does a horrifying thing where it slurps
-	//  up a \n\r as a single line break when measuring
-	//  a line continue, EVEN THOUGH it only defines
-	//  "physical line breaks" as \n, \r, and \r\n.
-	//  It has been like that since the very first
-	//  version of the tokenizer, go figure.
-
 	if (cursor[len].cp == '\n')
 	{
-		if (cursor[len + 1].cp == '\r')
-			return len + 2; // :(
-
 		return len + 1;
 	}
 

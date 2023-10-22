@@ -59,16 +59,12 @@ void PrintRawTokens(const wchar_t * file_path, const char * pChBegin, const char
 		const char * pChTokEnd = pLcpTokEnd->str_begin;
 
 		bool fIsLastToken = (pLcpTokEnd == pLcpEnd);
-
-		bool fStartsWithPhysicalBackslash = (pChTokBegin[0] == '\\');
-		bool fStartsWithTrigraphBackslash = (pChTokBegin[0] == '?') && (pChTokBegin[1] == '?') && (pChTokBegin[2] == '/');
-		bool fStartsWithBackslash = fStartsWithPhysicalBackslash || fStartsWithTrigraphBackslash;
-
+		bool fIsDirty = pLcpBegin->fIsDirty;
 		bool fIsLogicalNull = (pLcpBegin->cp == '\0');
 
 		bool is_trailing_line_escape =
 			fIsLastToken &&
-			fStartsWithBackslash &&
+			fIsDirty &&
 			fIsLogicalNull;
 
 		if (!is_trailing_line_escape)
