@@ -2,7 +2,6 @@
 
 #include <stdbool.h>
 
-#include "unicode.h"
 #include "lcp.h"
 
 

@@ -4,6 +4,7 @@
 #include "print_tokens.h"
 #include "lcp.h"
 #include "lex.h"
+#include "unicode.h"
 
 
 // forward declares
