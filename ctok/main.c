@@ -65,7 +65,7 @@ int wmain(int argc, wchar_t *argv[])
 
 	if (fRaw)
 	{
-		PrintRawTokens(pChBegin, pChEnd);
+		PrintRawTokens(pWChFile, pChBegin, pChEnd);
 	}
 	else
 	{

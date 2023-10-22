@@ -12,11 +12,10 @@ static void Print_token(
 	token_kind_t tokk,
 	const char * str_tok,
 	const char * str_tok_end,
+	const wchar_t * file_path,
+	bool fIsAtStartOfLine,
 	int line,
 	int col);
-
-static void Clean_and_print_ch(
-	char ch);
 
 static void InspectSpanForEol(
 	const char * pChBegin,
@@ -31,7 +30,7 @@ static int Len_eol(
 
 // 'public' functions
 
-void PrintRawTokens(const char * pChBegin, const char * pChEnd)
+void PrintRawTokens(const wchar_t * file_path, const char * pChBegin, const char * pChEnd)
 {
 	// Munch bytes to logical characters
 
@@ -44,6 +43,8 @@ void PrintRawTokens(const char * pChBegin, const char * pChEnd)
 
 	const char * line_start = pChBegin;
 	int line = 1;
+
+	bool fIsAtStartOfLine = true;
 
 	// Lex!
 
@@ -76,8 +77,28 @@ void PrintRawTokens(const char * pChBegin, const char * pChEnd)
 				tokk,
 				pChTokBegin,
 				pChTokEnd,
+				file_path,
+				fIsAtStartOfLine,
 				line,
 				(int)(pChTokBegin - line_start + 1));
+		}
+
+		// fIsAtStartOfLine
+
+		switch (tokk)
+		{
+		case tokk_hz_whitespace:
+			break;
+
+		case tokk_multi_line_whitespace:
+			fIsAtStartOfLine = true;
+			break;
+
+		//case tokk_line_comment:
+		//case tokk_block_comment:
+		default:
+			fIsAtStartOfLine = false;
+			break;
 		}
 
 		// Handle eol
@@ -102,10 +123,32 @@ void PrintRawTokens(const char * pChBegin, const char * pChEnd)
 
 // Impl
 
+void CP_to_utf16(
+	uint32_t cp,
+	wchar_t * awch)
+{
+	if (cp <= 0xFFFF)
+	{
+		awch[0] = (wchar_t)cp;
+		awch[1] = 0;
+	}
+	else
+	{
+		uint32_t u_prime = cp - 0x10000;
+		wchar_t w1 = (wchar_t)(0xD800 | (u_prime >> 10));
+		wchar_t w2 = (wchar_t)(0xDC00 | (u_prime & 0x3FF));
+		awch[0] = w1;
+		awch[1] = w2;
+		awch[2] = 0;
+	}
+}
+
 static void Print_token(
 	token_kind_t tokk,
 	const char * str_tok,
 	const char * str_tok_end,
+	const wchar_t * file_path,
+	bool fIsAtStartOfLine,
 	int line,
 	int col)
 {
@@ -115,12 +158,18 @@ static void Print_token(
 	{
 	case tokk_bogus_ucn:
 	case tokk_stray_backslash:
-	case tokk_whitespace:
+	case tokk_hz_whitespace:
+	case tokk_multi_line_whitespace:
 	case tokk_unterminated_quote:
 	case tokk_zero_length_char_lit:
 	case tokk_unterminated_block_comment:
 	case tokk_unknown_byte:
 		printf("unknown");
+		break;
+
+	case tokk_line_comment:
+	case tokk_block_comment:
+		printf("comment");
 		break;
 
 	default:
@@ -130,75 +179,27 @@ static void Print_token(
 
 	// token text
 
-	printf(" \"");
+	printf(" '");
 	for (const char * pCh = str_tok; pCh < str_tok_end; ++pCh)
 	{
-		Clean_and_print_ch(*pCh);
+		putchar(*pCh);
 	}
-	printf("\"");
+	printf("'");
+
+	printf("\t");
+
+	if (fIsAtStartOfLine)
+	{
+		printf(" [StartOfLine]");
+	}
 
 	// token loc
 
 	printf(
-		" Loc=<%d:%d>\n",
+		"\tLoc=<%ls:%d:%d>\n",
+		file_path,
 		line,
 		col);
-}
-
-static void Clean_and_print_ch(char ch)
-{
-	// NOTE we print ' ' as \x20 so that we can split output on spaces
-
-	switch (ch)
-	{
-	case '0': case '1': case '2': case '3': case '4':
-	case '5': case '6': case '7': case '8': case '9':
-	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
-	case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
-	case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
-	case 'v': case 'w': case 'x': case 'y': case 'z':
-	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
-	case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
-	case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
-	case 'V': case 'W': case 'X': case 'Y': case 'Z':
-	case '_': case '$':
-	case '!': case '#': case '%': case '&': case '\'': case '(': case ')':
-	case '*': case '+': case ',': case '-': case '.': case '/': case ':':
-	case ';': case '<': case '=': case '>': case '?': case '@': case '[':
-	case ']': case '^': case '`': case '{': case '|': case '}': case '~':
-		putchar(ch);
-		break;
-	case '\a':
-		printf("\\a");
-		break;
-	case '\b':
-		printf("\\b");
-		break;
-	case '\f':
-		printf("\\f");
-		break;
-	case '\n':
-		printf("\\n");
-		break;
-	case '\r':
-		printf("\\r");
-		break;
-	case '\t':
-		printf("\\t");
-		break;
-	case '\v':
-		printf("\\v");
-		break;
-	case '"':
-		printf("\\\"");
-		break;
-	case '\\':
-		printf("\\\\");
-		break;
-	default:
-		printf("\\x%02hhx", ch);
-		break;
-	}
 }
 
 static void InspectSpanForEol(

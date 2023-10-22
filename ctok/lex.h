@@ -56,7 +56,10 @@ typedef enum//!!!FIXME_typedef_audit
 	tokk_slashequal,
 	tokk_wide_string_literal,
 	tokk_hash,
-	tokk_comment,
+	
+	tokk_line_comment,
+	tokk_block_comment,
+	
 	tokk_hashhash,
 	tokk_pipeequal,
 	tokk_lesslessequal,
@@ -73,7 +76,8 @@ typedef enum//!!!FIXME_typedef_audit
 
 	tokk_bogus_ucn,
 	tokk_stray_backslash,
-	tokk_whitespace,
+	tokk_hz_whitespace,
+	tokk_multi_line_whitespace,
 	tokk_unterminated_quote,
 	tokk_zero_length_char_lit,
 	tokk_unterminated_block_comment,

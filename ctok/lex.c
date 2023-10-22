@@ -61,7 +61,10 @@ const char * str_from_tokk(token_kind_t tokk)
 		"slashequal",					// tok_slashequal
 		"wide_string_literal",			// tok_wide_string_literal
 		"hash",							// tok_hash
-		"comment",						// tok_comment
+		
+		"line_comment",					// tokk_line_comment
+		"block_comment",				// tokk_block_comment
+		
 		"hashhash",						// tok_hashhash
 		"pipeequal",					// tok_pipeequal
 		"lesslessequal",				// tok_lesslessequal
@@ -78,7 +81,10 @@ const char * str_from_tokk(token_kind_t tokk)
 
 		"bogus_ucn",					// tok_bogus_ucn
 		"stray_backslash",				// tok_stray_backslash
-		"whitespace",					// tok_whitespace
+		
+		"hz_whitespace",				// tokk_hz_whitespace
+		"multi_line_whitespace",		// tokk_multi_line_whitespace
+		
 		"unterminated_quote",			// tok_unterminated_quote
 		"zero_length_char_lit",			// tok_zero_length_char_lit
 		"unterminated_block_comment",	// tok_unterminated_block_comment
@@ -95,7 +101,7 @@ const char * str_from_tokk(token_kind_t tokk)
 
 
 static token_kind_t Lex_after_horizontal_whitespace(lcp_t * cursor, lcp_t ** ppLcpTokEnd);
-static token_kind_t Lex_after_whitespace(lcp_t * cursor, lcp_t ** ppLcpTokEnd);
+static token_kind_t Lex_after_whitespace(token_kind_t tokk, lcp_t * cursor, lcp_t ** ppLcpTokEnd);
 static token_kind_t Lex_after_rest_of_str_lit(token_kind_t tokk, uint32_t cp_sential, lcp_t * cursor, lcp_t * terminator, lcp_t ** ppLcpTokEnd);
 static token_kind_t Lex_after_rest_of_block_comment(lcp_t * cursor, lcp_t * terminator, lcp_t ** ppLcpTokEnd);
 static token_kind_t Lex_after_rest_of_line_comment(lcp_t * cursor, lcp_t * terminator, lcp_t ** ppLcpTokEnd);
@@ -189,11 +195,15 @@ token_kind_t TokkPeek(
 		//  because Lex_after_whitespace only skips 
 		//  physical whitespace (blek)
 
-		return Lex_after_whitespace(pLcpBegin + 1, ppLcpTokEnd);
+		token_kind_t tokk = (Is_cp_ascii_horizontal_white_space(cp_0)) ? 
+								tokk_hz_whitespace : 
+								tokk_multi_line_whitespace;
+
+		return Lex_after_whitespace(tokk, pLcpBegin + 1, ppLcpTokEnd);
 	}
 	else if (cp_0 == '\0')
 	{
-		return Lex_after_whitespace(pLcpBegin + 1, ppLcpTokEnd);
+		return Lex_after_whitespace(tokk_hz_whitespace, pLcpBegin + 1, ppLcpTokEnd);
 	}
 	else if (cp_0 =='\\')
 	{
@@ -247,10 +257,10 @@ static token_kind_t Lex_after_horizontal_whitespace(
 	}
 
 	*ppLcpTokEnd = cursor;
-	return tokk_whitespace;
+	return tokk_hz_whitespace;
 }
 
-static token_kind_t Lex_after_whitespace(lcp_t * cursor, lcp_t ** ppLcpTokEnd)
+static token_kind_t Lex_after_whitespace(token_kind_t tokk, lcp_t * cursor, lcp_t ** ppLcpTokEnd)
 {
 	while (true)
 	{
@@ -263,11 +273,16 @@ static token_kind_t Lex_after_whitespace(lcp_t * cursor, lcp_t ** ppLcpTokEnd)
 		if (!Is_ch_white_space(ch))
 			break;
 
+		if (!Is_ch_horizontal_white_space(ch))
+		{
+			tokk = tokk_multi_line_whitespace;
+		}
+
 		++cursor;
 	}
 
 	*ppLcpTokEnd = cursor;
-	return tokk_whitespace;
+	return tokk;
 }
 
 static void Do_escaped_line_break_hack(lcp_t * cursor)
@@ -387,7 +402,7 @@ static token_kind_t Lex_after_rest_of_block_comment(
 		uint32_t cp1 = cursor->cp;
 		if (cp0 == '*' && cp1 == '/')
 		{
-			tokk = tokk_comment;
+			tokk = tokk_block_comment;
 			++cursor;
 			break;
 		}
@@ -416,7 +431,7 @@ static token_kind_t Lex_after_rest_of_line_comment(
 	}
 
 	*ppLcpTokEnd = cursor;
-	return tokk_comment;
+	return tokk_line_comment;
 }
 
 static bool May_cp_start_id(uint32_t cp)
