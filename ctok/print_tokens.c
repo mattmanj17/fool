@@ -207,6 +207,20 @@ static void Print_token(
 			fIsUnclean = true;
 		}
 
+		// ugh
+
+		if (lcp->cp == '\n' && lcp->str_begin[0] == '\r')
+		{
+			putchar('\r');
+
+			if (lcp->str_begin[1] == '\n')
+			{
+				putchar('\n');
+			}
+
+			continue;
+		}
+
 		char ach[4];
 		int len;
 		CP_to_utf8(lcp->cp, ach, &len);
