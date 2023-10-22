@@ -154,7 +154,7 @@ static void Collapse(
 		{
 			u32Peek = pLcpBegin->cp;
 			pLcpEndPeek = pLcpBegin + 1;
-			fIsDirty = false;
+			fIsDirty = pLcpBegin->fIsDirty;
 
 			assert(pLcpBegin->str_end == pLcpEndPeek->str_begin);
 		}

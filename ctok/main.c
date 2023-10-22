@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <wchar.h>
 
+#include <fcntl.h>
+#include <io.h>
+
 #include "print_tokens.h"
 
 static bool FTryReadWholeFileAtPath(
@@ -12,6 +15,8 @@ static bool FTryReadWholeFileAtPath(
 
 int wmain(int argc, wchar_t *argv[])
 {
+	(void) _setmode(_fileno(stdin), _O_BINARY);
+
 	// BUG do real argument parsing....
 
 	wchar_t * pWChFile = NULL;

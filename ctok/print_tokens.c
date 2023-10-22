@@ -119,43 +119,70 @@ void PrintRawTokens(const wchar_t * file_path, const char * pChBegin, const char
 
 void CP_to_utf8(
 	uint32_t cp,
-	char * ach,
-	int * len)
+	char * ach)
 {
 	if (cp <= 0x7F)
 	{
 		// 0xxxxxxx
 
-		*len = 1;
 		ach[0] = (char)cp;
+		ach[1] = 0;
 	}
 	else if (cp <= 0x7FF)
 	{
 		// 110xxxxx 10xxxxxx
 
-		*len = 2;
 		ach[0] = (char)(0b11000000 | ((cp & 0x7FF) >> 6));
 		ach[1] = (char)(0b10000000 | ((cp & 0x03F) >> 0));
+		ach[2] = 0;
 	}
 	else if (cp <= 0xFFFF)
 	{
 		// 1110xxxx 10xxxxxx 10xxxxxx
 
-		*len = 3;
-		ach[0] = (char)(0b10000000 | ((cp & 0xFFFF) >> 12));
+		ach[0] = (char)(0b11100000 | ((cp & 0xFFFF) >> 12));
 		ach[1] = (char)(0b10000000 | ((cp & 0x0FFF) >> 6));
 		ach[2] = (char)(0b10000000 | ((cp & 0x003F) >> 0));
+		ach[3] = 0;
 	}
 	else
 	{
 		// 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
 
-		*len = 4;
-
 		ach[0] = (char)(0b11110000 | ((cp & 0x1FFFFF) >> 18));
 		ach[1] = (char)(0b10000000 | ((cp & 0x03FFFF) >> 12));
 		ach[2] = (char)(0b10000000 | ((cp & 0x000FFF) >> 6));
 		ach[3] = (char)(0b10000000 | ((cp & 0x00003F) >> 0));
+		ach[4] = 0;
+	}
+}
+
+void CP_to_utf16(
+	uint32_t cp,
+	wchar_t * ach)
+{
+	if (cp <= 0xFFFF)
+	{
+		ach[0] = (wchar_t)cp;
+		ach[1] = 0;
+	}
+	else
+	{
+		// U' = yyyyyyyyyyxxxxxxxxxx = U - 0x10000
+		
+		uint32_t u_prime = cp - 0x10000;
+
+		// W1 = 110110yyyyyyyyyy = 0xD800 + yyyyyyyyyy
+		
+		wchar_t w1 = (wchar_t)(0xD800 + (u_prime >> 10));
+
+		// W2 = 110111xxxxxxxxxx = 0xDC00 + xxxxxxxxxx
+
+		wchar_t w2 = (wchar_t)(0xDC00 + (u_prime & 0x3FF));
+
+		ach[0] = w1;
+		ach[1] = w2;
+		ach[2] = 0;
 	}
 }
 
@@ -200,7 +227,13 @@ static void Print_token(
 	printf(" '");
 	if (tokk == tokk_block_comment)
 	{
-		const char * str_tok = lcp_tok->str_begin;
+		// leading / might be part of a line escape, handle that...
+
+		fIsUnclean = lcp_tok->fIsDirty;
+
+		putchar('/');
+
+		const char * str_tok = lcp_tok[1].str_begin;
 		const char * str_tok_end = lcp_tok_end->str_begin;
 
 		for (const char * pCh = str_tok; pCh < str_tok_end; ++pCh)
@@ -231,14 +264,15 @@ static void Print_token(
 				continue;
 			}
 
-			char ach[4];
-			int len;
-			CP_to_utf8(lcp->cp, ach, &len);
-
-			for (int i = 0; i < len; ++i)
+			if (lcp->cp == 0)
 			{
-				putchar(ach[i]);
+				putchar(0);
+				continue;
 			}
+
+			char ach[3];
+			CP_to_utf8(lcp->cp, ach);
+			printf("%s", ach);
 		}
 	}
 	printf("'");
@@ -263,7 +297,7 @@ static void Print_token(
 
 	// UnClean
 
-	if (fIsUnclean && (tokk != tokk_block_comment))
+	if (fIsUnclean)
 	{
 		printf(" [UnClean='");
 
