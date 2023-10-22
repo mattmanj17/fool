@@ -232,12 +232,25 @@ static void Print_token(
 	}
 	printf("'");
 
+	// tab before flags
+
 	printf("\t");
+
+	// StartOfLine
 
 	if (fIsAtStartOfLine)
 	{
 		printf(" [StartOfLine]");
 	}
+
+	// LeadingSpace (ugh, another match clang hack)
+
+	if (lcp_tok->fIsDirty && Is_cp_ascii_horizontal_white_space(lcp_tok->cp))
+	{
+		printf(" [LeadingSpace]");
+	}
+
+	// UnClean
 
 	if (fIsUnclean)
 	{
