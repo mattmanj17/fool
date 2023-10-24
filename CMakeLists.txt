@@ -40,4 +40,4 @@ target_compile_options(ctok PRIVATE ${COMMON_COMPILE_OPTIONS} /TC)
 # cpp build, for better errors/warnings
 
 add_executable(ctok_cpp ${SOURCES})
-target_compile_options(ctok PRIVATE ${COMMON_COMPILE_OPTIONS} /TP)
+target_compile_options(ctok_cpp PRIVATE ${COMMON_COMPILE_OPTIONS} /TP)
