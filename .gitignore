@@ -1,11 +1,2 @@
-*.sln
-*.vcxproj
-*.vcxproj.filters
-*.vcxproj.user
-
-.vs/
-x64/
-Intel® VTune™ Profiler Results/
-GPUCache/
-
-debug.log
+# empty for now (since we generate cmake build files 'out of tree')
+# but can add stuff later if needed
