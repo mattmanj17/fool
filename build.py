@@ -13,6 +13,7 @@ sources = [
 
 obj_dir = '../ctok_build/obj/'
 exe_dir = '../ctok_build/exe/'
+pdb_dir = '../ctok_build/pdb/'
 
 common_options = [
     '/nologo',
@@ -35,8 +36,19 @@ common_options = [
     '/wd"4062"',
     '/wd"5105"',
 
+    '/Zi',
+
+    '/Gm-',
+
     '/Fo' + obj_dir,
     '/Fe' + exe_dir,
+    '/Fd' + pdb_dir,
+]
+
+link_options = [
+    '/link',
+
+    '/INCREMENTAL:NO',
 ]
 
 sources_and_options = ' '.join(sources) + ' ' + ' '.join(common_options)
@@ -66,11 +78,15 @@ def echo_sys(*argv):
 
 Path(obj_dir).mkdir(parents=True, exist_ok=True)
 Path(exe_dir).mkdir(parents=True, exist_ok=True)
+Path(pdb_dir).mkdir(parents=True, exist_ok=True)
+
+def custom_build(*argv):
+    echo_sys('cl', sources, common_options, *argv, link_options)
 
 # build as cpp
 
-echo_sys('cl', sources, common_options, '/std:c++14', '/TP')
+custom_build('/std:c++14', '/TP')
 
 # build as c
 
-echo_sys('cl', sources, common_options, '/std:c11', '/TC')
+custom_build('/std:c11', '/TC')
