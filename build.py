@@ -1,6 +1,7 @@
 
-import os
+import subprocess
 import sys
+from pathlib import Path
 
 sources = [
     'ctok.c', 
@@ -9,6 +10,9 @@ sources = [
     'print_tokens.c', 
     'unicode.c',
 ]
+
+obj_dir = '../ctok_build/obj/'
+exe_dir = '../ctok_build/exe/'
 
 common_options = [
     '/nologo',
@@ -30,6 +34,9 @@ common_options = [
     '/wd"4061"',
     '/wd"4062"',
     '/wd"5105"',
+
+    '/Fo' + obj_dir,
+    '/Fe' + exe_dir,
 ]
 
 sources_and_options = ' '.join(sources) + ' ' + ' '.join(common_options)
@@ -53,16 +60,17 @@ def echo_sys(*argv):
     print('')
     print(cmd)
     print('')
-    ret = os.system(cmd)
-    if ret != 0:
-        sys.exit(ret)
+    res = subprocess.run(cmd)
+    if res.returncode != 0:
+        sys.exit(res.returncode)
+
+Path(obj_dir).mkdir(parents=True, exist_ok=True)
+Path(exe_dir).mkdir(parents=True, exist_ok=True)
 
 # build as cpp
 
-os.system('cls')
 echo_sys('cl', sources, common_options, '/std:c++14', '/TP')
 
 # build as c
 
-os.system('cls')
 echo_sys('cl', sources, common_options, '/std:c11', '/TC')
