@@ -11,9 +11,9 @@ sources = [
     'unicode.c',
 ]
 
-obj_dir = '../ctok_build/obj/'
-exe_dir = '../ctok_build/exe/'
-pdb_dir = '../ctok_build/pdb/'
+obj_dir = 'build/obj/'
+exe_dir = 'build/exe/'
+pdb_dir = 'build/pdb/'
 
 common_options = [
     '/nologo',
