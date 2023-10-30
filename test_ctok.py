@@ -19,8 +19,6 @@ def cases():
 
 			yield (in_path, out_path)
 
-# ensure clang and ctok output
-
 print('mkdir ...') # BB should flatten out the input so this does not take as long
 
 for in_path, out_path in cases():
@@ -73,52 +71,7 @@ if fails:
 	ctok_out_path = temp_file.name
 	temp_file.close()
 
-	#bcomapre_cmd = f'bcompare {clang_out_path} {ctok_out_path}'
-	bcomapre_cmd = f'bcompare /fv="Hex Compare" {clang_out_path} {ctok_out_path}'
+	#bcomapre_cmd = f'bcompare /fv="Hex Compare" {clang_out_path} {ctok_out_path}'
+	bcomapre_cmd = f'bcompare {clang_out_path} {ctok_out_path}'
 	print(bcomapre_cmd)
 	subprocess.run(bcomapre_cmd)
-
-exit()
-
-
-
-#...
-# gen test input steps...
-# copy llvm-project to new location before build (also do not include .git)
-# delete_non_c_files
-# kill udivmodti4_test, it is way too big
-# delete files with invalid utf8 
-# kill llvm-project\clang\test\C\C2x\n2927.c
-# clang\test\CodeGen\string-literal-unicode-conversion.c
-# trigrpahs
-
-def delete_non_c_files():
-	for foldername, _, filenames in os.walk(os.path.abspath("test/ctok/input/llvm-project")):
-		for filename in filenames:
-			file_path = os.path.join(foldername, filename)
-			_, file_extension = os.path.splitext(filename)
-			if file_extension != '.c':
-				try:
-					os.remove(file_path)
-				except Exception as e:
-					print(f"Error deleting {file_path}: {e}")
-					exit()
-
-def is_valid_utf8(file_path):
-	try:
-		with open(file_path, 'r', encoding='utf-8') as file:
-			file.read()
-		return True
-	except UnicodeDecodeError:
-		return False
-
-def delete_invalid_utf8_files():
-	for foldername, _, filenames in os.walk(os.path.abspath("test/ctok/input")):
-		for filename in filenames:
-			file_path = os.path.join(foldername, filename)
-			if not is_valid_utf8(file_path):
-				try:
-					os.remove(file_path)
-				except Exception as e:
-					print(f"Error deleting file {file_path}: {e}")
-					exit()

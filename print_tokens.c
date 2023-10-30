@@ -13,8 +13,6 @@ static void Print_token(
 	token_kind_t tokk,
 	lcp_t * lcp_tok,
 	lcp_t * lcp_tok_end,
-	const wchar_t * file_path,
-	bool fIsAtStartOfLine,
 	int line,
 	int col);
 
@@ -31,7 +29,7 @@ static int Len_eol(
 
 // 'public' functions
 
-void PrintRawTokens(const wchar_t * file_path, const char * pChBegin, const char * pChEnd)
+void PrintRawTokens(const char * pChBegin, const char * pChEnd)
 {
 	// Munch bytes to logical characters
 
@@ -44,8 +42,6 @@ void PrintRawTokens(const wchar_t * file_path, const char * pChBegin, const char
 
 	const char * line_start = pChBegin;
 	int line = 1;
-
-	bool fIsAtStartOfLine = true;
 
 	// Lex!
 
@@ -74,26 +70,8 @@ void PrintRawTokens(const wchar_t * file_path, const char * pChBegin, const char
 				tokk,
 				pLcpBegin,
 				pLcpTokEnd,
-				file_path,
-				fIsAtStartOfLine,
 				line,
 				(int)(pChTokBegin - line_start + 1));
-		}
-
-		// fIsAtStartOfLine
-
-		switch (tokk)
-		{
-		case tokk_multi_line_whitespace:
-			fIsAtStartOfLine = true;
-			break;
-
-		//case tokk_line_comment:
-		//case tokk_block_comment:
-		//case tokk_hz_whitespace:
-		default:
-			fIsAtStartOfLine = false;
-			break;
 		}
 
 		// Handle eol
@@ -187,12 +165,69 @@ void CP_to_utf16(
 	}
 }
 
+static void clean_and_print_char(char ch)
+{
+	switch (ch)
+	{ 
+	case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j':
+	case 'k': case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't':
+	case 'u': case 'v': case 'w': case 'x': case 'y': case 'z':
+	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J':
+	case 'K': case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T':
+	case 'U': case 'V': case 'W': case 'X': case 'Y': case 'Z':
+	case '!': case '\'': case '#': case '$': case '%': case '&': case '(': case ')': case '*': case '+':
+	case ',': case '-': case '.': case '/': case ':': case ';': case '<': case '=': case '>': case '?':
+	case '@': case '[': case ']': case '^': case '_': case '`': case '{': case '|': case '}': case '~':
+		printf("%c", ch);
+		break;
+
+	case '"':
+		printf("\\\"");
+		break;
+
+	case '\\':
+		printf("\\\\");
+		break;
+
+	case '\f':
+		printf("\\f");
+		break;
+
+	case '\n':
+		printf("\\n");
+		break;
+
+	case '\r':
+		printf("\\r");
+		break;
+
+	case '\t':
+		printf("\\t");
+		break;
+
+	case '\v':
+		printf("\\v");
+		break;
+
+	default:
+		{
+			unsigned char high = (unsigned char)((ch >> 4) & 0xF);
+			unsigned char low = (unsigned char)(ch & 0xF);
+
+			char highCh = high < 10 ? '0' + high : 'A' + (high - 10);
+			char lowCh = low < 10 ? '0' + low : 'A' + (low - 10);
+
+			printf("\\x%c%c", highCh, lowCh);
+		}
+		break;
+	}
+}
+
 static void Print_token(
 	token_kind_t tokk,
 	lcp_t * lcp_tok,
 	lcp_t * lcp_tok_end,
-	const wchar_t * file_path,
-	bool fIsAtStartOfLine,
 	int line,
 	int col)
 {
@@ -223,101 +258,22 @@ static void Print_token(
 
 	// token text
 
-	bool fIsUnclean = false;
+	printf(" \"");
 
-	printf(" '");
-	if (tokk == tokk_block_comment)
+	const char * str_tok = lcp_tok->str_begin;
+	const char * str_tok_end = lcp_tok_end->str_begin;
+
+	for (const char * pCh = str_tok; pCh < str_tok_end; ++pCh)
 	{
-		// leading / might be part of a line escape, handle that...
-
-		fIsUnclean = lcp_tok->fIsDirty;
-
-		putchar('/');
-
-		const char * str_tok = lcp_tok[1].str_begin;
-		const char * str_tok_end = lcp_tok_end->str_begin;
-
-		for (const char * pCh = str_tok; pCh < str_tok_end; ++pCh)
-		{
-			putchar(*pCh);
-		}
+		clean_and_print_char(*pCh);
 	}
-	else
-	{
-		for (lcp_t * lcp = lcp_tok; lcp < lcp_tok_end; ++lcp)
-		{
-			if (lcp->fIsDirty)
-			{
-				fIsUnclean = true;
-			}
-
-			// ugh
-
-			if (lcp->cp == '\n' && lcp->str_begin[0] == '\r')
-			{
-				putchar('\r');
-
-				if (lcp->str_begin[1] == '\n')
-				{
-					putchar('\n');
-				}
-
-				continue;
-			}
-
-			if (lcp->cp == 0)
-			{
-				putchar(0);
-				continue;
-			}
-
-			char ach[3];
-			CP_to_utf8(lcp->cp, ach);
-			printf("%s", ach);
-		}
-	}
-	printf("'");
-
-	// tab before flags
-
-	printf("\t");
-
-	// StartOfLine
-
-	if (fIsAtStartOfLine)
-	{
-		printf(" [StartOfLine]");
-	}
-
-	// LeadingSpace (ugh, another match clang hack)
-
-	if (lcp_tok->fIsDirty && Is_cp_ascii_horizontal_white_space(lcp_tok->cp))
-	{
-		printf(" [LeadingSpace]");
-	}
-
-	// UnClean
-
-	if (fIsUnclean)
-	{
-		printf(" [UnClean='");
-
-		const char * str_tok = lcp_tok->str_begin;
-		const char * str_tok_end = lcp_tok_end->str_begin;
-
-		for (const char * pCh = str_tok; pCh < str_tok_end; ++pCh)
-		{
-			putchar(*pCh);
-		}
-
-		printf("']");
-	}
+	
+	printf("\" ");
 
 	// token loc
 
 	printf(
-		"\tLoc=<%ls:%d:%d>\n",
-		file_path,
+		"%d:%d\n",
 		line,
 		col);
 }
