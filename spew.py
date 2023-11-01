@@ -8,7 +8,7 @@ chars = b"@\"\\\n\x20'8uULE0_[](){}.:%><#,=|^.;?;*+-&!~"
 out_dir = "test/ctok/input/spew"
 
 if not os.path.exists(out_dir):
-	os.mkdir(out_dir)
+	os.makedirs(out_dir, exist_ok=True)
 
 findex = 0
 for prefix in itertools.product(chars, repeat=2):
