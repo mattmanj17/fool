@@ -35,7 +35,7 @@ def copy_c_files(src_dir, dest_dir):
 				os.makedirs(os.path.dirname(destination_file), exist_ok=True)
 				shutil.copy2(src_file, destination_file)
 
-source_directory = os.path.abspath('3rd_party/llvm-project/')
+source_directory = os.path.abspath('3rd_party/')
 destination_directory = os.path.abspath('test/ctok/input/')
 
 copy_c_files(source_directory, destination_directory)
