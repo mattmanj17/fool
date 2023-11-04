@@ -55,7 +55,7 @@ def run_ctok(ctok_path, in_path, out_path):
 	print(f'run_ctok {in_path}')
 
 with concurrent.futures.ThreadPoolExecutor() as executor:
-	ctok = os.path.abspath("build/exe/ctok.exe")
+	ctok = os.path.abspath(".build/exe/ctok.exe")
 	for in_path, out_path in cases():
 		executor.submit(run_ctok, ctok, in_path, out_path)
 
