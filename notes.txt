@@ -1,0 +1,26 @@
+clean up ctok.c after merging
+
+---
+
+other c code to test
+
+gcc
+linux kernal
+https://github.com/c-testsuite/c-testsuite
+7-zip
+https://github.com/mrquincle/ancient-c-compilers
+chibicc
+cmake
+cpython
+curl
+ffmpeg
+git
+glfw
+lua
+obs
+open-watcom-v2
+raylib
+ag (the-silver-searcher)
+tinycc
+vlc
+zork (https://github.com/devshane/zork)
