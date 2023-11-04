@@ -6,6 +6,39 @@ from pathlib import Path
 from threading import Lock
 import tempfile
 
+def build_clang():
+	if not os.path.exists('.3rd_party'):
+		os.mkdir('.3rd_party')
+	os.chdir('.3rd_party')
+	
+	if os.path.exists('llvm-project'):
+		os.chdir('..')
+		return
+	
+	print('downloading and building clang')
+	
+	print('git clone')
+	subprocess.run(['git', 'clone', 'https://github.com/mattmanj17/llvm-project.git'])
+	os.chdir('llvm-project')
+	
+	print('git switch')
+	subprocess.run(['git', 'switch', '17.0.3-branch'])
+	
+	os.mkdir('build')
+	os.chdir('build')
+	
+	print('cmake')
+	subprocess.run(['cmake', '-DLLVM_ENABLE_PROJECTS=clang', '-A', 'x64', '-Thost=x64', '..\\llvm'])
+	
+	os.chdir('..')
+	
+	print('msbuild')
+	subprocess.run(['msbuild', '-m:4', 'build/tools/clang/tools/driver/clang.vcxproj', '/property:Configuration=Release'])
+
+	os.chdir('..')
+
+build_clang()
+
 def cases():
 	in_dir = os.path.abspath("test/ctok/input")
 	out_dir = os.path.abspath("test/ctok/output")
@@ -32,7 +65,7 @@ def run_clang(clang_path, in_path, out_path):
 	print(f'run_clang {in_path}')
 
 with concurrent.futures.ThreadPoolExecutor(max_workers=19) as executor: # clang is a little heavy weight, so we limit to 19 workers
-	clang = os.path.abspath("3rd_party/llvm-project/build/Release/bin/clang.exe")
+	clang = os.path.abspath(".3rd_party/llvm-project/build/Release/bin/clang.exe")
 	for in_path, out_path in cases():
 		if not os.path.isfile(out_path):
 			executor.submit(run_clang, clang, in_path, out_path)

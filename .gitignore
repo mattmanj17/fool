@@ -1,4 +1,4 @@
 .build/
 .debug/
 test/
-3rd_party/
+.3rd_party/
