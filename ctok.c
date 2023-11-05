@@ -12,7 +12,7 @@
 // ------
 
 #define COUNT_OF(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
-#define CASSERT(x) static_assert((x), #x)
+#define STATIC_ASSERT(x) static_assert((x), #x)
 
 // ------
 
@@ -721,7 +721,7 @@ const char * str_from_tokk(token_kind_t tokk)
 		"unterminated_block_comment",	// tok_unterminated_block_comment
 		"unknown_byte",					// tok_unknown_byte
 	};
-	CASSERT(COUNT_OF(s_mpTokkStr) == tokk_max);
+	STATIC_ASSERT(COUNT_OF(s_mpTokkStr) == tokk_max);
 
 	assert(tokk >= 0);
 	assert(tokk < tokk_max);
