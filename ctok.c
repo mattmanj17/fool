@@ -16,16 +16,6 @@
 
 // ------
 
-bool Is_cp_ascii_lowercase(uint32_t cp)
-{
-	return cp >= 'a' && cp <= 'z';
-}
-
-bool Is_cp_ascii_uppercase(uint32_t cp)
-{
-	return cp >= 'A' && cp <= 'Z';
-}
-
 bool Is_cp_ascii_horizontal_white_space(uint32_t cp)
 {
 	return cp == ' ' || cp == '\t' || cp == '\f' || cp == '\v';
@@ -831,10 +821,10 @@ static bool May_cp_start_id(uint32_t cp)
 {
 	// Letters
 
-	if (Is_cp_ascii_lowercase(cp))
+	if (cp >= 'a' && cp <= 'z')
 		return true;
 
-	if (Is_cp_ascii_uppercase(cp))
+	if (cp >= 'A' && cp <= 'Z')
 		return true;
 
 	// Underscore
@@ -1091,10 +1081,10 @@ static void Peek_ucn(
 
 static bool Does_cp_extend_id(uint32_t cp)
 {
-	if (Is_cp_ascii_lowercase(cp))
+	if (cp >= 'a' && cp <= 'z')
 		return true;
 
-	if (Is_cp_ascii_uppercase(cp))
+	if (cp >= 'A' && cp <= 'Z')
 		return true;
 
 	if (cp == '_')
