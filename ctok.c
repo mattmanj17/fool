@@ -16,11 +16,6 @@
 
 // ------
 
-bool Is_cp_ascii(uint32_t cp)
-{
-	return cp <= 0x7F;
-}
-
 bool Is_cp_ascii_digit(uint32_t cp)
 {
 	return cp >= '0' && cp <= '9';
@@ -859,7 +854,7 @@ static bool May_cp_start_id(uint32_t cp)
 
 	// All other ascii does not start ids
 
-	if (Is_cp_ascii(cp))
+	if (cp <= 0x7F)
 		return false;
 
 	// Bogus utf8 does not start ids
@@ -948,9 +943,6 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 
 static uint32_t Hex_digit_value_from_cp(uint32_t cp)
 {
-	if (!Is_cp_ascii(cp))
-		return UINT32_MAX;
-
 	if (Is_cp_ascii_digit(cp))
 		return cp - '0';
 
@@ -1119,7 +1111,7 @@ static bool Does_cp_extend_id(uint32_t cp)
 	if (cp == '$') // '$' allowed as an extension :/
 		return true;
 
-	if (Is_cp_ascii(cp)) // All other ascii is invalid
+	if (cp <= 0x7F) // All other ascii is invalid
 		return false;
 
 	if (cp == UINT32_MAX) // Bogus utf8 does not extend ids
