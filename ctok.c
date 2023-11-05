@@ -36,31 +36,6 @@ bool Is_ch_white_space(char ch)
 	return Is_cp_ascii_white_space((uint32_t)ch);
 }
 
-bool Is_cp_surrogate(uint32_t cp)
-{
-	static const uint32_t cp_surrogate_min = 0xD800;
-	if (cp < cp_surrogate_min)
-		return false;
-
-	static const uint32_t cp_surrogate_most = 0xDFFF;
-	if (cp > cp_surrogate_most)
-		return false;
-
-	return true;
-}
-
-bool Is_cp_valid(uint32_t cp)
-{
-	if (Is_cp_surrogate(cp))
-		return false;
-
-	const uint32_t cp_most = 0x10FFFF;
-	if (cp > cp_most)
-		return false;
-
-	return true;
-}
-
 bool Is_cp_in_ranges(
 	uint32_t cp,
 	const uint32_t(*ranges)[2],
@@ -223,7 +198,10 @@ bool Try_decode_utf8(
 
 	// Check for illegal codepoints
 
-	if (!Is_cp_valid(cp))
+	if (cp >= 0xD800 && cp <= 0xDFFF)
+		return false;
+
+	if (cp > 0x10FFFF)
 		return false;
 
 	// Check for 'overlong encodings'
@@ -904,23 +882,14 @@ static bool May_cp_start_id(uint32_t cp)
 
 static bool Is_cp_valid_ucn(uint32_t cp)
 {
-	// Comment cribbed from clang
-	// C99 6.4.3p2: A universal character name shall not specify a character whose
-	//   short identifier is less than 00A0 other than 0024 ($), 0040 (@), or
-	//   0060 (`), nor one in the range D800 through DFFF inclusive.)
-
-	// BUG 
-	// should be
-	//  if (cp < 0xA0 && cp != 0x24 && cp != 0x40 && cp != 0x60)
-	// but clang does somthing else :/
+	// A universal character name shall not specify a character whose
+	//  short identifier is less than 00A0, nor one in the range 
+	//  D800 through DFFF inclusive.
 
 	if (cp < 0xA0)
 		return false;
 
-	// BUG matthewd you would expect this to be if !Is_cp_valid,
-	//  but that is not what clang does...
-
-	if (Is_cp_surrogate(cp))
+	if (cp >= 0xD800 && cp <= 0xDFFF)
 		return false;
 
 	return true;
