@@ -16,11 +16,6 @@
 
 // ------
 
-bool Is_cp_ascii_digit(uint32_t cp)
-{
-	return cp >= '0' && cp <= '9';
-}
-
 bool Is_cp_ascii_lowercase(uint32_t cp)
 {
 	return cp >= 'a' && cp <= 'z';
@@ -943,7 +938,7 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 
 static uint32_t Hex_digit_value_from_cp(uint32_t cp)
 {
-	if (Is_cp_ascii_digit(cp))
+	if (cp >= '0' && cp <= '9')
 		return cp - '0';
 
 	if (cp < 'A')
@@ -1105,7 +1100,7 @@ static bool Does_cp_extend_id(uint32_t cp)
 	if (cp == '_')
 		return true;
 
-	if (Is_cp_ascii_digit(cp))
+	if (cp >= '0' && cp <= '9')
 		return true;
 
 	if (cp == '$') // '$' allowed as an extension :/
@@ -1533,7 +1528,7 @@ token_kind_t TokkPeek(
 		pLcpBegin += 2;
 		return Lex_after_rest_of_line_comment(pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
-	else if (cp_0 == '.' && Is_cp_ascii_digit(cp_1))
+	else if (cp_0 == '.' && cp_1 >= '0' && cp_1 <= '9')
 	{
 		pLcpBegin += 2;
 		return Lex_after_rest_of_ppnum(pLcpBegin, ppLcpTokEnd);
@@ -1542,7 +1537,7 @@ token_kind_t TokkPeek(
 	{
 		return Lex_after_rest_of_id(pLcpBegin + 1, ppLcpTokEnd);
 	}
-	else if (Is_cp_ascii_digit(cp_0))
+	else if (cp_0 >= '0' && cp_0 <= '9')
 	{
 		return Lex_after_rest_of_ppnum(pLcpBegin + 1, ppLcpTokEnd);
 	}
