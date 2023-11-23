@@ -13,18 +13,6 @@
 
 // ------
 
-bool Is_hz_ws(uint32_t cp)
-{
-	return cp == ' ' || cp == '\t' || cp == '\f' || cp == '\v';
-}
-
-bool Is_ws(uint32_t cp)
-{
-	return Is_hz_ws(cp) || cp == '\n' || cp == '\r';
-}
-
-// ------
-
 static bool Has_leading_1_0(uint8_t byte)
 {
 	return (byte >> 6) == 0b10;
@@ -171,6 +159,16 @@ bool Try_decode_utf8(
 }
 
 // ------
+
+bool Is_hz_ws(uint32_t cp)
+{
+	return cp == ' ' || cp == '\t' || cp == '\f' || cp == '\v';
+}
+
+bool Is_ws(uint32_t cp)
+{
+	return Is_hz_ws(cp) || cp == '\n' || cp == '\r';
+}
 
 typedef struct //!!!FIXME_typedef_audit
 {
