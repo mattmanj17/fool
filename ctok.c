@@ -399,69 +399,66 @@ static void Collapse(
 	*ppLcpEnd = pLcpDest;
 }
 
-bool FTryDecodeLogicalCodePoints(
-	const char * pChBegin,
-	const char * pChEnd,
-	lcp_t ** ppLcpBegin,
-	lcp_t ** ppLcpEnd)
+lcp_t * Try_decode_logical_codepoints(
+	const char * input,
+	const char * end,
+	int * len_lcps_ref)
 {
 	// In the worst case, we will have a codepoint for every byte
 	//  in the original span, so allocate enough space for that.
 	//  Note that we include room for a trailing '\0' codepoint
 
-	int cCh = (int)(pChEnd - pChBegin);
-	int cAlloc = cCh + 1;
+	int bytes_available = (int)(end - input);
+	int len_lcps_alloc = bytes_available + 1;
 
-	lcp_t * pLcpBegin = (lcp_t *)calloc(sizeof(lcp_t) * cAlloc, 1);
-	if (!pLcpBegin)
-		return false;
+	lcp_t * lcps = (lcp_t *)calloc(sizeof(lcp_t) * len_lcps_alloc, 1);
+	if (!lcps)
+		return NULL;
 
 	// Chew through the byte span with Try_decode_utf8
 
-	int cLcp = 0;
-	while (pChBegin < pChEnd)
+	int len_lcps = 0;
+	while (input < end)
 	{
 		uint32_t cp;
-		const char * pChEndCp;
-		if (Try_decode_utf8(pChBegin, pChEnd, &cp, &pChEndCp))
+		const char * end_cp;
+		if (Try_decode_utf8(input, end, &cp, &end_cp))
 		{
-			pLcpBegin[cLcp].cp = cp;
-			pLcpBegin[cLcp].str_begin = pChBegin;
-			pLcpBegin[cLcp].str_end = pChEndCp;
-			pChBegin = pChEndCp;
+			lcps[len_lcps].cp = cp;
+			lcps[len_lcps].str_begin = input;
+			lcps[len_lcps].str_end = end_cp;
+			input = end_cp;
 		}
 		else
 		{
-			pLcpBegin[cLcp].cp = UINT32_MAX;
-			pLcpBegin[cLcp].str_begin = pChBegin;
-			pLcpBegin[cLcp].str_end = pChBegin + 1;
-			++pChBegin;
+			lcps[len_lcps].cp = UINT32_MAX;
+			lcps[len_lcps].str_begin = input;
+			lcps[len_lcps].str_end = input + 1;
+			++input;
 		}
 
-		++cLcp;
+		++len_lcps;
 	}
-	assert(pChBegin == pChEnd);
+	assert(input == end);
 
 	// Append a final '\0'
 
-	pLcpBegin[cLcp].cp = '\0';
-	pLcpBegin[cLcp].str_begin = pChEnd;
-	pLcpBegin[cLcp].str_end = pChEnd;
-
-	// Set ppLcpEnd
-
-	*ppLcpEnd = pLcpBegin + cLcp;
+	lcps[len_lcps].cp = '\0';
+	lcps[len_lcps].str_begin = end;
+	lcps[len_lcps].str_end = end;
 
 	// Collapse trigraphs/etc
 
-	Collapse(COLLAPSEK_CarriageReturn, pLcpBegin, ppLcpEnd);
-	Collapse(COLLAPSEK_Trigraph, pLcpBegin, ppLcpEnd);
-	Collapse(COLLAPSEK_EscapedLineBreaks, pLcpBegin, ppLcpEnd);
+	lcp_t * lcps_end = lcps + len_lcps;
+	Collapse(COLLAPSEK_CarriageReturn, lcps, &lcps_end);
+	Collapse(COLLAPSEK_Trigraph, lcps, &lcps_end);
+	Collapse(COLLAPSEK_EscapedLineBreaks, lcps, &lcps_end);
+	len_lcps = (int)(lcps_end - lcps);
 
-	// Set ppLcpBegin and return
+	// return lcps and len
 
-	*ppLcpBegin = pLcpBegin;
-	return true;
+	*len_lcps_ref = len_lcps;
+	return lcps;
 }
 
 // Lex
@@ -1619,33 +1616,35 @@ static void InspectSpanForEol(
 	*ppStartOfLine = pStartOfLine;
 }
 
-void PrintRawTokens(const char * pChBegin, const char * pChEnd)
+void PrintRawTokens(const char * input, const char * end)
 {
 	// Munch bytes to logical characters
 
-	lcp_t * pLcpBegin;
-	lcp_t * pLcpEnd;
-	if (!FTryDecodeLogicalCodePoints(pChBegin, pChEnd, &pLcpBegin, &pLcpEnd))
+	int len_lcps;
+	lcp_t * lcps = Try_decode_logical_codepoints(input, end, &len_lcps);
+	if (!lcps)
 		return;
+
+	lcp_t * lcps_end = lcps + len_lcps;
 
 	// Keep track of line info
 
-	const char * line_start = pChBegin;
+	const char * line_start = input;
 	int line = 1;
 
 	// Lex!
 
-	while (pLcpBegin < pLcpEnd)
+	while (lcps < lcps_end)
 	{
 		lcp_t * pLcpTokEnd;
-		token_kind_t tokk = TokkPeek(pLcpBegin, pLcpEnd, &pLcpTokEnd);
+		token_kind_t tokk = TokkPeek(lcps, lcps_end, &pLcpTokEnd);
 
-		const char * pChTokBegin = pLcpBegin->str_begin;
+		const char * pChTokBegin = lcps->str_begin;
 		const char * pChTokEnd = pLcpTokEnd->str_begin;
 
 		Print_token(
 			tokk,
-			pLcpBegin,
+			lcps,
 			pLcpTokEnd,
 			line,
 			(int)(pChTokBegin - line_start + 1));
@@ -1664,7 +1663,7 @@ void PrintRawTokens(const char * pChBegin, const char * pChEnd)
 
 		// Advance
 
-		pLcpBegin = pLcpTokEnd;
+		lcps = pLcpTokEnd;
 	}
 }
 
