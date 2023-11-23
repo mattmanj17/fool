@@ -213,8 +213,7 @@ typedef struct //!!!FIXME_typedef_audit
 	const char * str_begin;
 	const char * str_end;
 	uint32_t cp;
-	bool fIsDirty;
-	bool _padding[3];
+	bool _padding[4];
 } lcp_t; // logical codepoint
 
 static int Len_escaped_end_of_line(const lcp_t * cursor)
@@ -298,11 +297,12 @@ static bool FPeekTrigraph(
 	int cLcp = (int)(pLcpEnd - pLcpBegin);
 	(void)cLcp;
 
-	assert(cLcp > 0);
+	if (cLcp < 3)
+		return false;
+
 	if (pLcpBegin[0].cp != '?')
 		return false;
 
-	assert(cLcp > 1);
 	if (pLcpBegin[1].cp != '?')
 		return false;
 
@@ -318,8 +318,6 @@ static bool FPeekTrigraph(
 		{ '!', '|' },
 		{ '-', '~' },
 	};
-
-	assert(cLcp > 2);
 
 	for (int iPair = 0; iPair < COUNT_OF(pairs); ++iPair)
 	{
@@ -410,13 +408,10 @@ static void Collapse(
 			&u32Peek,
 			&pLcpEndPeek);
 
-		bool fIsDirty = (collapsek == COLLAPSEK_Trigraph) || (collapsek == COLLAPSEK_EscapedLineBreaks);
-
 		if (!fPeek)
 		{
 			u32Peek = pLcpBegin->cp;
 			pLcpEndPeek = pLcpBegin + 1;
-			fIsDirty = pLcpBegin->fIsDirty;
 
 			assert(pLcpBegin->str_end == pLcpEndPeek->str_begin);
 		}
@@ -424,7 +419,6 @@ static void Collapse(
 		pLcpDest->cp = u32Peek;
 		pLcpDest->str_begin = pLcpBegin->str_begin;
 		pLcpDest->str_end = pLcpEndPeek->str_begin;
-		pLcpDest->fIsDirty = fIsDirty;
 
 		pLcpBegin = pLcpEndPeek;
 		++pLcpDest;
@@ -469,7 +463,6 @@ bool FTryDecodeLogicalCodePoints(
 			pLcpBegin[cLcp].cp = cp;
 			pLcpBegin[cLcp].str_begin = pChBegin;
 			pLcpBegin[cLcp].str_end = pChEndCp;
-			pLcpBegin[cLcp].fIsDirty = false;
 			pChBegin = pChEndCp;
 		}
 		else
@@ -477,7 +470,6 @@ bool FTryDecodeLogicalCodePoints(
 			pLcpBegin[cLcp].cp = UINT32_MAX;
 			pLcpBegin[cLcp].str_begin = pChBegin;
 			pLcpBegin[cLcp].str_end = pChBegin + 1;
-			pLcpBegin[cLcp].fIsDirty = false;
 			++pChBegin;
 		}
 
@@ -490,7 +482,6 @@ bool FTryDecodeLogicalCodePoints(
 	pLcpBegin[cLcp].cp = '\0';
 	pLcpBegin[cLcp].str_begin = pChEnd;
 	pLcpBegin[cLcp].str_end = pChEnd;
-	pLcpBegin[cLcp].fIsDirty = false;
 
 	// Set ppLcpEnd
 
@@ -1218,37 +1209,6 @@ static token_kind_t Lex_after_rest_of_ppnum(
 	return tokk_numeric_constant;
 }
 
-static void Do_escaped_line_break_hack(lcp_t * cursor)
-{
-	// BUG hack to match clang. 
-	//  We want to include any escaped line breaks at the end of this
-	//  un-terminated string literal. we do this by shuffling
-	//  everything except the trailing (physical) '\n', onto the last logical character
-	//  in the string, cursor[-1]. This is awful.
-
-	if (cursor[0].str_begin[0] == '\\')
-	{
-		int len_logical_new_line = (int)(cursor[0].str_end - cursor[0].str_begin);
-		int i_ch_most = len_logical_new_line - 1;
-
-		int len_physical_new_line;
-		if (cursor[0].str_begin[i_ch_most] == '\n' &&
-			cursor[0].str_begin[i_ch_most - 1] == '\r')
-		{
-			len_physical_new_line = 2;
-		}
-		else
-		{
-			len_physical_new_line = 1;
-		}
-
-		int len_escaped_line_break = len_logical_new_line - len_physical_new_line;
-
-		cursor[-1].str_end += len_escaped_line_break;
-		cursor[0].str_begin += len_escaped_line_break;
-	}
-}
-
 static token_kind_t Lex_after_rest_of_line_comment(
 	lcp_t * cursor, 
 	lcp_t * terminator, 
@@ -1258,11 +1218,7 @@ static token_kind_t Lex_after_rest_of_line_comment(
 	{
 		uint32_t cp = cursor->cp;
 		if (cp == '\n')
-		{
-			Do_escaped_line_break_hack(cursor);
-
 			break;
-		}
 
 		++cursor;
 	}
@@ -1313,10 +1269,7 @@ static token_kind_t Lex_after_rest_of_str_lit(
 		// String without closing quote (which we support in raw lexing mode..)
 
 		if (cp == '\n')
-		{
-			Do_escaped_line_break_hack(cursor);
 			break;
-		}
 
 		// Anything else will be part of the str lit
 
@@ -1367,40 +1320,10 @@ static token_kind_t Lex_after_rest_of_str_lit(
 	return tokk;
 }
 
-static token_kind_t Lex_after_horizontal_whitespace(
-	lcp_t * cursor, 
-	lcp_t ** ppLcpTokEnd)
-{
-	while (true)
-	{
-		if (!Is_cp_ascii_horizontal_white_space(cursor->cp))
-			break;
-
-		// We only want to skip raw whitespace, not whitesapce after
-		//  escaped new lines. This is a gross hack to hatch clang.
-
-		if (cursor->fIsDirty)
-			break;
-
-		++cursor;
-	}
-
-	*ppLcpTokEnd = cursor;
-	return tokk_hz_whitespace;
-}
-
 static token_kind_t Lex_after_whitespace(token_kind_t tokk, lcp_t * cursor, lcp_t ** ppLcpTokEnd)
 {
 	while (true)
 	{
-		// We look at fIsDirty,
-		//  in order to avoid including stuff like "\\\n\n",
-		//  but still being able to include "\r\n"
-		//  This is a gross hack to match clang
-
-		if (cursor->fIsDirty)
-			break;
-
 		if (!Is_cp_ascii_white_space(cursor->cp))
 			break;
 
@@ -1421,13 +1344,6 @@ token_kind_t TokkPeek(
 	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
 {
-	// Special handling of horizontal WS to match clang ... :(
-
-	if (!pLcpBegin[0].fIsDirty && Is_cp_ascii_horizontal_white_space(pLcpBegin[0].cp))
-	{
-		return Lex_after_horizontal_whitespace(pLcpBegin, ppLcpTokEnd);
-	}
-
 	// Decide what to do
 
 	uint32_t cp_0 = pLcpBegin[0].cp;
@@ -1736,29 +1652,15 @@ void PrintRawTokens(const char * pChBegin, const char * pChEnd)
 		lcp_t * pLcpTokEnd;
 		token_kind_t tokk = TokkPeek(pLcpBegin, pLcpEnd, &pLcpTokEnd);
 
-		// Turbo hack to not print trailing escaped new lines
-
 		const char * pChTokBegin = pLcpBegin->str_begin;
 		const char * pChTokEnd = pLcpTokEnd->str_begin;
 
-		bool fIsLastToken = (pLcpTokEnd == pLcpEnd);
-		bool fIsDirty = pLcpBegin->fIsDirty;
-		bool fIsLogicalNull = (pLcpBegin->cp == '\0');
-
-		bool is_trailing_line_escape =
-			fIsLastToken &&
-			fIsDirty &&
-			fIsLogicalNull;
-
-		if (!is_trailing_line_escape)
-		{
-			Print_token(
-				tokk,
-				pLcpBegin,
-				pLcpTokEnd,
-				line,
-				(int)(pChTokBegin - line_start + 1));
-		}
+		Print_token(
+			tokk,
+			pLcpBegin,
+			pLcpTokEnd,
+			line,
+			(int)(pChTokBegin - line_start + 1));
 
 		// Handle eol
 

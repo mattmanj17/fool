@@ -20,10 +20,24 @@ if not exist %obj_dir% mkdir %obj_dir%
 if not exist %exe_dir% mkdir %exe_dir%
 if not exist %pdb_dir% mkdir %pdb_dir%
 
-echo build as cpp
-cl ctok.c %common_options% /std:c++14 /TP %link_options%
+call :build ctok.c
+call :build scrub_ws.c
 
-echo build as c
-cl ctok.c %common_options% /std:c11 /TC %link_options%
+exit /B 0
+
+:build_cpp
+echo cpp
+cl %~1 %common_options% /std:c++14 /TP %link_options%
+exit /B 0
+
+:build_c
+echo c
+cl %~1 %common_options% /std:c11 /TC %link_options%
+exit /B 0
+
+:build
+call :build_cpp %~1
+call :build_c %~1
+exit /B 0
 
 endlocal

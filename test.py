@@ -1,18 +1,22 @@
 
 import os
 import subprocess
-import concurrent.futures
-from pathlib import Path
-from threading import Lock
-import tempfile
 import shutil
 import itertools
+from pathlib import Path
+import concurrent.futures
+from threading import Lock
+import tempfile
 
-# build llvm-project/build/Release/bin/clang.exe
-
-# BB (matthewd) should re write this without os.chdir, they are confusing
+def main():
+	build_clang()
+	setup_tests()
+	run_tests()
 
 def build_clang():
+	# build llvm-project/build/Release/bin/clang.exe
+	# BB (matthewd) should re write this without os.chdir, they are confusing
+
 	if not os.path.exists('.3rd_party'):
 		os.mkdir('.3rd_party')
 	os.chdir('.3rd_party')
@@ -55,16 +59,24 @@ def build_clang():
 
 	os.chdir('..')
 
-build_clang()
+def setup_tests():
+	# generate .test/input
 
-# generate .test/input
+	if not os.path.exists('.test'):
+		os.mkdir('.test')
 
-if not os.path.exists('.test'):
-	os.mkdir('.test')
+	if not os.path.exists('.test/input'):
+		setup_test_input()
 
-if not os.path.exists('.test/input'):
+	ensure_test_output()
+
+def setup_test_input():
 	os.mkdir('.test/input')
+	copy_3rd_party_c_files()
+	generate_test_input()
+	scrub_test_input()
 
+def copy_3rd_party_c_files():
 	skip_dirs = [
 		"build",
 		".git",
@@ -101,8 +113,7 @@ if not os.path.exists('.test/input'):
 				os.makedirs(os.path.dirname(destination_file), exist_ok=True)
 				shutil.copy2(src_file, destination_file)
 
-	# auto generate some test input
-
+def generate_test_input():
 	# '/' not included to avoid generating comments
 	# '#' not included to avoid pp directives
 
@@ -126,9 +137,42 @@ if not os.path.exists('.test/input'):
 			binary_file.write(result)
 		findex += 1
 
-# copy directory structure of .test/input to .test/output
+def scrub_test_input():
+	# clean up some patterns where we diverge from clang
+	# we still support correctly lexing files that contain these patterns, 
+	#  we just slightly differ in the exact ways we split up tokens compared to clang.
+	#  These are all edge cases involving whitespace, so slight divergance is fine.
 
-def cases():
+	dest_dir = os.path.abspath('.test/input/')
+
+	with concurrent.futures.ThreadPoolExecutor() as executor:
+		for root, _, fnames in os.walk(dest_dir):
+			for fname in fnames:
+				src_file = os.path.join(root, fname)
+				executor.submit(scrub_ws_in_file, src_file)
+
+def scrub_ws_in_file(src_file):
+	scrub_exe = os.path.abspath(".build/exe/scrub_ws.exe")
+	subprocess.run(f'{scrub_exe} {src_file} {src_file}')
+	print(f'scrub_ws {src_file}')
+
+def ensure_test_output():
+	# copy directory structure of .test/input to .test/output
+
+	print('mkdir ...')
+	for in_path, out_path in test_cases():
+		Path(os.path.dirname(out_path)).mkdir(parents=True, exist_ok=True)
+	
+	# generate .test/output
+	# NOTE(matthewd) clang is a little heavy weight, so we limit to 19 workers
+
+	with concurrent.futures.ThreadPoolExecutor(max_workers=19) as executor: 
+		clang = os.path.abspath(".3rd_party/llvm-project/build/Release/bin/clang.exe")
+		for in_path, out_path in test_cases():
+			if not os.path.isfile(out_path):
+				executor.submit(run_clang, clang, in_path, out_path)
+
+def test_cases():
 	in_dir = os.path.abspath(".test/input")
 	out_dir = os.path.abspath(".test/output")
 	for root, _, files in os.walk(in_dir):
@@ -141,13 +185,6 @@ def cases():
 
 			yield (in_path, out_path)
 
-print('mkdir ...')
-
-for in_path, out_path in cases():
-	Path(os.path.dirname(out_path)).mkdir(parents=True, exist_ok=True)
-
-# generate .test/output
-
 def run_clang(clang_path, in_path, out_path):
 	with open(out_path, "wb") as out_f:
 		subprocess.run(
@@ -155,17 +192,36 @@ def run_clang(clang_path, in_path, out_path):
 			stderr=out_f)
 	print(f'run_clang {in_path}')
 
-with concurrent.futures.ThreadPoolExecutor(max_workers=19) as executor: # clang is a little heavy weight, so we limit to 19 workers
-	clang = os.path.abspath(".3rd_party/llvm-project/build/Release/bin/clang.exe")
-	for in_path, out_path in cases():
-		if not os.path.isfile(out_path):
-			executor.submit(run_clang, clang, in_path, out_path)
+def run_tests():
+	fails = []
+	fail_lock = Lock()
 
-# compare ctok output to .test/output
+	with concurrent.futures.ThreadPoolExecutor() as executor:
+		ctok = os.path.abspath(".build/exe/ctok.exe")
+		for in_path, out_path in test_cases():
+			executor.submit(
+						run_ctok, 
+						ctok, 
+						in_path, 
+						out_path,
+						fails,
+						fail_lock)
+	
+	print(f'{len(fails)} tests failed')
+	if fails:
+		clang_out_path, ctok_out = fails[0]
 
-fails = []
-fail_lock = Lock()
-def run_ctok(ctok_path, in_path, out_path):
+		temp_file = tempfile.NamedTemporaryFile(mode='w+b', delete=False)
+		temp_file.write(ctok_out)
+		ctok_out_path = temp_file.name
+		temp_file.close()
+
+		#bcomapre_cmd = f'bcompare /fv="Hex Compare" {clang_out_path} {ctok_out_path}'
+		bcomapre_cmd = f'bcompare {clang_out_path} {ctok_out_path}'
+		print(bcomapre_cmd)
+		subprocess.run(bcomapre_cmd)
+
+def run_ctok(ctok_path, in_path, out_path, fails, fail_lock):
 	result = subprocess.run(
 		f'{ctok_path} -raw {in_path}', 
 		capture_output=True)
@@ -180,24 +236,4 @@ def run_ctok(ctok_path, in_path, out_path):
 			fails.append((out_path, ctok_out))
 	print(f'run_ctok {in_path}')
 
-with concurrent.futures.ThreadPoolExecutor() as executor:
-	ctok = os.path.abspath(".build/exe/ctok.exe")
-	for in_path, out_path in cases():
-		executor.submit(run_ctok, ctok, in_path, out_path)
-
-# Print failures (and open beyond compare)
-
-print(f'{len(fails)} tests failed')
-
-if fails:
-	clang_out_path, ctok_out = fails[0]
-
-	temp_file = tempfile.NamedTemporaryFile(mode='w+b', delete=False)
-	temp_file.write(ctok_out)
-	ctok_out_path = temp_file.name
-	temp_file.close()
-
-	#bcomapre_cmd = f'bcompare /fv="Hex Compare" {clang_out_path} {ctok_out_path}'
-	bcomapre_cmd = f'bcompare {clang_out_path} {ctok_out_path}'
-	print(bcomapre_cmd)
-	subprocess.run(bcomapre_cmd)
+main()
