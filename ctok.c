@@ -28,20 +28,6 @@ bool Is_ws(uint32_t cp)
 
 // ------
 
-static int Num_bytes_to_encode_cp(uint32_t cp)
-{
-	if (cp <= 0x7f)
-		return 1;
-
-	if (cp <= 0x7ff)
-		return 2;
-
-	if (cp <= 0xffff)
-		return 3;
-
-	return 4;
-}
-
 static int Num_bytes_from_first_byte(uint8_t first_byte)
 {
 	if (first_byte <= 0x7f)
@@ -164,7 +150,25 @@ bool Try_decode_utf8(
 
 	// Check for 'overlong encodings'
 
-	if (Num_bytes_to_encode_cp(cp) != bytes_to_read)
+	int bytes_expected;
+	if (cp <= 0x7f)
+	{
+		bytes_expected = 1;
+	}
+	else if (cp <= 0x7ff)
+	{
+		bytes_expected = 2;
+	}
+	else if (cp <= 0xffff)
+	{
+		bytes_expected = 3;
+	}
+	else
+	{
+		bytes_expected = 4;
+	}
+
+	if (bytes_expected != bytes_to_read)
 		return false;
 
 	// We did it, copy to cp_len_out and return true
