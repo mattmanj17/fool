@@ -16,14 +16,14 @@
 
 // ------
 
-bool Is_cp_ascii_horizontal_white_space(uint32_t cp)
+bool Is_hz_ws(uint32_t cp)
 {
 	return cp == ' ' || cp == '\t' || cp == '\f' || cp == '\v';
 }
 
-bool Is_cp_ascii_white_space(uint32_t cp)
+bool Is_ws(uint32_t cp)
 {
-	return Is_cp_ascii_horizontal_white_space(cp) || cp == '\n' || cp == '\r';
+	return Is_hz_ws(cp) || cp == '\n' || cp == '\r';
 }
 
 // ------
@@ -190,7 +190,7 @@ static int Len_escaped_end_of_line(const lcp_t * cursor)
 		return 0;
 
 	int len = 1;
-	while (Is_cp_ascii_horizontal_white_space(cursor[len].cp))
+	while (Is_hz_ws(cursor[len].cp))
 	{
 		++len;
 	}
@@ -1315,10 +1315,10 @@ static token_kind_t Lex_after_whitespace(token_kind_t tokk, lcp_t * cursor, lcp_
 {
 	while (true)
 	{
-		if (!Is_cp_ascii_white_space(cursor->cp))
+		if (!Is_ws(cursor->cp))
 			break;
 
-		if (!Is_cp_ascii_horizontal_white_space(cursor->cp))
+		if (!Is_hz_ws(cursor->cp))
 		{
 			tokk = tokk_multi_line_whitespace;
 		}
@@ -1397,14 +1397,14 @@ token_kind_t TokkPeek(
 	{
 		return Lex_after_rest_of_ppnum(pLcpBegin + 1, ppLcpTokEnd);
 	}
-	else if (Is_cp_ascii_white_space(cp_0))
+	else if (Is_ws(cp_0))
 	{
 		// this +1 is important, in case
 		//  cp_0 came after a line continuation,
 		//  because Lex_after_whitespace only skips 
 		//  physical whitespace (blek)
 
-		token_kind_t tokk = (Is_cp_ascii_horizontal_white_space(cp_0)) ? 
+		token_kind_t tokk = (Is_hz_ws(cp_0)) ? 
 								tokk_hz_whitespace : 
 								tokk_multi_line_whitespace;
 
