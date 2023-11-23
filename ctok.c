@@ -28,20 +28,6 @@ bool Is_ws(uint32_t cp)
 
 // ------
 
-static int Num_bytes_from_first_byte(uint8_t first_byte)
-{
-	if (first_byte <= 0x7f)
-		return 1;
-
-	if (first_byte <= 0xDF)
-		return 2;
-
-	if (first_byte <= 0xEF)
-		return 3;
-
-	return 4;
-}
-
 static bool Is_valid_trailing_byte(uint8_t byte)
 {
 	// Trailing bytes start with '10'
@@ -106,7 +92,24 @@ bool Try_decode_utf8(
 
 	// Check if we do not have enough bytes
 
-	int bytes_to_read = Num_bytes_from_first_byte(first_byte);
+	int bytes_to_read;
+	if (first_byte <= 0x7f)
+	{
+		bytes_to_read = 1;
+	}
+	else if (first_byte <= 0xDF)
+	{
+		bytes_to_read = 2;
+	}
+	else if (first_byte <= 0xEF)
+	{
+		bytes_to_read = 3;
+	}
+	else
+	{
+		bytes_to_read = 4;
+	}
+
 	if (bytes_to_read > bytes_available)
 		return false;
 
