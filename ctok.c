@@ -26,23 +26,9 @@ bool Is_cp_ascii_white_space(uint32_t cp)
 	return Is_cp_ascii_horizontal_white_space(cp) || cp == '\n' || cp == '\r';
 }
 
-bool Is_cp_in_ranges(
-	uint32_t cp,
-	const uint32_t(*ranges)[2],
-	int num_ranges)
+bool Is_cp_unicode_ws(uint32_t cp)
 {
-	for (int i = 0; i < num_ranges; ++i)
-	{
-		if (cp >= ranges[i][0] && cp <= ranges[i][1])
-			return true;
-	}
-
-	return false;
-}
-
-bool Is_cp_unicode_whitespace(uint32_t cp)
-{
-	static const uint32_t unicode_whitespace[][2] =
+	static const uint32_t ws[][2] =
 	{
 		{ 0x0085, 0x0085 }, 
 		{ 0x00A0, 0x00A0 }, 
@@ -55,7 +41,15 @@ bool Is_cp_unicode_whitespace(uint32_t cp)
 		{ 0x3000, 0x3000 }
 	};
 
-	return Is_cp_in_ranges(cp, unicode_whitespace, COUNT_OF(unicode_whitespace));
+	for (int i = 0; i < COUNT_OF(ws); ++i)
+	{
+		uint32_t first = ws[i][0];
+		uint32_t last = ws[i][1];
+		if (cp >= first && cp <= last)
+			return true;
+	}
+
+	return false;
 }
 
 // ------
@@ -808,7 +802,7 @@ static bool May_cp_start_id(uint32_t cp)
 
 	// These codepoints are not allowed as the start of an id
 
-	static const uint32_t c11_disallowed_initial[][2] =
+	static const uint32_t no[][2] =
 	{
 		{ 0x0300, 0x036F },
 		{ 0x1DC0, 0x1DFF },
@@ -816,41 +810,38 @@ static bool May_cp_start_id(uint32_t cp)
 		{ 0xFE20, 0xFE2F }
 	};
 
-	if (Is_cp_in_ranges(cp, c11_disallowed_initial, COUNT_OF(c11_disallowed_initial)))
-		return false;
-
-	// These code points are allowed to start an id (minus ones from c11_disallowed_initial)
-
-	static const uint32_t c11_allowed[][2] =
+	for (int i = 0; i < COUNT_OF(no); ++i)
 	{
-		// 1
+		uint32_t first = no[i][0];
+		uint32_t last = no[i][1];
+		if (cp >= first && cp <= last)
+			return false;
+	}
+
+	// These code points are allowed to start an id (minus ones from 'no')
+
+	static const uint32_t yes[][2] =
+	{
 		{ 0x00A8, 0x00A8 }, { 0x00AA, 0x00AA }, { 0x00AD, 0x00AD },
 		{ 0x00AF, 0x00AF }, { 0x00B2, 0x00B5 }, { 0x00B7, 0x00BA },
 		{ 0x00BC, 0x00BE }, { 0x00C0, 0x00D6 }, { 0x00D8, 0x00F6 },
 		{ 0x00F8, 0x00FF },
 
-		// 2
 		{ 0x0100, 0x167F }, { 0x1681, 0x180D }, { 0x180F, 0x1FFF },
 
-		// 3
 		{ 0x200B, 0x200D }, { 0x202A, 0x202E }, { 0x203F, 0x2040 },
 		{ 0x2054, 0x2054 }, { 0x2060, 0x206F },
 
-		// 4
 		{ 0x2070, 0x218F }, { 0x2460, 0x24FF }, { 0x2776, 0x2793 },
 		{ 0x2C00, 0x2DFF }, { 0x2E80, 0x2FFF },
 
-		// 5
 		{ 0x3004, 0x3007 }, { 0x3021, 0x302F }, { 0x3031, 0x303F },
 
-		// 6
 		{ 0x3040, 0xD7FF },
 
-		// 7
 		{ 0xF900, 0xFD3D }, { 0xFD40, 0xFDCF }, { 0xFDF0, 0xFE44 },
 		{ 0xFE47, 0xFFFD },
 
-		// 8
 		{ 0x10000, 0x1FFFD }, { 0x20000, 0x2FFFD }, { 0x30000, 0x3FFFD },
 		{ 0x40000, 0x4FFFD }, { 0x50000, 0x5FFFD }, { 0x60000, 0x6FFFD },
 		{ 0x70000, 0x7FFFD }, { 0x80000, 0x8FFFD }, { 0x90000, 0x9FFFD },
@@ -858,7 +849,15 @@ static bool May_cp_start_id(uint32_t cp)
 		{ 0xD0000, 0xDFFFD }, { 0xE0000, 0xEFFFD }
 	};
 
-	return Is_cp_in_ranges(cp, c11_allowed, COUNT_OF(c11_allowed));
+	for (int i = 0; i < COUNT_OF(yes); ++i)
+	{
+		uint32_t first = yes[i][0];
+		uint32_t last = yes[i][1];
+		if (cp >= first && cp <= last)
+			return true;
+	}
+
+	return false;
 }
 
 static bool Is_cp_valid_ucn(uint32_t cp)
@@ -1061,7 +1060,7 @@ static bool Does_cp_extend_id(uint32_t cp)
 	//  and produce an invalid pp token. I suspect no one
 	//  actually cares, since dump_raw_tokens is only for debugging...
 
-	if (!Is_cp_unicode_whitespace(cp))
+	if (!Is_cp_unicode_ws(cp))
 		return true;
 
 	return false;
