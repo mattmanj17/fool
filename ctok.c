@@ -9,10 +9,7 @@
 #include <string.h>
 #include <wchar.h>
 
-// ------
-
 #define LEN(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
-#define STATIC_ASSERT(x) static_assert((x), #x)
 
 // ------
 
@@ -627,7 +624,7 @@ const char * str_from_tokk(token_kind_t tokk)
 		"unterminated_block_comment",	// tok_unterminated_block_comment
 		"unknown_byte",					// tok_unknown_byte
 	};
-	STATIC_ASSERT(LEN(s_mpTokkStr) == tokk_max);
+	static_assert(LEN(s_mpTokkStr) == tokk_max, "each tokk needs a string");
 
 	assert(tokk >= 0);
 	assert(tokk < tokk_max);
