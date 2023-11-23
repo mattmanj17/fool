@@ -28,17 +28,9 @@ bool Is_ws(uint32_t cp)
 
 // ------
 
-static bool Is_valid_trailing_byte(uint8_t byte)
+static bool Has_leading_1_0(uint8_t byte)
 {
-	// Trailing bytes start with '10'
-
-	if (!(byte & 0b1000'0000))
-		return false;
-
-	if (byte & 0b0100'0000)
-		return false;
-
-	return true;
+	return (byte >> 6) == 0b10;
 }
 
 bool Try_decode_utf8(
@@ -87,7 +79,7 @@ bool Try_decode_utf8(
 
 	// Check if first byte is a trailing byte
 
-	if (Is_valid_trailing_byte(first_byte))
+	if (Has_leading_1_0(first_byte))
 		return false;
 
 	// Check if we do not have enough bytes
@@ -118,7 +110,7 @@ bool Try_decode_utf8(
 	for (int i = 1; i < bytes_to_read; ++i)
 	{
 		uint8_t trailing_byte = (uint8_t)pChBegin[i];
-		if (!Is_valid_trailing_byte(trailing_byte))
+		if (!Has_leading_1_0(trailing_byte))
 			return false;
 	}
 
