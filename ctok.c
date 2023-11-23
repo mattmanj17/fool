@@ -11,7 +11,7 @@
 
 // ------
 
-#define COUNT_OF(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
+#define LEN(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
 #define STATIC_ASSERT(x) static_assert((x), #x)
 
 // ------
@@ -286,7 +286,7 @@ static bool FPeekTrigraph(
 		{ '-', '~' },
 	};
 
-	for (int iPair = 0; iPair < COUNT_OF(pairs); ++iPair)
+	for (int iPair = 0; iPair < LEN(pairs); ++iPair)
 	{
 		uint32_t * pair = pairs[iPair];
 		if (pair[0] == pLcpBegin[2].cp)
@@ -627,7 +627,7 @@ const char * str_from_tokk(token_kind_t tokk)
 		"unterminated_block_comment",	// tok_unterminated_block_comment
 		"unknown_byte",					// tok_unknown_byte
 	};
-	STATIC_ASSERT(COUNT_OF(s_mpTokkStr) == tokk_max);
+	STATIC_ASSERT(LEN(s_mpTokkStr) == tokk_max);
 
 	assert(tokk >= 0);
 	assert(tokk < tokk_max);
@@ -708,7 +708,7 @@ static token_kind_t Lex_punctuation(
 		{"/", tokk_slash},
 	};
 
-	for (int i_puctuation = 0; i_puctuation < COUNT_OF(puctuations); ++i_puctuation)
+	for (int i_puctuation = 0; i_puctuation < LEN(puctuations); ++i_puctuation)
 	{
 		punctution_t punctuation = puctuations[i_puctuation];
 		const char * str_puctuation = punctuation.str;
@@ -783,7 +783,7 @@ static bool May_cp_start_id(uint32_t cp)
 		{ 0xFE20, 0xFE2F }
 	};
 
-	for (int i = 0; i < COUNT_OF(no); ++i)
+	for (int i = 0; i < LEN(no); ++i)
 	{
 		uint32_t first = no[i][0];
 		uint32_t last = no[i][1];
@@ -822,7 +822,7 @@ static bool May_cp_start_id(uint32_t cp)
 		{ 0xD0000, 0xDFFFD }, { 0xE0000, 0xEFFFD }
 	};
 
-	for (int i = 0; i < COUNT_OF(yes); ++i)
+	for (int i = 0; i < LEN(yes); ++i)
 	{
 		uint32_t first = yes[i][0];
 		uint32_t last = yes[i][1];
@@ -1046,7 +1046,7 @@ static bool Does_cp_extend_id(uint32_t cp)
 		{ 0x3000, 0x3000 }
 	};
 
-	for (int i = 0; i < COUNT_OF(ws); ++i)
+	for (int i = 0; i < LEN(ws); ++i)
 	{
 		uint32_t first = ws[i][0];
 		uint32_t last = ws[i][1];
