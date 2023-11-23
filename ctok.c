@@ -26,32 +26,6 @@ bool Is_cp_ascii_white_space(uint32_t cp)
 	return Is_cp_ascii_horizontal_white_space(cp) || cp == '\n' || cp == '\r';
 }
 
-bool Is_cp_unicode_ws(uint32_t cp)
-{
-	static const uint32_t ws[][2] =
-	{
-		{ 0x0085, 0x0085 }, 
-		{ 0x00A0, 0x00A0 }, 
-		{ 0x1680, 0x1680 },
-		{ 0x180E, 0x180E }, 
-		{ 0x2000, 0x200A }, 
-		{ 0x2028, 0x2029 },
-		{ 0x202F, 0x202F }, 
-		{ 0x205F, 0x205F }, 
-		{ 0x3000, 0x3000 }
-	};
-
-	for (int i = 0; i < COUNT_OF(ws); ++i)
-	{
-		uint32_t first = ws[i][0];
-		uint32_t last = ws[i][1];
-		if (cp >= first && cp <= last)
-			return true;
-	}
-
-	return false;
-}
-
 // ------
 
 static int Num_bytes_to_encode_cp(uint32_t cp)
@@ -1060,10 +1034,28 @@ static bool Does_cp_extend_id(uint32_t cp)
 	//  and produce an invalid pp token. I suspect no one
 	//  actually cares, since dump_raw_tokens is only for debugging...
 
-	if (!Is_cp_unicode_ws(cp))
-		return true;
+	static const uint32_t ws[][2] =
+	{
+		{ 0x0085, 0x0085 },
+		{ 0x00A0, 0x00A0 },
+		{ 0x1680, 0x1680 },
+		{ 0x180E, 0x180E },
+		{ 0x2000, 0x200A },
+		{ 0x2028, 0x2029 },
+		{ 0x202F, 0x202F },
+		{ 0x205F, 0x205F },
+		{ 0x3000, 0x3000 }
+	};
 
-	return false;
+	for (int i = 0; i < COUNT_OF(ws); ++i)
+	{
+		uint32_t first = ws[i][0];
+		uint32_t last = ws[i][1];
+		if (cp >= first && cp <= last)
+			return false;
+	}
+
+	return true;
 }
 
 static token_kind_t Lex_after_rest_of_id(
