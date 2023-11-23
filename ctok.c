@@ -11,7 +11,7 @@
 
 #define LEN(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
 
-// ------
+// utf8
 
 static bool Has_leading_1_0(uint8_t byte)
 {
@@ -158,7 +158,18 @@ bool Try_decode_utf8(
 	return true;
 }
 
-// ------
+// 'logical' code points : munge raw codepoints to...
+//  1. convert /r/n and /r to /n
+//  2. convert trigraphs
+//  3. skip 'escaped newlines' (\\\n)
+
+typedef struct //!!!FIXME_typedef_audit
+{
+	const char * str_begin;
+	const char * str_end;
+	uint32_t cp;
+	bool _padding[4];
+} lcp_t; // logical codepoint
 
 bool Is_hz_ws(uint32_t cp)
 {
@@ -169,14 +180,6 @@ bool Is_ws(uint32_t cp)
 {
 	return Is_hz_ws(cp) || cp == '\n' || cp == '\r';
 }
-
-typedef struct //!!!FIXME_typedef_audit
-{
-	const char * str_begin;
-	const char * str_end;
-	uint32_t cp;
-	bool _padding[4];
-} lcp_t; // logical codepoint
 
 static int Len_escaped_end_of_line(const lcp_t * cursor)
 {
@@ -461,7 +464,7 @@ bool FTryDecodeLogicalCodePoints(
 	return true;
 }
 
-// ------
+// Lex
 
 typedef enum//!!!FIXME_typedef_audit
 {
@@ -1441,7 +1444,7 @@ token_kind_t TokkPeek(
 	}
 }
 
-// ------
+// printing tokens
 
 static void clean_and_print_char(char ch)
 {
@@ -1665,7 +1668,7 @@ void PrintRawTokens(const char * pChBegin, const char * pChEnd)
 	}
 }
 
-// ------
+// files
 
 static bool FTryReadWholeFile(
 	FILE * file,
@@ -1719,7 +1722,7 @@ static bool FTryReadWholeFileAtPath(
 	return fRead;
 }
 
-// ------
+// main
 
 int wmain(int argc, wchar_t *argv[])
 {
