@@ -13,16 +13,25 @@
 
 // utf8
 
-static bool Has_leading_1_0(uint8_t byte)
+int Leading_ones(uint8_t byte)
 {
-	return (byte >> 6) == 0b10;
+	int count = 0;
+	for (uint8_t mask = (1 << 7); mask; mask >>= 1)
+	{
+		if (!(byte & mask))
+			break;
+
+		++count;
+	}
+
+	return count;
 }
 
 bool Try_decode_utf8(
-	const char * pChBegin,
-	const char * pChEnd,
-	uint32_t * pCp,
-	const char ** ppChEndCp)
+	const uint8_t * bytes,
+	const uint8_t * bytes_end,
+	uint32_t * cp_out,
+	int * len_cp_out)
 {
 	// Try_decode_utf8 Roughly based on Table 3.1B in unicode Corrigendum #1
 	//  Special care is taken to reject 'overlong encodings'
@@ -52,72 +61,61 @@ bool Try_decode_utf8(
 
 	// Check if we have no bytes at all
 
-	int bytes_available = (int)(pChEnd - pChBegin);
-	if (bytes_available == 0)
+	int64_t len_bytes = bytes_end - bytes;
+	if (len_bytes <= 0)
 		return false;
 
-	// Check if first byte is too high
+	// Check if first byte is a trailing byte (1 leading 1),
+	//  or if too many leading ones.
 
-	uint8_t first_byte = (uint8_t)pChBegin[0];
-	if (first_byte >= 0b1111'1000)
+	int leading_ones = Leading_ones(bytes[0]);
+
+	if (leading_ones == 1)
 		return false;
 
-	// Check if first byte is a trailing byte
-
-	if (Has_leading_1_0(first_byte))
+	if (leading_ones > 4)
 		return false;
+
+	// Compute len_cp from leading_ones
+
+	int len_cp;
+	switch (leading_ones)
+	{
+	case 0: len_cp = 1; break;
+	case 2: len_cp = 2; break;
+	case 3: len_cp = 3; break;
+	default: len_cp = 4; break;
+	}
 
 	// Check if we do not have enough bytes
 
-	int bytes_to_read;
-	if (first_byte <= 0x7f)
-	{
-		bytes_to_read = 1;
-	}
-	else if (first_byte <= 0xDF)
-	{
-		bytes_to_read = 2;
-	}
-	else if (first_byte <= 0xEF)
-	{
-		bytes_to_read = 3;
-	}
-	else
-	{
-		bytes_to_read = 4;
-	}
-
-	if (bytes_to_read > bytes_available)
+	if (len_cp > len_bytes)
 		return false;
 
 	// Check if any trailing bytes are invalid
 
-	for (int i = 1; i < bytes_to_read; ++i)
+	for (int i = 1; i < len_cp; ++i)
 	{
-		uint8_t trailing_byte = (uint8_t)pChBegin[i];
-		if (!Has_leading_1_0(trailing_byte))
+		if (Leading_ones(bytes[i]) != 1)
 			return false;
 	}
 
 	// Get the significant bits from the first byte
 
-	uint32_t cp = first_byte;
-	switch (bytes_to_read)
+	uint32_t cp = bytes[0];
+	switch (len_cp)
 	{
-	case 2: cp &= 0b0001'1111; break;
-	case 3: cp &= 0b0000'1111; break;
-	case 4: cp &= 0b0000'0111; break;
+	case 2: cp &= 0x1F; break;
+	case 3: cp &= 0x0F; break;
+	case 4: cp &= 0x07; break;
 	}
 
 	// Get bits from the trailing bytes
 
-	for (int i = 1; i < bytes_to_read; ++i)
+	for (int i = 1; i < len_cp; ++i)
 	{
-		uint8_t trailing_bits = (uint8_t)pChBegin[i];
-		trailing_bits &= 0b0011'1111;
-
 		cp <<= 6;
-		cp |= trailing_bits;
+		cp |= (bytes[i] & 0x3F);
 	}
 
 	// Check for illegal codepoints
@@ -130,31 +128,19 @@ bool Try_decode_utf8(
 
 	// Check for 'overlong encodings'
 
-	int bytes_expected;
-	if (cp <= 0x7f)
-	{
-		bytes_expected = 1;
-	}
-	else if (cp <= 0x7ff)
-	{
-		bytes_expected = 2;
-	}
-	else if (cp <= 0xffff)
-	{
-		bytes_expected = 3;
-	}
-	else
-	{
-		bytes_expected = 4;
-	}
-
-	if (bytes_expected != bytes_to_read)
+	if (cp <= 0x7f && len_cp > 1)
 		return false;
 
-	// We did it, copy to cp_len_out and return true
+	if (cp <= 0x7ff && len_cp > 2)
+		return false;
 
-	*pCp = cp;
-	*ppChEndCp = pChBegin + bytes_to_read;
+	if (cp <= 0xffff && len_cp > 3)
+		return false;
+
+	// We did it, return cp and len
+
+	*cp_out = cp;
+	*len_cp_out = len_cp;
 	return true;
 }
 
@@ -165,8 +151,8 @@ bool Try_decode_utf8(
 
 typedef struct //!!!FIXME_typedef_audit
 {
-	const char * str_begin;
-	const char * str_end;
+	const uint8_t * bytes;
+	const uint8_t * bytes_end;
 	uint32_t cp;
 	bool _padding[4];
 } lcp_t; // logical codepoint
@@ -378,12 +364,12 @@ static void Collapse(
 			u32Peek = pLcpBegin->cp;
 			pLcpEndPeek = pLcpBegin + 1;
 
-			assert(pLcpBegin->str_end == pLcpEndPeek->str_begin);
+			assert(pLcpBegin->bytes_end == pLcpEndPeek->bytes);
 		}
 
 		pLcpDest->cp = u32Peek;
-		pLcpDest->str_begin = pLcpBegin->str_begin;
-		pLcpDest->str_end = pLcpEndPeek->str_begin;
+		pLcpDest->bytes = pLcpBegin->bytes;
+		pLcpDest->bytes_end = pLcpEndPeek->bytes;
 
 		pLcpBegin = pLcpEndPeek;
 		++pLcpDest;
@@ -400,52 +386,58 @@ static void Collapse(
 }
 
 lcp_t * Try_decode_logical_codepoints(
-	const char * input,
-	const char * end,
+	const uint8_t * bytes,
+	const uint8_t * bytes_end,
 	int * len_lcps_ref)
 {
 	// In the worst case, we will have a codepoint for every byte
 	//  in the original span, so allocate enough space for that.
 	//  Note that we include room for a trailing '\0' codepoint
 
-	int bytes_available = (int)(end - input);
-	int len_lcps_alloc = bytes_available + 1;
+	size_t len_bytes;
+	{
+		int64_t len_bytes_signed = bytes_end - bytes;
+		if (len_bytes_signed <= 0)
+			return NULL;
 
-	lcp_t * lcps = (lcp_t *)calloc(sizeof(lcp_t) * len_lcps_alloc, 1);
+		len_bytes = (size_t)len_bytes_signed;
+	}
+
+	lcp_t * lcps = (lcp_t *)calloc(sizeof(lcp_t) * (len_bytes + 1), 1);
 	if (!lcps)
 		return NULL;
 
 	// Chew through the byte span with Try_decode_utf8
 
 	int len_lcps = 0;
-	while (input < end)
+	while (bytes < bytes_end)
 	{
 		uint32_t cp;
-		const char * end_cp;
-		if (Try_decode_utf8(input, end, &cp, &end_cp))
+		int len_cp;
+		if (Try_decode_utf8(bytes, bytes_end, &cp, &len_cp))
 		{
 			lcps[len_lcps].cp = cp;
-			lcps[len_lcps].str_begin = input;
-			lcps[len_lcps].str_end = end_cp;
-			input = end_cp;
+			lcps[len_lcps].bytes = bytes;
+			lcps[len_lcps].bytes_end = bytes + len_cp;
+			bytes += len_cp;
 		}
 		else
 		{
 			lcps[len_lcps].cp = UINT32_MAX;
-			lcps[len_lcps].str_begin = input;
-			lcps[len_lcps].str_end = input + 1;
-			++input;
+			lcps[len_lcps].bytes = bytes;
+			lcps[len_lcps].bytes_end = bytes + 1;
+			++bytes;
 		}
 
 		++len_lcps;
 	}
-	assert(input == end);
+	assert(bytes == bytes_end);
 
 	// Append a final '\0'
 
 	lcps[len_lcps].cp = '\0';
-	lcps[len_lcps].str_begin = end;
-	lcps[len_lcps].str_end = end;
+	lcps[len_lcps].bytes = bytes_end;
+	lcps[len_lcps].bytes_end = bytes_end;
 
 	// Collapse trigraphs/etc
 
@@ -1538,8 +1530,8 @@ static void Print_token(
 
 	printf(" \"");
 
-	const char * str_tok = lcp_tok->str_begin;
-	const char * str_tok_end = lcp_tok_end->str_begin;
+	const char * str_tok = (const char *)lcp_tok->bytes;
+	const char * str_tok_end = (const char *)lcp_tok_end->bytes;
 
 	for (const char * pCh = str_tok; pCh < str_tok_end; ++pCh)
 	{
@@ -1616,12 +1608,12 @@ static void InspectSpanForEol(
 	*ppStartOfLine = pStartOfLine;
 }
 
-void PrintRawTokens(const char * input, const char * end)
+void PrintRawTokens(const uint8_t * bytes, const uint8_t * bytes_end)
 {
 	// Munch bytes to logical characters
 
 	int len_lcps;
-	lcp_t * lcps = Try_decode_logical_codepoints(input, end, &len_lcps);
+	lcp_t * lcps = Try_decode_logical_codepoints(bytes, bytes_end, &len_lcps);
 	if (!lcps)
 		return;
 
@@ -1629,7 +1621,7 @@ void PrintRawTokens(const char * input, const char * end)
 
 	// Keep track of line info
 
-	const char * line_start = input;
+	const char * line_start = (const char *)bytes;
 	int line = 1;
 
 	// Lex!
@@ -1639,8 +1631,8 @@ void PrintRawTokens(const char * input, const char * end)
 		lcp_t * pLcpTokEnd;
 		token_kind_t tokk = TokkPeek(lcps, lcps_end, &pLcpTokEnd);
 
-		const char * pChTokBegin = lcps->str_begin;
-		const char * pChTokEnd = pLcpTokEnd->str_begin;
+		const char * pChTokBegin = (const char *)lcps->bytes;
+		const char * pChTokEnd = (const char *)pLcpTokEnd->bytes;
 
 		Print_token(
 			tokk,
@@ -1780,7 +1772,7 @@ int wmain(int argc, wchar_t *argv[])
 
 	if (fRaw)
 	{
-		PrintRawTokens(pChBegin, pChEnd);
+		PrintRawTokens((const uint8_t *)pChBegin, (const uint8_t *)pChEnd);
 	}
 	else
 	{
