@@ -152,7 +152,6 @@ bool Try_decode_utf8(
 typedef struct //!!!FIXME_typedef_audit
 {
 	const uint8_t * bytes;
-	const uint8_t * bytes_end;
 	uint32_t cp;
 	bool _padding[4];
 } lcp_t; // logical codepoint
@@ -363,13 +362,10 @@ void Collapse(
 		{
 			u32Peek = pLcpBegin->cp;
 			pLcpEndPeek = pLcpBegin + 1;
-
-			assert(pLcpBegin->bytes_end == pLcpEndPeek->bytes);
 		}
 
 		pLcpDest->cp = u32Peek;
 		pLcpDest->bytes = pLcpBegin->bytes;
-		pLcpDest->bytes_end = pLcpEndPeek->bytes;
 
 		pLcpBegin = pLcpEndPeek;
 		++pLcpDest;
@@ -418,14 +414,12 @@ lcp_t * Try_decode_logical_codepoints(
 		{
 			lcps[len_lcps].cp = cp;
 			lcps[len_lcps].bytes = bytes;
-			lcps[len_lcps].bytes_end = bytes + len_cp;
 			bytes += len_cp;
 		}
 		else
 		{
 			lcps[len_lcps].cp = UINT32_MAX;
 			lcps[len_lcps].bytes = bytes;
-			lcps[len_lcps].bytes_end = bytes + 1;
 			++bytes;
 		}
 
@@ -437,7 +431,6 @@ lcp_t * Try_decode_logical_codepoints(
 
 	lcps[len_lcps].cp = '\0';
 	lcps[len_lcps].bytes = bytes_end;
-	lcps[len_lcps].bytes_end = bytes_end;
 
 	// Collapse trigraphs/etc
 
