@@ -167,7 +167,7 @@ bool Is_ws(uint32_t cp)
 	return Is_hz_ws(cp) || cp == '\n' || cp == '\r';
 }
 
-static int Len_escaped_end_of_line(const lcp_t * cursor)
+int Len_escaped_end_of_line(const lcp_t * cursor)
 {
 	if (cursor[0].cp != '\\')
 		return 0;
@@ -194,7 +194,7 @@ static int Len_escaped_end_of_line(const lcp_t * cursor)
 	return 0;
 }
 
-static int Len_escaped_end_of_lines(const lcp_t * mic)
+int Len_escaped_end_of_lines(const lcp_t * mic)
 {
 	int len = 0;
 
@@ -210,7 +210,7 @@ static int Len_escaped_end_of_lines(const lcp_t * mic)
 	return len;
 }
 
-static bool FPeekCarriageReturn(
+bool FPeekCarriageReturn(
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
 	uint32_t * pU32Peek,
@@ -239,7 +239,7 @@ static bool FPeekCarriageReturn(
 	return false;
 }
 
-static bool FPeekTrigraph(
+bool FPeekTrigraph(
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
 	uint32_t * pU32Peek,
@@ -284,7 +284,7 @@ static bool FPeekTrigraph(
 	return false;
 }
 
-static bool FPeekEscapedLineBreaks(
+bool FPeekEscapedLineBreaks(
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
 	uint32_t * pU32Peek,
@@ -317,7 +317,7 @@ typedef enum
 	COLLAPSEK_CarriageReturn,
 } COLLAPSEK;
 
-static bool FPeekCollapse(
+bool FPeekCollapse(
 	COLLAPSEK collapsek,
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
@@ -340,7 +340,7 @@ static bool FPeekCollapse(
 	}
 }
 
-static void Collapse(
+void Collapse(
 	COLLAPSEK collapsek,
 	lcp_t * pLcpBegin,
 	lcp_t ** ppLcpEnd)
@@ -629,7 +629,7 @@ typedef struct//!!!FIXME_typedef_audit
 	int _padding;
 } punctution_t;
 
-static token_kind_t Lex_punctuation(
+token_kind_t Lex_punctuation(
 	lcp_t * cursor, 
 	lcp_t ** ppLcpTokEnd)
 {
@@ -730,7 +730,7 @@ static token_kind_t Lex_punctuation(
 	return tokk_unknown_byte;
 }
 
-static bool May_cp_start_id(uint32_t cp)
+bool May_cp_start_id(uint32_t cp)
 {
 	// Letters
 
@@ -820,7 +820,7 @@ static bool May_cp_start_id(uint32_t cp)
 	return false;
 }
 
-static bool Is_cp_valid_ucn(uint32_t cp)
+bool Is_cp_valid_ucn(uint32_t cp)
 {
 	// A universal character name shall not specify a character whose
 	//  short identifier is less than 00A0, nor one in the range 
@@ -835,7 +835,7 @@ static bool Is_cp_valid_ucn(uint32_t cp)
 	return true;
 }
 
-static uint32_t Hex_digit_value_from_cp(uint32_t cp)
+uint32_t Hex_digit_value_from_cp(uint32_t cp)
 {
 	if (cp >= '0' && cp <= '9')
 		return cp - '0';
@@ -855,7 +855,7 @@ static uint32_t Hex_digit_value_from_cp(uint32_t cp)
 	return UINT32_MAX;
 }
 
-static void Peek_ucn(
+void Peek_ucn(
 	lcp_t * cursor,
 	uint32_t * pCp,
 	int * pLen)
@@ -988,7 +988,7 @@ static void Peek_ucn(
 	*pLen = len;
 }
 
-static bool Does_cp_extend_id(uint32_t cp)
+bool Does_cp_extend_id(uint32_t cp)
 {
 	if (cp >= 'a' && cp <= 'z')
 		return true;
@@ -1044,7 +1044,7 @@ static bool Does_cp_extend_id(uint32_t cp)
 	return true;
 }
 
-static token_kind_t Lex_after_rest_of_id(
+token_kind_t Lex_after_rest_of_id(
 	lcp_t * cursor, 
 	lcp_t ** ppLcpTokEnd)
 {
@@ -1075,7 +1075,7 @@ static token_kind_t Lex_after_rest_of_id(
 	return tokk_raw_identifier;
 }
 
-static token_kind_t Lex_after_rest_of_ppnum(
+token_kind_t Lex_after_rest_of_ppnum(
 	lcp_t * cursor,
 	lcp_t ** ppLcpTokEnd)
 {
@@ -1186,7 +1186,7 @@ static token_kind_t Lex_after_rest_of_ppnum(
 	return tokk_numeric_constant;
 }
 
-static token_kind_t Lex_after_rest_of_line_comment(
+token_kind_t Lex_after_rest_of_line_comment(
 	lcp_t * cursor, 
 	lcp_t * terminator, 
 	lcp_t ** ppLcpTokEnd)
@@ -1204,7 +1204,7 @@ static token_kind_t Lex_after_rest_of_line_comment(
 	return tokk_line_comment;
 }
 
-static token_kind_t Lex_after_rest_of_block_comment(
+token_kind_t Lex_after_rest_of_block_comment(
 	lcp_t * cursor, 
 	lcp_t * terminator, 
 	lcp_t ** ppLcpTokEnd)
@@ -1229,7 +1229,7 @@ static token_kind_t Lex_after_rest_of_block_comment(
 	return tokk;
 }
 
-static token_kind_t Lex_after_rest_of_str_lit(
+token_kind_t Lex_after_rest_of_str_lit(
 	token_kind_t tokk,
 	uint32_t cp_sential,
 	lcp_t * cursor,
@@ -1297,7 +1297,7 @@ static token_kind_t Lex_after_rest_of_str_lit(
 	return tokk;
 }
 
-static token_kind_t Lex_after_whitespace(token_kind_t tokk, lcp_t * cursor, lcp_t ** ppLcpTokEnd)
+token_kind_t Lex_after_whitespace(token_kind_t tokk, lcp_t * cursor, lcp_t ** ppLcpTokEnd)
 {
 	while (true)
 	{
@@ -1435,7 +1435,7 @@ token_kind_t TokkPeek(
 
 // printing tokens
 
-static void clean_and_print_char(char ch)
+void clean_and_print_char(char ch)
 {
 	switch (ch)
 	{ 
@@ -1494,7 +1494,7 @@ static void clean_and_print_char(char ch)
 	}
 }
 
-static void Print_token(
+void Print_token(
 	token_kind_t tokk,
 	lcp_t * lcp_tok,
 	lcp_t * lcp_tok_end,
@@ -1548,7 +1548,7 @@ static void Print_token(
 		col);
 }
 
-static int Len_eol(const char * str)
+int Len_eol(const char * str)
 {
 	char ch = str[0];
 
@@ -1573,7 +1573,7 @@ static int Len_eol(const char * str)
 	}
 }
 
-static void InspectSpanForEol(
+void InspectSpanForEol(
 	const char * pChBegin,
 	const char * pChEnd,
 	int * pCLine,
@@ -1661,7 +1661,7 @@ void PrintRawTokens(const uint8_t * bytes, const uint8_t * bytes_end)
 
 // files
 
-static bool FTryReadWholeFile(
+bool FTryReadWholeFile(
 	FILE * file,
 	const char ** ppChBegin,
 	const char ** ppChEnd)
@@ -1697,7 +1697,7 @@ static bool FTryReadWholeFile(
 	return true;
 }
 
-static bool FTryReadWholeFileAtPath(
+bool FTryReadWholeFileAtPath(
 	const wchar_t * fpath,
 	const char ** ppChBegin,
 	const char ** ppChEnd)
