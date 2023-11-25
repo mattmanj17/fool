@@ -153,7 +153,6 @@ typedef struct //!!!FIXME_typedef_audit
 {
 	const uint8_t * bytes;
 	uint32_t cp;
-	bool _padding[4];
 } lcp_t; // logical codepoint
 
 bool Is_hz_ws(uint32_t cp)

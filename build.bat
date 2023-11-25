@@ -10,7 +10,7 @@ set common_options=^
  /D"_CRT_SECURE_NO_WARNINGS" /D"_UNICODE" /D"UNICODE"^
  /Wall /WX^
  /wd"5045" /wd"4711" /wd"4668" /wd"5039" /wd"4710" /wd"4995"^
- /wd"4061" /wd"4062" /wd"5105"^
+ /wd"4061" /wd"4062" /wd"5105" /wd"4820"^
  /Zi /Gm-^
  /Fo%obj_dir% /Fe%exe_dir% /Fd%pdb_dir%
 
