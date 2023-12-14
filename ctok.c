@@ -1711,32 +1711,12 @@ int wmain(int argc, wchar_t *argv[])
 {
 	(void) _setmode(_fileno(stdin), _O_BINARY);
 
-	// BUG do real argument parsing....
-
-	wchar_t * pWChFile = NULL;
-	bool fRaw = false;
-	if (argc == 3)
-	{
-		if (wcscmp(argv[1], L"-raw") != 0)
-		{
-			printf("bad argumens, expected '-raw <file path>'\n");
-			return 1;
-		}
-		else
-		{
-			pWChFile = argv[2];
-			fRaw = true;
-		}
-	}
-	else if (argc != 2)
+	if (argc != 2)
 	{
 		printf("wrong number of arguments, only expected a file path\n");
 		return 1;
 	}
-	else
-	{
-		pWChFile = argv[1];
-	}
+	wchar_t * pWChFile = argv[1];
 
 	// Read file
 
@@ -1762,13 +1742,5 @@ int wmain(int argc, wchar_t *argv[])
 
 	// Print tokens
 
-	if (fRaw)
-	{
-		PrintRawTokens((const uint8_t *)pChBegin, (const uint8_t *)pChEnd);
-	}
-	else
-	{
-		printf("PrintTokens Not yet implemented!!!\n");
-		//PrintTokens(pChBegin, pChEnd);
-	}
+	PrintRawTokens((const uint8_t *)pChBegin, (const uint8_t *)pChEnd);
 }

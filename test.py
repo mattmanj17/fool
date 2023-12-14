@@ -223,7 +223,7 @@ def run_tests():
 
 def run_ctok(ctok_path, in_path, out_path, fails, fail_lock):
 	result = subprocess.run(
-		f'{ctok_path} -raw {in_path}', 
+		f'{ctok_path} {in_path}', 
 		capture_output=True)
 	ctok_out = result.stdout
 
