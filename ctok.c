@@ -426,11 +426,6 @@ lcp_t * Try_decode_logical_codepoints(
 	}
 	assert(bytes == bytes_end);
 
-	// Append a final '\0'
-
-	lcps[len_lcps].cp = '\0';
-	lcps[len_lcps].bytes = bytes_end;
-
 	// Collapse trigraphs/etc
 
 	lcp_t * lcps_end = lcps + len_lcps;
@@ -622,9 +617,15 @@ typedef struct//!!!FIXME_typedef_audit
 } punctution_t;
 
 token_kind_t Lex_punctuation(
-	lcp_t * cursor, 
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd, 
 	lcp_t ** ppLcpTokEnd)
 {
+	long long signed_cLcp = pLcpEnd - pLcpBegin;
+	assert(signed_cLcp >= 1);
+
+	size_t cLcp = (size_t)signed_cLcp;
+
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
 
@@ -693,7 +694,10 @@ token_kind_t Lex_punctuation(
 		const char * str_puctuation = punctuation.str;
 		size_t len = strlen(str_puctuation);
 
-		lcp_t * cursor_peek = cursor;
+		if (cLcp < len)
+			continue;
+
+		lcp_t * cursor_peek = pLcpBegin;
 		bool found_match = true;
 
 		for (size_t i_ch = 0; i_ch < len; ++i_ch)
@@ -718,7 +722,7 @@ token_kind_t Lex_punctuation(
 		}
 	}
 
-	*ppLcpTokEnd = cursor + 1;
+	*ppLcpTokEnd = pLcpBegin + 1;
 	return tokk_unknown_byte;
 }
 
@@ -848,33 +852,43 @@ uint32_t Hex_digit_value_from_cp(uint32_t cp)
 }
 
 void Peek_ucn(
-	lcp_t * cursor,
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
 	uint32_t * pCp,
 	int * pLen)
 {
+	// BUG need to take another crack at this, rewrite
+	//  it to handle pLcpEnd nicer
+
 	*pCp = UINT32_MAX;
 	*pLen = 0;
+
+	if (pLcpBegin >= pLcpEnd)
+		return;
 
 	int len = 0;
 
 	// Check for leading '\\'
 
-	if (cursor[len].cp != '\\')
+	if (pLcpBegin->cp != '\\')
 		return;
 
 	// Advance past '\\'
 
 	++len;
+	++pLcpBegin;
+	if (pLcpBegin >= pLcpEnd)
+		return;
 
 	// Look for 'u' or 'U' after '\\'
 
-	if (cursor[len].cp != 'u' && cursor[len].cp != 'U')
+	if (pLcpBegin->cp != 'u' && pLcpBegin->cp != 'U')
 		return;
 
 	// Look for 4 or 8 hex digits, based on u vs U
 
 	int num_hex_digits;
-	if (cursor[len].cp == 'u')
+	if (pLcpBegin->cp == 'u')
 	{
 		num_hex_digits = 4;
 	}
@@ -886,6 +900,9 @@ void Peek_ucn(
 	// Advance past u/U
 
 	++len;
+	++pLcpBegin;
+	if (pLcpBegin >= pLcpEnd)
+		return;
 
 	// Look for correct number of hex digits
 
@@ -896,7 +913,7 @@ void Peek_ucn(
 
 	while ((hex_digits_read < num_hex_digits) || delimited)
 	{
-		uint32_t cp = cursor[len].cp;
+		uint32_t cp = pLcpBegin->cp;
 
 		// Check for '{' (delimited ucns)
 
@@ -904,6 +921,9 @@ void Peek_ucn(
 		{
 			delimited = true;
 			++len;
+			++pLcpBegin;
+			if (pLcpBegin >= pLcpEnd)
+				break;
 			continue;
 		}
 
@@ -913,6 +933,9 @@ void Peek_ucn(
 		{
 			found_end_delimiter = true;
 			++len;
+			++pLcpBegin;
+			if (pLcpBegin >= pLcpEnd)
+				break;
 			break;
 		}
 
@@ -948,6 +971,10 @@ void Peek_ucn(
 		// Advance to next digit
 
 		++len;
+
+		++pLcpBegin;
+		if (pLcpBegin >= pLcpEnd)
+			break;
 	}
 
 	// No digits read?
@@ -1037,25 +1064,26 @@ bool Does_cp_extend_id(uint32_t cp)
 }
 
 token_kind_t Lex_after_rest_of_id(
-	lcp_t * cursor, 
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
 {
-	while (true)
+	while (pLcpBegin < pLcpEnd)
 	{
-		if (Does_cp_extend_id(cursor->cp))
+		if (Does_cp_extend_id(pLcpBegin->cp))
 		{
-			++cursor;
+			++pLcpBegin;
 			continue;
 		}
 
-		if (cursor->cp == '\\')
+		if (pLcpBegin->cp == '\\')
 		{
 			uint32_t cp;
 			int len;
-			Peek_ucn(cursor, &cp, &len);
+			Peek_ucn(pLcpBegin, pLcpEnd, &cp, &len);
 			if (len && Does_cp_extend_id(cp))
 			{
-				cursor += len;
+				pLcpBegin += len;
 				continue;
 			}
 		}
@@ -1063,12 +1091,13 @@ token_kind_t Lex_after_rest_of_id(
 		break;
 	}
 
-	*ppLcpTokEnd = cursor;
+	*ppLcpTokEnd = pLcpBegin;
 	return tokk_raw_identifier;
 }
 
 token_kind_t Lex_after_rest_of_ppnum(
-	lcp_t * cursor,
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
 {
 	/* NOTE (matthewd)
@@ -1115,23 +1144,26 @@ token_kind_t Lex_after_rest_of_ppnum(
 	// Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 	// 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-	while (true)
+	while (pLcpBegin < pLcpEnd)
 	{
-		uint32_t cp = cursor->cp;
+		uint32_t cp = pLcpBegin->cp;
 
 		if (cp == '.')
 		{
-			++cursor;
+			++pLcpBegin;
 			continue;
 		}
 		else if (cp == 'e' || cp == 'E' || cp == 'p' || cp == 'P')
 		{
-			++cursor;
+			++pLcpBegin;
 
-			cp = cursor->cp;
-			if (cp == '+' || cp == '-')
+			if (pLcpBegin < pLcpEnd)
 			{
-				++cursor;
+				cp = pLcpBegin->cp;
+				if (cp == '+' || cp == '-')
+				{
+					++pLcpBegin;
+				}
 			}
 
 			continue;
@@ -1148,17 +1180,17 @@ token_kind_t Lex_after_rest_of_ppnum(
 		{
 			// Everything (else) which extends ids can extend a ppnum
 
-			++cursor;
+			++pLcpBegin;
 			continue;
 		}
 		else if (cp == '\\')
 		{
 			uint32_t cpUcn;
 			int len;
-			Peek_ucn(cursor, &cpUcn, &len);
+			Peek_ucn(pLcpBegin, pLcpEnd, &cpUcn, &len);
 			if (len && Does_cp_extend_id(cpUcn))
 			{
-				cursor += len;
+				pLcpBegin += len;
 				continue;
 			}
 			else
@@ -1174,66 +1206,69 @@ token_kind_t Lex_after_rest_of_ppnum(
 		}
 	}
 
-	*ppLcpTokEnd = cursor;
+	*ppLcpTokEnd = pLcpBegin;
 	return tokk_numeric_constant;
 }
 
 token_kind_t Lex_after_rest_of_line_comment(
-	lcp_t * cursor, 
-	lcp_t * terminator, 
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
 {
-	while (cursor < terminator)
+	while (pLcpBegin < pLcpEnd)
 	{
-		uint32_t cp = cursor->cp;
+		uint32_t cp = pLcpBegin->cp;
 		if (cp == '\n')
 			break;
 
-		++cursor;
+		++pLcpBegin;
 	}
 
-	*ppLcpTokEnd = cursor;
+	*ppLcpTokEnd = pLcpBegin;
 	return tokk_line_comment;
 }
 
 token_kind_t Lex_after_rest_of_block_comment(
-	lcp_t * cursor, 
-	lcp_t * terminator, 
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
 {
 	token_kind_t tokk = tokk_unterminated_block_comment;
 
-	while (cursor < terminator)
+	while (pLcpBegin < pLcpEnd)
 	{
-		uint32_t cp0 = cursor->cp;
-		++cursor;
+		uint32_t cp0 = pLcpBegin->cp;
+		++pLcpBegin;
 
-		uint32_t cp1 = cursor->cp;
-		if (cp0 == '*' && cp1 == '/')
+		if (pLcpBegin < pLcpEnd)
 		{
-			tokk = tokk_block_comment;
-			++cursor;
-			break;
+			uint32_t cp1 = pLcpBegin->cp;
+			if (cp0 == '*' && cp1 == '/')
+			{
+				tokk = tokk_block_comment;
+				++pLcpBegin;
+				break;
+			}
 		}
 	}
 
-	*ppLcpTokEnd = cursor;
+	*ppLcpTokEnd = pLcpBegin;
 	return tokk;
 }
 
 token_kind_t Lex_after_rest_of_str_lit(
 	token_kind_t tokk,
 	uint32_t cp_sential,
-	lcp_t * cursor,
-	lcp_t * terminator,
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
 {
 	int len = 0;
 	bool found_end = false;
 
-	while (cursor < terminator)
+	while (pLcpBegin < pLcpEnd)
 	{
-		uint32_t cp = cursor->cp;
+		uint32_t cp = pLcpBegin->cp;
 
 		// String without closing quote (which we support in raw lexing mode..)
 
@@ -1242,7 +1277,7 @@ token_kind_t Lex_after_rest_of_str_lit(
 
 		// Anything else will be part of the str lit
 
-		++cursor;
+		++pLcpBegin;
 
 		// Closing quote
 
@@ -1252,21 +1287,21 @@ token_kind_t Lex_after_rest_of_str_lit(
 			break;
 		}
 
-		// Found somthing other than open/close quote, in len
+		// Found somthing other than open/close quote, inc len
 
 		++len;
 
 		// Deal with back slash
 
-		if (cp == '\\')
+		if (cp == '\\' && pLcpBegin < pLcpEnd)
 		{
 			// Check if escaped char is '\"', '\'', or '\\',
 			//  the only escapes we need to handle in raw mode
 
-			cp = cursor->cp;
+			cp = pLcpBegin->cp;
 			if (cp == cp_sential || cp == '\\')
 			{
-				++cursor;
+				++pLcpBegin;
 			}
 		}
 	}
@@ -1285,26 +1320,30 @@ token_kind_t Lex_after_rest_of_str_lit(
 		tokk = tokk_zero_length_char_lit;
 	}
 
-	*ppLcpTokEnd = cursor;
+	*ppLcpTokEnd = pLcpBegin;
 	return tokk;
 }
 
-token_kind_t Lex_after_whitespace(token_kind_t tokk, lcp_t * cursor, lcp_t ** ppLcpTokEnd)
+token_kind_t Lex_after_whitespace(
+	token_kind_t tokk, 
+	lcp_t * pLcpBegin,
+	lcp_t * pLcpEnd, 
+	lcp_t ** ppLcpTokEnd)
 {
-	while (true)
+	while (pLcpBegin < pLcpEnd)
 	{
-		if (!Is_ws(cursor->cp))
+		if (!Is_ws(pLcpBegin->cp))
 			break;
 
-		if (!Is_hz_ws(cursor->cp))
+		if (!Is_hz_ws(pLcpBegin->cp))
 		{
 			tokk = tokk_multi_line_whitespace;
 		}
 
-		++cursor;
+		++pLcpBegin;
 	}
 
-	*ppLcpTokEnd = cursor;
+	*ppLcpTokEnd = pLcpBegin;
 	return tokk;
 }
 
@@ -1313,11 +1352,15 @@ token_kind_t TokkPeek(
 	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
 {
-	// Decide what to do
+	long long cLcp = pLcpEnd - pLcpBegin;
+
+	assert(cLcp >= 1);
 
 	uint32_t cp_0 = pLcpBegin[0].cp;
-	uint32_t cp_1 = (cp_0) ? pLcpBegin[1].cp : '\0';
-	uint32_t cp_2 = (cp_1) ? pLcpBegin[2].cp : '\0';
+	uint32_t cp_1 = (cLcp >= 2) ? pLcpBegin[1].cp : '\0';
+	uint32_t cp_2 = (cLcp >= 3) ? pLcpBegin[2].cp : '\0';
+
+	// Decide what to do
 
 	if (cp_0 == 'u' && cp_1 == '8' && cp_2 == '"')
 	{
@@ -1365,15 +1408,15 @@ token_kind_t TokkPeek(
 	else if (cp_0 == '.' && cp_1 >= '0' && cp_1 <= '9')
 	{
 		pLcpBegin += 2;
-		return Lex_after_rest_of_ppnum(pLcpBegin, ppLcpTokEnd);
+		return Lex_after_rest_of_ppnum(pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (May_cp_start_id(cp_0))
 	{
-		return Lex_after_rest_of_id(pLcpBegin + 1, ppLcpTokEnd);
+		return Lex_after_rest_of_id(pLcpBegin + 1, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 >= '0' && cp_0 <= '9')
 	{
-		return Lex_after_rest_of_ppnum(pLcpBegin + 1, ppLcpTokEnd);
+		return Lex_after_rest_of_ppnum(pLcpBegin + 1, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (Is_ws(cp_0))
 	{
@@ -1386,22 +1429,22 @@ token_kind_t TokkPeek(
 								tokk_hz_whitespace : 
 								tokk_multi_line_whitespace;
 
-		return Lex_after_whitespace(tokk, pLcpBegin + 1, ppLcpTokEnd);
+		return Lex_after_whitespace(tokk, pLcpBegin + 1, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 == '\0')
 	{
-		return Lex_after_whitespace(tokk_hz_whitespace, pLcpBegin + 1, ppLcpTokEnd);
+		return Lex_after_whitespace(tokk_hz_whitespace, pLcpBegin + 1, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 =='\\')
 	{
 		uint32_t cp;
 		int len;
-		Peek_ucn(pLcpBegin, &cp, &len);
+		Peek_ucn(pLcpBegin, pLcpEnd, &cp, &len);
 		if (len)
 		{
 			if (May_cp_start_id(cp))
 			{
-				return Lex_after_rest_of_id(pLcpBegin + len, ppLcpTokEnd);
+				return Lex_after_rest_of_id(pLcpBegin + len, pLcpEnd, ppLcpTokEnd);
 			}
 			else
 			{
@@ -1421,7 +1464,7 @@ token_kind_t TokkPeek(
 	}
 	else
 	{
-		return Lex_punctuation(pLcpBegin, ppLcpTokEnd);
+		return Lex_punctuation(pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
 }
 
@@ -1488,8 +1531,8 @@ void clean_and_print_char(char ch)
 
 void Print_token(
 	token_kind_t tokk,
-	lcp_t * lcp_tok,
-	lcp_t * lcp_tok_end,
+	const char * str_tok,
+	const char * str_tok_end,
 	int line,
 	int col)
 {
@@ -1521,9 +1564,6 @@ void Print_token(
 	// token text
 
 	printf(" \"");
-
-	const char * str_tok = (const char *)lcp_tok->bytes;
-	const char * str_tok_end = (const char *)lcp_tok_end->bytes;
 
 	for (const char * pCh = str_tok; pCh < str_tok_end; ++pCh)
 	{
@@ -1605,7 +1645,10 @@ void PrintRawTokens(const uint8_t * bytes, const uint8_t * bytes_end)
 	// Munch bytes to logical characters
 
 	int len_lcps;
-	lcp_t * lcps = Try_decode_logical_codepoints(bytes, bytes_end, &len_lcps);
+	lcp_t * lcps = Try_decode_logical_codepoints(
+						bytes, 
+						bytes_end, 
+						&len_lcps);
 	if (!lcps)
 		return;
 
@@ -1621,15 +1664,25 @@ void PrintRawTokens(const uint8_t * bytes, const uint8_t * bytes_end)
 	while (lcps < lcps_end)
 	{
 		lcp_t * pLcpTokEnd;
-		token_kind_t tokk = TokkPeek(lcps, lcps_end, &pLcpTokEnd);
+		token_kind_t tokk = TokkPeek(
+								lcps, 
+								lcps_end, 
+								&pLcpTokEnd);
 
-		const char * pChTokBegin = (const char *)lcps->bytes;
-		const char * pChTokEnd = (const char *)pLcpTokEnd->bytes;
+		assert(pLcpTokEnd <= lcps_end);
+
+		const char * pChTokBegin = 
+						(const char *)lcps->bytes;
+		
+		const char * pChTokEnd = 
+						(pLcpTokEnd == lcps_end) ? 
+							(const char *)bytes_end : 
+							(const char *)pLcpTokEnd->bytes;
 
 		Print_token(
 			tokk,
-			lcps,
-			pLcpTokEnd,
+			pChTokBegin,
+			pChTokEnd,
 			line,
 			(int)(pChTokBegin - line_start + 1));
 
@@ -1651,96 +1704,129 @@ void PrintRawTokens(const uint8_t * bytes, const uint8_t * bytes_end)
 	}
 }
 
-// files
-
-bool FTryReadWholeFile(
-	FILE * file,
-	const char ** ppChBegin,
-	const char ** ppChEnd)
-{
-	int err = fseek(file, 0, SEEK_END);
-	if (err)
-		return false;
-
-	long len_file = ftell(file);
-	if (len_file < 0)
-		return false;
-
-	err = fseek(file, 0, SEEK_SET);
-	if (err)
-		return false;
-
-	// We allocated a trailing '\0' for sanity
-
-	char * pChAlloc = (char *)calloc((size_t)(len_file + 1), 1);
-	if (!pChAlloc)
-		return false;
-
-	size_t bytes_read = fread(pChAlloc, 1, (size_t)len_file, file);
-	if (bytes_read != (size_t)len_file)
-	{
-		free(pChAlloc);
-		return false;
-	}
-
-	*ppChBegin = pChAlloc;
-	*ppChEnd = pChAlloc + len_file;
-
-	return true;
-}
-
-bool FTryReadWholeFileAtPath(
-	const wchar_t * fpath,
-	const char ** ppChBegin,
-	const char ** ppChEnd)
-{
-	FILE * file = _wfopen(fpath, L"rb");
-	if (!file)
-		return false;
-
-	bool fRead = FTryReadWholeFile(file, ppChBegin, ppChEnd);
-
-	fclose(file); // BUG (matthewd) ignoring return value?
-
-	return fRead;
-}
-
 // main
 
 int wmain(int argc, wchar_t *argv[])
 {
+	// Windows crap
+
 	(void) _setmode(_fileno(stdin), _O_BINARY);
+
+	// Get file path
 
 	if (argc != 2)
 	{
-		printf("wrong number of arguments, only expected a file path\n");
+		printf(
+			"wrong number of arguments, "
+			"only expected a file path\n");
+
 		return 1;
 	}
-	wchar_t * pWChFile = argv[1];
+	wchar_t * path = argv[1];
 
 	// Read file
 
-	const char * pChBegin;
-	const char * pChEnd;
-	bool success = FTryReadWholeFileAtPath(pWChFile, &pChBegin, &pChEnd);
-	if (!success)
+	uint8_t * file_bytes;
+	size_t file_length;
 	{
-		printf("Failed to read file '%ls'.\n", pWChFile);
-		return 1;
+		FILE * file = _wfopen(path, L"rb");
+		if (!file)
+		{
+			printf(
+				"Failed to open file '%ls'.\n", 
+				path);
+			
+			return 1;
+		}
+
+		// get file length 
+		//  (seek to end, ftell, seek back to start)
+
+		if (fseek(file, 0, SEEK_END))
+		{
+			printf(
+				"fseek '%ls' SEEK_END failed.\n", 
+				path);
+			
+			return 1;
+		}
+
+		long signed_file_length = ftell(file);
+		if (signed_file_length < 0)
+		{
+			printf(
+				"ftell '%ls' failed.\n", 
+				path);
+			
+			return 1;
+		}
+
+		file_length = (size_t)signed_file_length;
+
+		if (fseek(file, 0, SEEK_SET))
+		{
+			printf(
+				"fseek '%ls' SEEK_SET failed.\n", 
+				path);
+			
+			return 1;
+		}
+
+		// Allocate space to read file
+
+		file_bytes = (uint8_t *)calloc(file_length, 1);
+		if (!file_bytes)
+		{
+			printf(
+				"failed to allocate %zu bytes "
+				"to read '%ls'.\n", 
+				file_length, 
+				path);
+			
+			return 1;
+		}
+
+		// Actually read
+
+		size_t bytes_read = fread(
+								file_bytes, 
+								1, 
+								file_length,
+								file);
+
+		if (bytes_read != file_length)
+		{
+			printf(
+				"failed to read %zu bytes from '%ls', "
+				"only read %zu bytes.\n",
+				file_length, 
+				path,
+				bytes_read);
+
+			return 1;
+		}
+
+		// close file
+
+		// BUG (matthewd) ignoring return value?
+
+		fclose(file);
 	}
 
 	// Deal with potential UTF-8 BOM
 
-	int num_ch = (int)(pChEnd - pChBegin);
-	if (num_ch >= 3 &&
-		pChBegin[0] == '\xEF' &&
-		pChBegin[1] == '\xBB' &&
-		pChBegin[2] == '\xBF')
+	if (file_length >= 3 &&
+		file_bytes[0] == '\xEF' &&
+		file_bytes[1] == '\xBB' &&
+		file_bytes[2] == '\xBF')
 	{
-		pChBegin += 3;
+		file_bytes += 3;
+		file_length -= 3;
 	}
 
 	// Print tokens
 
-	PrintRawTokens((const uint8_t *)pChBegin, (const uint8_t *)pChEnd);
+	PrintRawTokens(
+		file_bytes, 
+		file_bytes + file_length);
 }
