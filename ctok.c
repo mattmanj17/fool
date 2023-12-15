@@ -224,178 +224,6 @@ int Len_escaped_end_of_lines(
 	return len;
 }
 
-bool FPeekCarriageReturn(
-	lcp_t * pLcpBegin,
-	lcp_t * pLcpEnd,
-	uint32_t * pU32Peek,
-	lcp_t ** ppLcpEndPeek)
-{
-	(void)pLcpEnd;
-
-	assert((pLcpEnd - pLcpBegin) > 0);
-	if (pLcpBegin[0].cp == '\r')
-	{
-		*pU32Peek = '\n';
-
-		assert((pLcpEnd - pLcpBegin) > 1);
-		if (pLcpBegin[1].cp == '\n')
-		{
-			*ppLcpEndPeek = pLcpBegin + 2;
-		}
-		else
-		{
-			*ppLcpEndPeek = pLcpBegin + 1;
-		}
-
-		return true;
-	}
-
-	return false;
-}
-
-bool FPeekTrigraph(
-	lcp_t * pLcpBegin,
-	lcp_t * pLcpEnd,
-	uint32_t * pU32Peek,
-	lcp_t ** ppLcpEndPeek)
-{
-	int cLcp = (int)(pLcpEnd - pLcpBegin);
-	(void)cLcp;
-
-	if (cLcp < 3)
-		return false;
-
-	if (pLcpBegin[0].cp != '?')
-		return false;
-
-	if (pLcpBegin[1].cp != '?')
-		return false;
-
-	uint32_t pairs[][2] =
-	{
-		{ '<', '{' },
-		{ '>', '}' },
-		{ '(', '[' },
-		{ ')', ']' },
-		{ '=', '#' },
-		{ '/', '\\' },
-		{ '\'', '^' },
-		{ '!', '|' },
-		{ '-', '~' },
-	};
-
-	for (int iPair = 0; iPair < LEN(pairs); ++iPair)
-	{
-		uint32_t * pair = pairs[iPair];
-		if (pair[0] == pLcpBegin[2].cp)
-		{
-			*pU32Peek = pair[1];
-			*ppLcpEndPeek = pLcpBegin + 3;
-			return true;
-		}
-	}
-
-	return false;
-}
-
-bool FPeekEscapedLineBreaks(
-	lcp_t * pLcpBegin,
-	lcp_t * pLcpEnd,
-	uint32_t * pU32Peek,
-	lcp_t ** ppLcpEndPeek)
-{
-	int len_esc_eol = Len_escaped_end_of_lines(pLcpBegin, pLcpEnd);
-	if (!len_esc_eol)
-		return false;
-
-	if ((pLcpBegin + len_esc_eol) == pLcpEnd)
-	{
-		// Treat trailing escaped eol as a '\0'
-
-		*pU32Peek = '\0';
-		*ppLcpEndPeek = pLcpBegin + len_esc_eol;
-	}
-	else
-	{
-		*pU32Peek = pLcpBegin[len_esc_eol].cp;
-		*ppLcpEndPeek = pLcpBegin + len_esc_eol + 1;
-	}
-
-	return true;
-}
-
-typedef enum
-{
-	COLLAPSEK_Trigraph,
-	COLLAPSEK_EscapedLineBreaks,
-	COLLAPSEK_CarriageReturn,
-} COLLAPSEK;
-
-bool FPeekCollapse(
-	COLLAPSEK collapsek,
-	lcp_t * pLcpBegin,
-	lcp_t * pLcpEnd,
-	uint32_t * pU32Peek,
-	lcp_t ** ppLcpEndPeek)
-{
-	switch (collapsek)
-	{
-	case COLLAPSEK_Trigraph:
-		return FPeekTrigraph(pLcpBegin, pLcpEnd, pU32Peek, ppLcpEndPeek);
-
-	case COLLAPSEK_EscapedLineBreaks:
-		return FPeekEscapedLineBreaks(pLcpBegin, pLcpEnd, pU32Peek, ppLcpEndPeek);
-
-	case COLLAPSEK_CarriageReturn:
-		return FPeekCarriageReturn(pLcpBegin, pLcpEnd, pU32Peek, ppLcpEndPeek);
-
-	default:
-		return false;
-	}
-}
-
-void Collapse(
-	COLLAPSEK collapsek,
-	lcp_t * pLcpBegin,
-	lcp_t ** ppLcpEnd)
-{
-	lcp_t * pLcpEnd = *ppLcpEnd;
-	lcp_t * pLcpDest = pLcpBegin;
-
-	while (pLcpBegin < pLcpEnd)
-	{
-		uint32_t u32Peek;
-		lcp_t * pLcpEndPeek;
-		bool fPeek = FPeekCollapse(
-			collapsek,
-			pLcpBegin,
-			pLcpEnd,
-			&u32Peek,
-			&pLcpEndPeek);
-
-		if (!fPeek)
-		{
-			u32Peek = pLcpBegin->cp;
-			pLcpEndPeek = pLcpBegin + 1;
-		}
-
-		pLcpDest->cp = u32Peek;
-		pLcpDest->bytes = pLcpBegin->bytes;
-
-		pLcpBegin = pLcpEndPeek;
-		++pLcpDest;
-	}
-	assert(pLcpBegin == pLcpEnd);
-
-	// Copy trailing '\0'
-
-	*pLcpDest = *pLcpEnd;
-
-	// Write out new end
-
-	*ppLcpEnd = pLcpDest;
-}
-
 lcp_t * Try_decode_logical_codepoints(
 	const uint8_t * bytes,
 	const uint8_t * bytes_end,
@@ -403,7 +231,6 @@ lcp_t * Try_decode_logical_codepoints(
 {
 	// In the worst case, we will have a codepoint for every byte
 	//  in the original span, so allocate enough space for that.
-	//  Note that we include room for a trailing '\0' codepoint
 
 	size_t len_bytes;
 	{
@@ -414,7 +241,7 @@ lcp_t * Try_decode_logical_codepoints(
 		len_bytes = (size_t)len_bytes_signed;
 	}
 
-	lcp_t * lcps = (lcp_t *)calloc(sizeof(lcp_t) * (len_bytes + 1), 1);
+	lcp_t * lcps = (lcp_t *)calloc(sizeof(lcp_t) * len_bytes, 1);
 	if (!lcps)
 		return NULL;
 
@@ -442,15 +269,130 @@ lcp_t * Try_decode_logical_codepoints(
 	}
 	assert(bytes == bytes_end);
 
-	// Collapse trigraphs/etc
+	// \r and \r\n to \n
 
 	lcp_t * lcps_end = lcps + len_lcps;
-	Collapse(COLLAPSEK_CarriageReturn, lcps, &lcps_end);
-	Collapse(COLLAPSEK_Trigraph, lcps, &lcps_end);
-	Collapse(COLLAPSEK_EscapedLineBreaks, lcps, &lcps_end);
-	len_lcps = (int)(lcps_end - lcps);
 
-	// return lcps and len
+	lcp_t * lcps_from = lcps;
+	lcp_t * lcps_to = lcps;
+	
+	while (lcps_from < lcps_end)
+	{
+		if (lcps_from[0].cp == '\r')
+		{
+			lcps_to->cp = '\n';
+			lcps_to->bytes = lcps_from->bytes;
+			++lcps_to;
+
+			if ((lcps_from + 1) < lcps_end &&
+				lcps_from[1].cp == '\n')
+			{
+				lcps_from += 2;
+			}
+			else
+			{
+				++lcps_from;
+			}
+		}
+		else
+		{
+			lcps_to->cp = lcps_from->cp;
+			lcps_to->bytes = lcps_from->bytes;
+			++lcps_to;
+			++lcps_from;
+		}
+	}
+
+	lcps_end = lcps_to;
+	lcps_from = lcps;
+	lcps_to = lcps;
+	
+	// trigraphs
+
+	while (lcps_from < lcps_end)
+	{
+		if ((lcps_from + 2) < lcps_end && 
+			lcps_from[0].cp == '?' && 
+			lcps_from[1].cp == '?')
+		{
+			uint32_t pairs[][2] =
+			{
+				{ '<', '{' },
+				{ '>', '}' },
+				{ '(', '[' },
+				{ ')', ']' },
+				{ '=', '#' },
+				{ '/', '\\' },
+				{ '\'', '^' },
+				{ '!', '|' },
+				{ '-', '~' },
+			};
+
+			int iPairMatch = -1;
+
+			for (int iPair = 0; iPair < LEN(pairs); ++iPair)
+			{
+				uint32_t * pair = pairs[iPair];
+				if (pair[0] == lcps_from[2].cp)
+				{
+					iPairMatch = iPair;
+					break;
+				}
+			}
+
+			if (iPairMatch != -1)
+			{
+				lcps_to->cp = pairs[iPairMatch][1];
+				lcps_to->bytes = lcps_from->bytes;
+				++lcps_to;
+				lcps_from += 3;
+
+				continue;
+			}
+		}
+
+		lcps_to->cp = lcps_from->cp;
+		lcps_to->bytes = lcps_from->bytes;
+		++lcps_to;
+		++lcps_from;
+	}
+
+	lcps_end = lcps_to;
+	lcps_from = lcps;
+	lcps_to = lcps;
+	
+	// escaped line breaks
+	
+	while (lcps_from < lcps_end)
+	{
+		int len_esc_eol = Len_escaped_end_of_lines(lcps_from, lcps_end);
+		if (!len_esc_eol)
+		{
+			lcps_to->cp = lcps_from->cp;
+			lcps_to->bytes = lcps_from->bytes;
+			++lcps_to;
+			++lcps_from;
+		}
+		else if ((lcps_from + len_esc_eol) == lcps_end)
+		{
+			// Drop trailing escaped line break
+
+			lcps_from = lcps_end;
+			bytes_end -= len_esc_eol;
+		}
+		else
+		{
+			lcps_to->cp = lcps_from[len_esc_eol].cp;
+			lcps_to->bytes = lcps_from->bytes;
+			++lcps_to;
+			lcps_from += len_esc_eol + 1;
+		}
+	}
+	
+	// return len and lcps
+
+	lcps_end = lcps_to;
+	len_lcps = (int)(lcps_end - lcps);
 
 	*len_lcps_ref = len_lcps;
 	return lcps;

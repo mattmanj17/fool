@@ -346,23 +346,6 @@ int wmain(int argc, wchar_t *argv[])
 		input += len_ws;
 	}
 
-	// make sure we end with a clean unescaped newline
-
-	output[output_length] = '/';
-	++output_length;
-
-	output[output_length] = '*';
-	++output_length;
-
-	output[output_length] = '*';
-	++output_length;
-
-	output[output_length] = '/';
-	++output_length;
-
-	output[output_length] = '\n';
-	++output_length;
-
 	// write output to file
 
 	FILE * output_file = _wfopen(output_path, L"wb");
