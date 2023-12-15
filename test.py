@@ -17,11 +17,12 @@ def build_clang():
 	# build llvm-project/build/Release/bin/clang.exe
 	# BB (matthewd) should re write this without os.chdir, they are confusing
 
-	if not os.path.exists('.3rd_party'):
-		os.mkdir('.3rd_party')
-	os.chdir('.3rd_party')
+	if not os.path.exists('untracked/3rd_party'):
+		os.mkdir('untracked/3rd_party')
+	os.chdir('untracked/3rd_party')
 	
 	if os.path.exists('llvm-project'):
+		os.chdir('..')
 		os.chdir('..')
 		return
 	
@@ -58,20 +59,21 @@ def build_clang():
 		'/property:Configuration=Release'])
 
 	os.chdir('..')
+	os.chdir('..')
 
 def setup_tests():
-	# generate .test/input
+	# generate test/input
 
-	if not os.path.exists('.test'):
-		os.mkdir('.test')
+	if not os.path.exists('untracked/test'):
+		os.mkdir('untracked/test')
 
-	if not os.path.exists('.test/input'):
+	if not os.path.exists('untracked/test/input'):
 		setup_test_input()
 
 	ensure_test_output()
 
 def setup_test_input():
-	os.mkdir('.test/input')
+	os.mkdir('untracked/test/input')
 	copy_3rd_party_c_files()
 	generate_test_input()
 	scrub_test_input()
@@ -87,18 +89,18 @@ def copy_3rd_party_c_files():
 		# this file is stupid big and takes a second for clang to even spit out the tokens.
 		# skip it to avoid an annoying wait when we run_clang.
 
-		os.path.abspath(".3rd_party/llvm-project/compiler-rt/test/builtins/Unit/udivmodti4_test.c"),
+		os.path.abspath("untracked/3rd_party/llvm-project/compiler-rt/test/builtins/Unit/udivmodti4_test.c"),
 
 		# these files have Named UCNs in them (\N{some-code-point}), which we do not support
 
-		os.path.abspath(".3rd_party/llvm-project/clang/test/FixIt/fixit-unicode-named-escape-sequences.c"),
-		os.path.abspath(".3rd_party/llvm-project/clang/test/Lexer/unicode.c"),
-		os.path.abspath(".3rd_party/llvm-project/clang/test/Preprocessor/ucn-pp-identifier.c"),
-		os.path.abspath(".3rd_party/llvm-project/clang/test/Sema/ucn-identifiers.c"),
+		os.path.abspath("untracked/3rd_party/llvm-project/clang/test/FixIt/fixit-unicode-named-escape-sequences.c"),
+		os.path.abspath("untracked/3rd_party/llvm-project/clang/test/Lexer/unicode.c"),
+		os.path.abspath("untracked/3rd_party/llvm-project/clang/test/Preprocessor/ucn-pp-identifier.c"),
+		os.path.abspath("untracked/3rd_party/llvm-project/clang/test/Sema/ucn-identifiers.c"),
 	]
 
-	src_dir = os.path.abspath('.3rd_party/')
-	dest_dir = os.path.abspath('.test/input/')
+	src_dir = os.path.abspath('untracked/3rd_party/')
+	dest_dir = os.path.abspath('untracked/test/input/')
 
 	for root, dirs, fnames in os.walk(src_dir, topdown=True):
 		print(f"copy c files in {root}")
@@ -118,7 +120,7 @@ def generate_test_input():
 	# '#' not included to avoid pp directives
 
 	chars = b"@\"\\\n\x20'8uULE0_[](){}.:%><,=|^.;?;*+-&!~"
-	out_dir = ".test/input/spew"
+	out_dir = "untracked/test/input/spew"
 
 	if not os.path.exists(out_dir):
 		os.makedirs(out_dir, exist_ok=True)
@@ -143,7 +145,7 @@ def scrub_test_input():
 	#  we just slightly differ in the exact ways we split up tokens compared to clang.
 	#  These are all edge cases involving whitespace, so slight divergance is fine.
 
-	dest_dir = os.path.abspath('.test/input/')
+	dest_dir = os.path.abspath('untracked/test/input/')
 
 	with concurrent.futures.ThreadPoolExecutor() as executor:
 		for root, _, fnames in os.walk(dest_dir):
@@ -152,29 +154,29 @@ def scrub_test_input():
 				executor.submit(scrub_ws_in_file, src_file)
 
 def scrub_ws_in_file(src_file):
-	scrub_exe = os.path.abspath(".build/exe/scrub_ws.exe")
+	scrub_exe = os.path.abspath("untracked/build/exe/scrub_ws.exe")
 	subprocess.run(f'{scrub_exe} {src_file} {src_file}')
 	print(f'scrub_ws {src_file}')
 
 def ensure_test_output():
-	# copy directory structure of .test/input to .test/output
+	# copy directory structure of test/input to test/output
 
 	print('mkdir ...')
 	for in_path, out_path in test_cases():
 		Path(os.path.dirname(out_path)).mkdir(parents=True, exist_ok=True)
 	
-	# generate .test/output
+	# generate test/output
 	# NOTE(matthewd) clang is a little heavy weight, so we limit to 19 workers
 
 	with concurrent.futures.ThreadPoolExecutor(max_workers=19) as executor: 
-		clang = os.path.abspath(".3rd_party/llvm-project/build/Release/bin/clang.exe")
+		clang = os.path.abspath("untracked/3rd_party/llvm-project/build/Release/bin/clang.exe")
 		for in_path, out_path in test_cases():
 			if not os.path.isfile(out_path):
 				executor.submit(run_clang, clang, in_path, out_path)
 
 def test_cases():
-	in_dir = os.path.abspath(".test/input")
-	out_dir = os.path.abspath(".test/output")
+	in_dir = os.path.abspath("untracked/test/input")
+	out_dir = os.path.abspath("untracked/test/output")
 	for root, _, files in os.walk(in_dir):
 		for fname in files:
 			in_path = os.path.join(root, fname)
@@ -197,7 +199,7 @@ def run_tests():
 	fail_lock = Lock()
 
 	with concurrent.futures.ThreadPoolExecutor() as executor:
-		ctok = os.path.abspath(".build/exe/ctok.exe")
+		ctok = os.path.abspath("untracked/build/exe/ctok.exe")
 		for in_path, out_path in test_cases():
 			executor.submit(
 						run_ctok, 

@@ -1,4 +1,1 @@
-.build/
-.debug/
-.test/
-.3rd_party/
+untracked/

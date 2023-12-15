@@ -1,9 +1,9 @@
 @echo off
 setlocal
 
-set obj_dir=".build/obj/"
-set exe_dir=".build/exe/"
-set pdb_dir=".build/pdb/"
+set obj_dir="untracked/build/obj/"
+set exe_dir="untracked/build/exe/"
+set pdb_dir="untracked/build/pdb/"
 
 set common_options=^
  /nologo /permissive-^
