@@ -458,181 +458,33 @@ lcp_t * Try_decode_logical_codepoints(
 
 // Lex
 
-typedef enum//!!!FIXME_typedef_audit
+typedef enum 
 {
-	tokk_raw_identifier,
-	tokk_l_paren,
-	tokk_r_paren,
-	tokk_l_brace,
-	tokk_r_brace,
-	tokk_l_square,
-	tokk_r_square,
-	tokk_semi,
-	tokk_star,
-	tokk_equal,
-	tokk_amp,
-	tokk_plusplus,
-	tokk_exclaimequal,
-	tokk_numeric_constant,
-	tokk_colon,
-	tokk_minus,
-	tokk_period,
-	tokk_slash,
-	tokk_comma,
-	tokk_arrow,
-	tokk_plus,
-	tokk_string_literal,
-	tokk_minusminus,
-	tokk_percent,
-	tokk_pipe,
-	tokk_caret,
-	tokk_greater,
-	tokk_greaterequal,
-	tokk_equalequal,
-	tokk_less,
-	tokk_lessequal,
-	tokk_ampamp,
-	tokk_pipepipe,
-	tokk_exclaim,
-	tokk_plusequal,
-	tokk_minusequal,
-	tokk_starequal,
-	tokk_ellipsis,
-	tokk_char_constant,
-	tokk_lessless,
-	tokk_question,
-	tokk_wide_char_constant,
-	tokk_tilde,
-	tokk_greatergreater,
-	tokk_slashequal,
-	tokk_wide_string_literal,
-	tokk_hash,
-	
-	tokk_line_comment,
-	tokk_block_comment,
-	
-	tokk_hashhash,
-	tokk_pipeequal,
-	tokk_lesslessequal,
-	tokk_ampequal,
-	tokk_greatergreaterequal,
-	tokk_percentequal,
-	tokk_caretequal,
-	tokk_coloncolon,
-	tokk_utf16_string_literal,
-	tokk_utf16_char_constant,
-	tokk_utf32_string_literal,
-	tokk_utf32_char_constant,
-	tokk_utf8_string_literal,
+#define TOK(X) TokenKind_##X,
+#include "TokenKinds.def"
 
-	tokk_bogus_ucn,
-	tokk_stray_backslash,
-	tokk_hz_whitespace,
-	tokk_multi_line_whitespace,
-	tokk_unterminated_quote,
-	tokk_zero_length_char_lit,
-	tokk_unterminated_block_comment,
-	tokk_unknown_byte,
+	TokenKind_line_comment,
+	TokenKind_unterminated_block_comment,
+	TokenKind_unterminated_quote,
+	TokenKind_block_comment,
+	TokenKind_zero_length_char_lit,
+	TokenKind_multi_line_whitespace,
+	TokenKind_hz_whitespace,
+	TokenKind_bogus_ucn,
+	TokenKind_stray_backslash,
+	TokenKind_unknown_byte,
 
-	tokk_max
-} token_kind_t;
-
-const char * str_from_tokk(token_kind_t tokk)
-{
-	static const char * s_mpTokkStr[] =
-	{
-		"raw_identifier",				// tok_raw_identifier
-		"l_paren",						// tok_l_paren
-		"r_paren",						// tok_r_paren
-		"l_brace",						// tok_l_brace
-		"r_brace",						// tok_r_brace
-		"l_square",						// tok_l_square
-		"r_square",						// tok_r_square
-		"semi",							// tok_semi
-		"star",							// tok_star
-		"equal",						// tok_equal
-		"amp",							// tok_amp
-		"plusplus",						// tok_plusplus
-		"exclaimequal",					// tok_exclaimequal
-		"numeric_constant",				// tok_numeric_constant
-		"colon",						// tok_colon
-		"minus",						// tok_minus
-		"period",						// tok_period
-		"slash",						// tok_slash
-		"comma",						// tok_comma
-		"arrow",						// tok_arrow
-		"plus",							// tok_plus
-		"string_literal",				// tok_string_literal
-		"minusminus",					// tok_minusminus
-		"percent",						// tok_percent
-		"pipe",							// tok_pipe
-		"caret",						// tok_caret
-		"greater",						// tok_greater
-		"greaterequal",					// tok_greaterequal
-		"equalequal",					// tok_equalequal
-		"less",							// tok_less
-		"lessequal",					// tok_lesequal
-		"ampamp",						// tok_ampamp
-		"pipepipe",						// tok_pipepipe
-		"exclaim",						// tok_exclaim
-		"plusequal",					// tok_plusequal
-		"minusequal",					// tok_minusequal
-		"starequal",					// tok_starequal
-		"ellipsis",						// tok_ellipsis
-		"char_constant",				// tok_char_constant
-		"lessless",						// tok_lessless
-		"question",						// tok_question
-		"wide_char_constant",			// tok_wide_char_constant
-		"tilde",						// tok_tilde
-		"greatergreater",				// tok_greatergreater
-		"slashequal",					// tok_slashequal
-		"wide_string_literal",			// tok_wide_string_literal
-		"hash",							// tok_hash
-		
-		"line_comment",					// tokk_line_comment
-		"block_comment",				// tokk_block_comment
-		
-		"hashhash",						// tok_hashhash
-		"pipeequal",					// tok_pipeequal
-		"lesslessequal",				// tok_lesslessequal
-		"ampequal",						// tok_ampequal
-		"greatergreaterequal",			// tok_greatergreaterequal
-		"percentequal",					// tok_percentequal
-		"caretequal",					// tok_caretequal
-		"coloncolon",					// tok_coloncolon
-		"utf16_string_literal",			// tok_utf16_string_literal
-		"utf16_char_constant",			// tok_utf16_char_constant
-		"utf32_string_literal",			// tok_utf32_string_literal
-		"utf32_char_constant",			// tok_utf32_char_constant
-		"utf8_string_literal",			// tok_utf8_string_literal
-
-		"bogus_ucn",					// tok_bogus_ucn
-		"stray_backslash",				// tok_stray_backslash
-		
-		"hz_whitespace",				// tokk_hz_whitespace
-		"multi_line_whitespace",		// tokk_multi_line_whitespace
-		
-		"unterminated_quote",			// tok_unterminated_quote
-		"zero_length_char_lit",			// tok_zero_length_char_lit
-		"unterminated_block_comment",	// tok_unterminated_block_comment
-		"unknown_byte",					// tok_unknown_byte
-	};
-	static_assert(LEN(s_mpTokkStr) == tokk_max, "each tokk needs a string");
-
-	assert(tokk >= 0);
-	assert(tokk < tokk_max);
-
-	return s_mpTokkStr[tokk];
-}
+	TokenKind_NUM_TOKENS
+} TokenKind;
 
 typedef struct//!!!FIXME_typedef_audit
 {
 	const char * str;
-	token_kind_t tokk;
+	TokenKind tokk;
 	int _padding;
 } punctution_t;
 
-token_kind_t Lex_punctuation(
+TokenKind Lex_punctuation(
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd, 
 	lcp_t ** ppLcpTokEnd)
@@ -647,61 +499,61 @@ token_kind_t Lex_punctuation(
 
 	static punctution_t puctuations[] =
 	{
-		{"%:%:", tokk_hashhash},
-		{">>=", tokk_greatergreaterequal},
-		{"<<=", tokk_lesslessequal},
-		{"...", tokk_ellipsis},
-		{"|=", tokk_pipeequal},
-		{"||", tokk_pipepipe},
-		{"^=", tokk_caretequal},
-		{"==", tokk_equalequal},
-		{"::", tokk_coloncolon},
-		{":>", tokk_r_square},
-		{"-=", tokk_minusequal},
-		{"--", tokk_minusminus},
-		{"->", tokk_arrow},
-		{"+=", tokk_plusequal},
-		{"++", tokk_plusplus},
-		{"*=", tokk_starequal},
-		{"&=", tokk_ampequal},
-		{"&&", tokk_ampamp},
-		{"##", tokk_hashhash},
-		{"!=", tokk_exclaimequal},
-		{">=", tokk_greaterequal},
-		{">>", tokk_greatergreater},
-		{"<=", tokk_lessequal},
-		{"<:", tokk_l_square},
-		{"<%", tokk_l_brace},
-		{"<<", tokk_lessless},
-		{"%>", tokk_r_brace},
-		{"%=", tokk_percentequal},
-		{"%:", tokk_hash},
-		{"/=", tokk_slashequal},
-		{"~", tokk_tilde},
-		{"}", tokk_r_brace},
-		{"{", tokk_l_brace},
-		{"]", tokk_r_square},
-		{"[", tokk_l_square},
-		{"?", tokk_question},
-		{";", tokk_semi},
-		{",", tokk_comma},
-		{")", tokk_r_paren},
-		{"(", tokk_l_paren},
-		{"|", tokk_pipe},
-		{"^", tokk_caret},
-		{"=", tokk_equal},
-		{":", tokk_colon},
-		{"-", tokk_minus},
-		{"+", tokk_plus},
-		{"*", tokk_star},
-		{"&", tokk_amp},
-		{"#", tokk_hash},
-		{"!", tokk_exclaim},
-		{">", tokk_greater},
-		{"<", tokk_less},
-		{"%", tokk_percent},
-		{".", tokk_period},
-		{"/", tokk_slash},
+		{"%:%:", TokenKind_hashhash},
+		{">>=", TokenKind_greatergreaterequal},
+		{"<<=", TokenKind_lesslessequal},
+		{"...", TokenKind_ellipsis},
+		{"|=", TokenKind_pipeequal},
+		{"||", TokenKind_pipepipe},
+		{"^=", TokenKind_caretequal},
+		{"==", TokenKind_equalequal},
+		{"::", TokenKind_coloncolon},
+		{":>", TokenKind_r_square},
+		{"-=", TokenKind_minusequal},
+		{"--", TokenKind_minusminus},
+		{"->", TokenKind_arrow},
+		{"+=", TokenKind_plusequal},
+		{"++", TokenKind_plusplus},
+		{"*=", TokenKind_starequal},
+		{"&=", TokenKind_ampequal},
+		{"&&", TokenKind_ampamp},
+		{"##", TokenKind_hashhash},
+		{"!=", TokenKind_exclaimequal},
+		{">=", TokenKind_greaterequal},
+		{">>", TokenKind_greatergreater},
+		{"<=", TokenKind_lessequal},
+		{"<:", TokenKind_l_square},
+		{"<%", TokenKind_l_brace},
+		{"<<", TokenKind_lessless},
+		{"%>", TokenKind_r_brace},
+		{"%=", TokenKind_percentequal},
+		{"%:", TokenKind_hash},
+		{"/=", TokenKind_slashequal},
+		{"~", TokenKind_tilde},
+		{"}", TokenKind_r_brace},
+		{"{", TokenKind_l_brace},
+		{"]", TokenKind_r_square},
+		{"[", TokenKind_l_square},
+		{"?", TokenKind_question},
+		{";", TokenKind_semi},
+		{",", TokenKind_comma},
+		{")", TokenKind_r_paren},
+		{"(", TokenKind_l_paren},
+		{"|", TokenKind_pipe},
+		{"^", TokenKind_caret},
+		{"=", TokenKind_equal},
+		{":", TokenKind_colon},
+		{"-", TokenKind_minus},
+		{"+", TokenKind_plus},
+		{"*", TokenKind_star},
+		{"&", TokenKind_amp},
+		{"#", TokenKind_hash},
+		{"!", TokenKind_exclaim},
+		{">", TokenKind_greater},
+		{"<", TokenKind_less},
+		{"%", TokenKind_percent},
+		{".", TokenKind_period},
+		{"/", TokenKind_slash},
 	};
 
 	for (int i_puctuation = 0; i_puctuation < LEN(puctuations); ++i_puctuation)
@@ -739,7 +591,7 @@ token_kind_t Lex_punctuation(
 	}
 
 	*ppLcpTokEnd = pLcpBegin + 1;
-	return tokk_unknown_byte;
+	return TokenKind_unknown_byte;
 }
 
 bool May_cp_start_id(uint32_t cp)
@@ -1079,7 +931,7 @@ bool Does_cp_extend_id(uint32_t cp)
 	return true;
 }
 
-token_kind_t Lex_after_rest_of_id(
+TokenKind Lex_after_rest_of_id(
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
@@ -1108,10 +960,10 @@ token_kind_t Lex_after_rest_of_id(
 	}
 
 	*ppLcpTokEnd = pLcpBegin;
-	return tokk_raw_identifier;
+	return TokenKind_raw_identifier;
 }
 
-token_kind_t Lex_after_rest_of_ppnum(
+TokenKind Lex_after_rest_of_ppnum(
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
@@ -1223,10 +1075,10 @@ token_kind_t Lex_after_rest_of_ppnum(
 	}
 
 	*ppLcpTokEnd = pLcpBegin;
-	return tokk_numeric_constant;
+	return TokenKind_numeric_constant;
 }
 
-token_kind_t Lex_after_rest_of_line_comment(
+TokenKind Lex_after_rest_of_line_comment(
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
@@ -1241,15 +1093,15 @@ token_kind_t Lex_after_rest_of_line_comment(
 	}
 
 	*ppLcpTokEnd = pLcpBegin;
-	return tokk_line_comment;
+	return TokenKind_line_comment;
 }
 
-token_kind_t Lex_after_rest_of_block_comment(
+TokenKind Lex_after_rest_of_block_comment(
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
 {
-	token_kind_t tokk = tokk_unterminated_block_comment;
+	TokenKind tokk = TokenKind_unterminated_block_comment;
 
 	while (pLcpBegin < pLcpEnd)
 	{
@@ -1261,7 +1113,7 @@ token_kind_t Lex_after_rest_of_block_comment(
 			uint32_t cp1 = pLcpBegin->cp;
 			if (cp0 == '*' && cp1 == '/')
 			{
-				tokk = tokk_block_comment;
+				tokk = TokenKind_block_comment;
 				++pLcpBegin;
 				break;
 			}
@@ -1272,8 +1124,8 @@ token_kind_t Lex_after_rest_of_block_comment(
 	return tokk;
 }
 
-token_kind_t Lex_after_rest_of_str_lit(
-	token_kind_t tokk,
+TokenKind Lex_after_rest_of_str_lit(
+	TokenKind tokk,
 	uint32_t cp_sential,
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
@@ -1326,22 +1178,22 @@ token_kind_t Lex_after_rest_of_str_lit(
 
 	if (!found_end)
 	{
-		tokk = tokk_unterminated_quote;
+		tokk = TokenKind_unterminated_quote;
 	}
 
 	// zero length char lits are invalid
 
 	if (cp_sential == '\'' && len == 0)
 	{
-		tokk = tokk_zero_length_char_lit;
+		tokk = TokenKind_zero_length_char_lit;
 	}
 
 	*ppLcpTokEnd = pLcpBegin;
 	return tokk;
 }
 
-token_kind_t Lex_after_whitespace(
-	token_kind_t tokk, 
+TokenKind Lex_after_whitespace(
+	TokenKind tokk, 
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd, 
 	lcp_t ** ppLcpTokEnd)
@@ -1353,7 +1205,7 @@ token_kind_t Lex_after_whitespace(
 
 		if (!Is_hz_ws(pLcpBegin->cp))
 		{
-			tokk = tokk_multi_line_whitespace;
+			tokk = TokenKind_multi_line_whitespace;
 		}
 
 		++pLcpBegin;
@@ -1363,7 +1215,7 @@ token_kind_t Lex_after_whitespace(
 	return tokk;
 }
 
-token_kind_t TokkPeek(
+TokenKind TokkPeek(
 	lcp_t * pLcpBegin,
 	lcp_t * pLcpEnd,
 	lcp_t ** ppLcpTokEnd)
@@ -1381,25 +1233,25 @@ token_kind_t TokkPeek(
 	if (cp_0 == 'u' && cp_1 == '8' && cp_2 == '"')
 	{
 		pLcpBegin += 3;
-		return Lex_after_rest_of_str_lit(tokk_utf8_string_literal, '"', pLcpBegin, pLcpEnd, ppLcpTokEnd);
+		return Lex_after_rest_of_str_lit(TokenKind_utf8_string_literal, '"', pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
 	else if ((cp_0 == 'u' || cp_0 == 'U' || cp_0 == 'L') &&
 			 (cp_1 == '"' || cp_1 == '\''))
 	{
 		pLcpBegin += 2;
 
-		token_kind_t tokk;
+		TokenKind tokk;
 		
 		switch (cp_0)
 		{
 		case 'u':
-			tokk = (cp_1 == '"') ? tokk_utf16_string_literal : tokk_utf16_char_constant;
+			tokk = (cp_1 == '"') ? TokenKind_utf16_string_literal : TokenKind_utf16_char_constant;
 			break;
 		case 'U':
-			tokk = (cp_1 == '"') ? tokk_utf32_string_literal : tokk_utf32_char_constant;
+			tokk = (cp_1 == '"') ? TokenKind_utf32_string_literal : TokenKind_utf32_char_constant;
 			break;
 		default: // 'L'
-			tokk = (cp_1 == '"') ? tokk_wide_string_literal : tokk_wide_char_constant;
+			tokk = (cp_1 == '"') ? TokenKind_wide_string_literal : TokenKind_wide_char_constant;
 			break;
 		}
 		
@@ -1408,7 +1260,7 @@ token_kind_t TokkPeek(
 	else if (cp_0 == '"' || cp_0 == '\'')
 	{
 		++pLcpBegin;
-		token_kind_t tokk = (cp_0 == '"') ? tokk_string_literal : tokk_char_constant;
+		TokenKind tokk = (cp_0 == '"') ? TokenKind_string_literal : TokenKind_char_constant;
 		return Lex_after_rest_of_str_lit(tokk, cp_0, pLcpBegin, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 == '/' && cp_1 == '*')
@@ -1441,15 +1293,15 @@ token_kind_t TokkPeek(
 		//  because Lex_after_whitespace only skips 
 		//  physical whitespace (blek)
 
-		token_kind_t tokk = (Is_hz_ws(cp_0)) ? 
-								tokk_hz_whitespace : 
-								tokk_multi_line_whitespace;
+		TokenKind tokk = (Is_hz_ws(cp_0)) ? 
+								TokenKind_hz_whitespace : 
+								TokenKind_multi_line_whitespace;
 
 		return Lex_after_whitespace(tokk, pLcpBegin + 1, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 == '\0')
 	{
-		return Lex_after_whitespace(tokk_hz_whitespace, pLcpBegin + 1, pLcpEnd, ppLcpTokEnd);
+		return Lex_after_whitespace(TokenKind_hz_whitespace, pLcpBegin + 1, pLcpEnd, ppLcpTokEnd);
 	}
 	else if (cp_0 =='\\')
 	{
@@ -1467,7 +1319,7 @@ token_kind_t TokkPeek(
 				// Bogus UCN, return it as an unknown token
 
 				*ppLcpTokEnd = pLcpBegin + len;
-				return tokk_bogus_ucn;
+				return TokenKind_bogus_ucn;
 			}
 		}
 		else
@@ -1475,7 +1327,7 @@ token_kind_t TokkPeek(
 			// Stray backslash, return as unknown token
 
 			*ppLcpTokEnd = pLcpBegin + 1;
-			return tokk_stray_backslash;
+			return TokenKind_stray_backslash;
 		}
 	}
 	else
@@ -1486,69 +1338,8 @@ token_kind_t TokkPeek(
 
 // printing tokens
 
-void clean_and_print_char(char ch)
-{
-	switch (ch)
-	{ 
-	case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
-	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j':
-	case 'k': case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't':
-	case 'u': case 'v': case 'w': case 'x': case 'y': case 'z':
-	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J':
-	case 'K': case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T':
-	case 'U': case 'V': case 'W': case 'X': case 'Y': case 'Z':
-	case '!': case '\'': case '#': case '$': case '%': case '&': case '(': case ')': case '*': case '+':
-	case ',': case '-': case '.': case '/': case ':': case ';': case '<': case '=': case '>': case '?':
-	case '@': case '[': case ']': case '^': case '_': case '`': case '{': case '|': case '}': case '~':
-		printf("%c", ch);
-		break;
-
-	case '"':
-		printf("\\\"");
-		break;
-
-	case '\\':
-		printf("\\\\");
-		break;
-
-	case '\f':
-		printf("\\f");
-		break;
-
-	case '\n':
-		printf("\\n");
-		break;
-
-	case '\r':
-		printf("\\r");
-		break;
-
-	case '\t':
-		printf("\\t");
-		break;
-
-	case '\v':
-		printf("\\v");
-		break;
-
-	default:
-		{
-			unsigned char high = (unsigned char)((ch >> 4) & 0xF);
-			unsigned char low = (unsigned char)(ch & 0xF);
-
-			char highCh = high < 10 ? '0' + high : 'A' + (high - 10);
-			char lowCh = low < 10 ? '0' + low : 'A' + (low - 10);
-
-			printf("\\x%c%c", highCh, lowCh);
-		}
-		break;
-	}
-}
-
 void Print_token(
-	token_kind_t tokk,
-	const char * str_tok,
-	const char * str_tok_end,
+	TokenKind tokk,
 	int line,
 	int col)
 {
@@ -1556,42 +1347,31 @@ void Print_token(
 
 	switch (tokk)
 	{
-	case tokk_bogus_ucn:
-	case tokk_stray_backslash:
-	case tokk_hz_whitespace:
-	case tokk_multi_line_whitespace:
-	case tokk_unterminated_quote:
-	case tokk_zero_length_char_lit:
-	case tokk_unterminated_block_comment:
-	case tokk_unknown_byte:
-		printf("unknown");
+	case TokenKind_bogus_ucn:
+	case TokenKind_stray_backslash:
+	case TokenKind_hz_whitespace:
+	case TokenKind_multi_line_whitespace:
+	case TokenKind_unterminated_quote:
+	case TokenKind_zero_length_char_lit:
+	case TokenKind_unterminated_block_comment:
+	case TokenKind_unknown_byte:
+		printf("%d", TokenKind_unknown);
 		break;
 
-	case tokk_line_comment:
-	case tokk_block_comment:
-		printf("comment");
+	case TokenKind_line_comment:
+	case TokenKind_block_comment:
+		printf("%d", TokenKind_comment);
 		break;
 
 	default:
-		printf("%s", str_from_tokk(tokk));
+		printf("%d", tokk);
 		break;
 	}
-
-	// token text
-
-	printf(" \"");
-
-	for (const char * pCh = str_tok; pCh < str_tok_end; ++pCh)
-	{
-		clean_and_print_char(*pCh);
-	}
-	
-	printf("\" ");
 
 	// token loc
 
 	printf(
-		"%d:%d\n",
+		":%d:%d\n",
 		line,
 		col);
 }
@@ -1680,7 +1460,7 @@ void PrintRawTokens(const uint8_t * bytes, const uint8_t * bytes_end)
 	while (lcps < lcps_end)
 	{
 		lcp_t * pLcpTokEnd;
-		token_kind_t tokk = TokkPeek(
+		TokenKind tokk = TokkPeek(
 								lcps, 
 								lcps_end, 
 								&pLcpTokEnd);
@@ -1697,8 +1477,6 @@ void PrintRawTokens(const uint8_t * bytes, const uint8_t * bytes_end)
 
 		Print_token(
 			tokk,
-			pChTokBegin,
-			pChTokEnd,
 			line,
 			(int)(pChTokBegin - line_start + 1));
 
