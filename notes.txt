@@ -10,7 +10,6 @@ https://github.com/c-testsuite/c-testsuite
 7-zip
 https://github.com/mrquincle/ancient-c-compilers
 chibicc
-cmake
 cpython
 curl
 ffmpeg
@@ -24,3 +23,5 @@ ag (the-silver-searcher)
 tinycc
 vlc
 zork (https://github.com/devshane/zork)
+
+https://github.com/ishiura-compiler/CF3/tree/master
