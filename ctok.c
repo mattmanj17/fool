@@ -194,6 +194,9 @@ int Len_escaped_end_of_line(
 
 	if (begin->cp == '\r')
 	{
+		// BB (matthewd) this is currently never hit, since we scrub
+		//  away \r before we call this
+
 		++begin;
 
 		if (end <= begin && begin->cp == '\n')
