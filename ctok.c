@@ -165,25 +165,38 @@ bool Is_ws(uint32_t cp)
 	return Is_hz_ws(cp) || cp == '\n' || cp == '\r';
 }
 
-int Len_escaped_end_of_line(const lcp_t * cursor)
+int Len_escaped_end_of_line(
+	const lcp_t * begin,
+	const lcp_t * end)
 {
-	if (cursor[0].cp != '\\')
+	if (end <= begin)
 		return 0;
 
+	if (begin->cp != '\\')
+		return 0;
+
+	++begin;
+
 	int len = 1;
-	while (Is_hz_ws(cursor[len].cp))
+	while (begin < end && Is_hz_ws(begin->cp))
 	{
 		++len;
+		++begin;
 	}
 
-	if (cursor[len].cp == '\n')
+	if (end <= begin)
+		return 0;
+
+	if (begin->cp == '\n')
 	{
 		return len + 1;
 	}
 
-	if (cursor[len].cp == '\r')
+	if (begin->cp == '\r')
 	{
-		if (cursor[len + 1].cp == '\n')
+		++begin;
+
+		if (end <= begin && begin->cp == '\n')
 			return len + 2;
 
 		return len + 1;
@@ -192,17 +205,20 @@ int Len_escaped_end_of_line(const lcp_t * cursor)
 	return 0;
 }
 
-int Len_escaped_end_of_lines(const lcp_t * mic)
+int Len_escaped_end_of_lines(
+	const lcp_t * begin,
+	const lcp_t * end)
 {
 	int len = 0;
 
-	while (true)
+	while (begin < end)
 	{
-		int len_esc_eol = Len_escaped_end_of_line(mic + len);
+		int len_esc_eol = Len_escaped_end_of_line(begin, end);
 		if (len_esc_eol == 0)
 			break;
 
 		len += len_esc_eol;
+		begin += len_esc_eol;
 	}
 
 	return len;
@@ -288,7 +304,7 @@ bool FPeekEscapedLineBreaks(
 	uint32_t * pU32Peek,
 	lcp_t ** ppLcpEndPeek)
 {
-	int len_esc_eol = Len_escaped_end_of_lines(pLcpBegin);
+	int len_esc_eol = Len_escaped_end_of_lines(pLcpBegin, pLcpEnd);
 	if (!len_esc_eol)
 		return false;
 
