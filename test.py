@@ -75,6 +75,7 @@ def setup_tests():
 def setup_test_input():
 	os.mkdir('untracked/test/input')
 	copy_3rd_party_c_files()
+	copy_test_files()
 	generate_test_input()
 	scrub_test_input()
 
@@ -115,28 +116,32 @@ def copy_3rd_party_c_files():
 				os.makedirs(os.path.dirname(destination_file), exist_ok=True)
 				shutil.copy2(src_file, destination_file)
 
-def generate_test_input():
-	# '/' not included to avoid generating comments
-	# '#' not included to avoid pp directives
+def copy_test_files():
+	shutil.copytree("test","untracked/test/input/test")
 
-	chars = b"@\"\\\n\x20'8uULE0_[](){}.:%><,=|^.;?;*+-&!~"
+def generate_test_input():
+	# 'chars' is a carefully chosen subset of characters, 
+	#  designed to exersise interesting code paths in the lexer,
+	#  especially hitting an EOF in different states.
+
+	# bug! this will not hit the full UCN code paths...
+	#  need input at least 6 chars long for that
+
+	chars = b"\"\\\n\x20'8uULE0_.-*/"
 	out_dir = "untracked/test/input/spew"
 
 	if not os.path.exists(out_dir):
 		os.makedirs(out_dir, exist_ok=True)
 
 	findex = 0
-	for prefix in itertools.product(chars, repeat=2):
+	for result in itertools.product(chars, repeat=4):
 		file_name = f"{out_dir}/spew_{findex}.txt"
-		print(f'gen spew {file_name}')
-
-		prefix_bytes = bytes(prefix)
-		suffixes = itertools.product(chars, repeat=3) 
-		combo_bytes = [(prefix_bytes + bytes(suffix)) for suffix in suffixes]
-		result = b'\n'.join(combo_bytes)
+		
+		if (findex % 1000) == 0:
+			print(f'gen spew {file_name}')
 		
 		with open(file_name, "wb") as binary_file:
-			binary_file.write(result)
+			binary_file.write(bytes(result))
 		findex += 1
 
 def scrub_test_input():
