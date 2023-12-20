@@ -17,6 +17,9 @@ def build_clang():
 	# build llvm-project/build/Release/bin/clang.exe
 	# BB (matthewd) should re write this without os.chdir, they are confusing
 
+	if not os.path.exists('untracked'):
+		os.mkdir('untracked')
+
 	if not os.path.exists('untracked/3rd_party'):
 		os.mkdir('untracked/3rd_party')
 	os.chdir('untracked/3rd_party')
