@@ -149,7 +149,7 @@ bool Try_decode_utf8(
 //  2. convert trigraphs
 //  3. skip 'escaped newlines' (\\\n)
 
-typedef struct //!!!FIXME_typedef_audit
+typedef struct
 {
 	const uint8_t * bytes;
 	uint32_t cp;
@@ -836,7 +836,7 @@ typedef enum TokenKind
 	TokenKind_annot_repl_input_end = 426,
 } TokenKind;
 
-typedef struct//!!!FIXME_typedef_audit
+typedef struct
 {
 	const char * str;
 	TokenKind tokk;
