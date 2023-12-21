@@ -37,7 +37,7 @@ exit /B 0
 
 :build
 call :build_cpp %~1
-::call :build_c %~1
+call :build_c %~1
 exit /B 0
 
 endlocal
