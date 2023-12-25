@@ -16,7 +16,7 @@
 
 #define LEN_ARY(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
 
-typedef unsigned char byte;
+typedef unsigned char byte_t;
 
 
 
@@ -54,18 +54,18 @@ bool Is_##name##_empty(name##_t span) \
 	return Len_##name(span) == 0; \
 }
 
-DECL_SPAN(bytes, byte);
+DECL_SPAN(bytes, byte_t);
 DECL_SPAN(chars, char32_t);
-DECL_SPAN(locs, byte *);
+DECL_SPAN(locs, byte_t *);
 
 
 
 // utf8
 
-int Leading_ones(uint8_t byte)
+int Leading_ones(byte_t byte)
 {
 	int count = 0;
-	for (uint8_t mask = (1 << 7); mask; mask >>= 1)
+	for (byte_t mask = (1 << 7); mask; mask >>= 1)
 	{
 		if (!(byte & mask))
 			break;
@@ -264,7 +264,7 @@ size_t After_escaped_end_of_lines_(
 
 void Move_codepoint_and_locs_(
 	char32_t * chars, 
-	uint8_t ** locs,
+	byte_t ** locs,
 	char32_t ch,
 	size_t i_from_next,
 	size_t * i_from_ref,
@@ -1835,8 +1835,8 @@ void Print_token(
 	TokenKind tokk,
 	int line,
 	long long col,
-	uint8_t * loc_begin,
-	uint8_t * loc_end)
+	byte_t * loc_begin,
+	byte_t * loc_end)
 {
 	// Token Kind
 
@@ -1868,9 +1868,9 @@ void Print_token(
 	printf("\n");
 }
 
-int Len_eol(uint8_t * str)
+int Len_eol(byte_t * str)
 {
-	uint8_t ch = str[0];
+	byte_t ch = str[0];
 
 	if (ch == '\n')
 	{
@@ -1894,16 +1894,16 @@ int Len_eol(uint8_t * str)
 }
 
 void InspectSpanForEol(
-	uint8_t * pChBegin,
-	uint8_t * pChEnd,
+	byte_t * pChBegin,
+	byte_t * pChEnd,
 	int * pCLine,
-	uint8_t ** ppStartOfLine)
+	byte_t ** ppStartOfLine)
 {
 	// BUG if we care about having random access to line info, 
 	//  we would need a smarter answer than InspectSpanForEol...
 
 	int cLine = 0;
-	uint8_t * pStartOfLine = NULL;
+	byte_t * pStartOfLine = NULL;
 
 	while (pChBegin < pChEnd)
 	{
@@ -1947,7 +1947,7 @@ void PrintRawTokens(bytes_t bytes)
 
 	// Keep track of line info
 
-	uint8_t * line_start = bytes.index;
+	byte_t * line_start = bytes.index;
 	int line = 1;
 
 	// Lex!
@@ -1959,8 +1959,8 @@ void PrintRawTokens(bytes_t bytes)
 		TokenKind tokk;
 		Lex(chars.index, Len_chars(chars), i, &i_after, &tokk);
 
-		uint8_t * loc_begin = locs.index[i];
-		uint8_t * loc_end = locs.index[i_after];
+		byte_t * loc_begin = locs.index[i];
+		byte_t * loc_end = locs.index[i_after];
 
 		Print_token(
 			tokk,
@@ -1972,7 +1972,7 @@ void PrintRawTokens(bytes_t bytes)
 		// Handle eol
 
 		int cLine;
-		uint8_t * pStartOfLine;
+		byte_t * pStartOfLine;
 		InspectSpanForEol(loc_begin, loc_end, &cLine, &pStartOfLine);
 
 		if (cLine)
@@ -2011,7 +2011,7 @@ int wmain(int argc, wchar_t *argv[])
 
 	// Read file
 
-	uint8_t * file_bytes;
+	byte_t * file_bytes;
 	size_t file_length;
 	{
 		FILE * file = _wfopen(path, L"rb");
@@ -2059,7 +2059,7 @@ int wmain(int argc, wchar_t *argv[])
 
 		// Allocate space to read file
 
-		file_bytes = (uint8_t *)calloc(file_length, 1);
+		file_bytes = (byte_t *)calloc(file_length, 1);
 		if (!file_bytes)
 		{
 			printf(
