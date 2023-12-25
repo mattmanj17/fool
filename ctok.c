@@ -28,11 +28,10 @@ int Leading_ones(uint8_t byte)
 }
 
 bool Try_decode_utf8(
-	const uint8_t * bytes_,
-	size_t count_bytes_,
-	size_t i_,
+	const uint8_t * index,
+	const uint8_t * end,
 	uint32_t * cp_out,
-	size_t * len_cp_out)
+	int * len_out)
 {
 	// Try_decode_utf8 Roughly based on Table 3.1B in unicode Corrigendum #1
 	//  Special care is taken to reject 'overlong encodings'
@@ -62,13 +61,13 @@ bool Try_decode_utf8(
 
 	// Check if we have no bytes at all
 
-	if (i_ >= count_bytes_)
+	if (index >= end)
 		return false;
 
 	// Check if first byte is a trailing byte (1 leading 1),
 	//  or if too many leading ones.
 
-	int leading_ones = Leading_ones(bytes_[i_]);
+	int leading_ones = Leading_ones(index[0]);
 
 	if (leading_ones == 1)
 		return false;
@@ -76,34 +75,34 @@ bool Try_decode_utf8(
 	if (leading_ones > 4)
 		return false;
 
-	// Compute len_cp from leading_ones
+	// Compute len from leading_ones
 
-	size_t len_cp;
+	int len;
 	switch (leading_ones)
 	{
-	case 0: len_cp = 1; break;
-	case 2: len_cp = 2; break;
-	case 3: len_cp = 3; break;
-	default: len_cp = 4; break;
+	case 0: len = 1; break;
+	case 2: len = 2; break;
+	case 3: len = 3; break;
+	default: len = 4; break;
 	}
 
 	// Check if we do not have enough bytes
 
-	if (len_cp > (count_bytes_ - i_))
+	if (len > (end - index))
 		return false;
 
 	// Check if any trailing bytes are invalid
 
-	for (size_t i_check = 1; i_check < len_cp; ++i_check)
+	for (int i = 1; i < len; ++i)
 	{
-		if (Leading_ones(bytes_[i_ + i_check]) != 1)
+		if (Leading_ones(index[i]) != 1)
 			return false;
 	}
 
 	// Get the significant bits from the first byte
 
-	uint32_t cp = bytes_[i_];
-	switch (len_cp)
+	uint32_t cp = index[0];
+	switch (len)
 	{
 	case 2: cp &= 0x1F; break;
 	case 3: cp &= 0x0F; break;
@@ -112,10 +111,10 @@ bool Try_decode_utf8(
 
 	// Get bits from the trailing bytes
 
-	for (size_t i_check = 1; i_check < len_cp; ++i_check)
+	for (int i = 1; i < len; ++i)
 	{
 		cp <<= 6;
-		cp |= (bytes_[i_ + i_check] & 0x3F);
+		cp |= (index[i] & 0x3F);
 	}
 
 	// Check for illegal codepoints
@@ -128,19 +127,19 @@ bool Try_decode_utf8(
 
 	// Check for 'overlong encodings'
 
-	if (cp <= 0x7f && len_cp > 1)
+	if (cp <= 0x7f && len > 1)
 		return false;
 
-	if (cp <= 0x7ff && len_cp > 2)
+	if (cp <= 0x7ff && len > 2)
 		return false;
 
-	if (cp <= 0xffff && len_cp > 3)
+	if (cp <= 0xffff && len > 3)
 		return false;
 
 	// We did it, return cp and len
 
 	*cp_out = cp;
-	*len_cp_out = len_cp;
+	*len_out = len;
 	return true;
 }
 
@@ -266,12 +265,12 @@ size_t Try_decode_logical_codepoints_(
 	while (i_byte < count_bytes)
 	{
 		uint32_t cp;
-		size_t len_cp;
-		if (Try_decode_utf8(bytes, count_bytes, i_byte, &cp, &len_cp))
+		int len;
+		if (Try_decode_utf8(bytes + i_byte, bytes + count_bytes, &cp, &len))
 		{
 			chars[count_chars] = cp;
-			locs[count_chars + 1] = bytes + i_byte + len_cp;
-			i_byte += len_cp;
+			locs[count_chars + 1] = bytes + i_byte + len;
+			i_byte += len;
 		}
 		else
 		{
