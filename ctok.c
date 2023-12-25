@@ -10,7 +10,55 @@
 #include <wchar.h>
 #include <uchar.h>
 
-#define LEN(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
+
+
+// Some basic stuff
+
+#define LEN_ARY(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
+
+typedef unsigned char byte;
+
+
+
+// spans
+
+#define DECL_SPAN(name, type) \
+typedef struct name##_t \
+{ \
+	type * index; \
+	type * end; \
+} name##_t; \
+\
+name##_t Alloc_##name(size_t len) \
+{ \
+	name##_t span; \
+	span.index = (type *)calloc(len, sizeof(type)); \
+	span.end = (span.index) ? span.index + len : NULL; \
+	return span; \
+} \
+\
+size_t Len_##name(name##_t span) \
+{ \
+	if (!span.index) \
+		return 0; \
+\
+	long long count = span.end - span.index; \
+	if (count < 0) \
+		return 0; \
+\
+	return (size_t)count; \
+} \
+\
+bool Is_##name##_empty(name##_t span) \
+{ \
+	return Len_##name(span) == 0; \
+}
+
+DECL_SPAN(bytes, byte);
+DECL_SPAN(chars, char32_t);
+DECL_SPAN(locs, byte *);
+
+
 
 // utf8
 
@@ -29,10 +77,9 @@ int Leading_ones(uint8_t byte)
 }
 
 bool Try_decode_utf8(
-	const uint8_t * index,
-	const uint8_t * end,
+	bytes_t bytes,
 	char32_t * ch_out,
-	int * len_out)
+	size_t * len_ch_out)
 {
 	// Try_decode_utf8 Roughly based on Table 3.1B in unicode Corrigendum #1
 	//  Special care is taken to reject 'overlong encodings'
@@ -62,13 +109,14 @@ bool Try_decode_utf8(
 
 	// Check if we have no bytes at all
 
-	if (index >= end)
+	size_t len_bytes = Len_bytes(bytes);
+	if (!len_bytes)
 		return false;
 
 	// Check if first byte is a trailing byte (1 leading 1),
 	//  or if too many leading ones.
 
-	int leading_ones = Leading_ones(index[0]);
+	int leading_ones = Leading_ones(bytes.index[0]);
 
 	if (leading_ones == 1)
 		return false;
@@ -78,32 +126,32 @@ bool Try_decode_utf8(
 
 	// Compute len from leading_ones
 
-	int len;
+	size_t len_ch;
 	switch (leading_ones)
 	{
-	case 0: len = 1; break;
-	case 2: len = 2; break;
-	case 3: len = 3; break;
-	default: len = 4; break;
+	case 0: len_ch = 1; break;
+	case 2: len_ch = 2; break;
+	case 3: len_ch = 3; break;
+	default: len_ch = 4; break;
 	}
 
 	// Check if we do not have enough bytes
 
-	if (len > (end - index))
+	if (len_ch > len_bytes)
 		return false;
 
 	// Check if any trailing bytes are invalid
 
-	for (int i = 1; i < len; ++i)
+	for (size_t i = 1; i < len_ch; ++i)
 	{
-		if (Leading_ones(index[i]) != 1)
+		if (Leading_ones(bytes.index[i]) != 1)
 			return false;
 	}
 
 	// Get the significant bits from the first byte
 
-	char32_t ch = index[0];
-	switch (len)
+	char32_t ch = bytes.index[0];
+	switch (len_ch)
 	{
 	case 2: ch &= 0x1F; break;
 	case 3: ch &= 0x0F; break;
@@ -112,10 +160,10 @@ bool Try_decode_utf8(
 
 	// Get bits from the trailing bytes
 
-	for (int i = 1; i < len; ++i)
+	for (size_t i = 1; i < len_ch; ++i)
 	{
 		ch <<= 6;
-		ch |= (index[i] & 0x3F);
+		ch |= (bytes.index[i] & 0x3F);
 	}
 
 	// Check for illegal codepoints
@@ -128,19 +176,19 @@ bool Try_decode_utf8(
 
 	// Check for 'overlong encodings'
 
-	if (ch <= 0x7f && len > 1)
+	if (ch <= 0x7f && len_ch > 1)
 		return false;
 
-	if (ch <= 0x7ff && len > 2)
+	if (ch <= 0x7ff && len_ch > 2)
 		return false;
 
-	if (ch <= 0xffff && len > 3)
+	if (ch <= 0xffff && len_ch > 3)
 		return false;
 
 	// We did it, return ch and len
 
 	*ch_out = ch;
-	*len_out = len;
+	*len_ch_out = len_ch;
 	return true;
 }
 
@@ -216,7 +264,7 @@ size_t After_escaped_end_of_lines_(
 
 void Move_codepoint_and_locs_(
 	char32_t * chars, 
-	const uint8_t ** locs,
+	uint8_t ** locs,
 	char32_t ch,
 	size_t i_from_next,
 	size_t * i_from_ref,
@@ -238,10 +286,9 @@ void Move_codepoint_and_locs_(
 }
 
 size_t Try_decode_logical_codepoints_(
-	const uint8_t * bytes,
-	size_t count_bytes,
-	const char32_t ** chars_out,
-	const uint8_t *** locs_out)
+	bytes_t bytes,
+	chars_t * chars_out,
+	locs_t * locs_out)
 {
 	// In the worst case, we will have a codepoint for every byte
 	//  in the original span, so allocate enough space for that.
@@ -251,38 +298,40 @@ size_t Try_decode_logical_codepoints_(
 	//  for most codepoints, the end is the same as the beggining of the next one,
 	//  except for the last one, which must have an explicit extra loc to denote its end
 
-	char32_t * chars = (char32_t *)calloc(count_bytes, sizeof(char32_t));
-	const uint8_t ** locs = (const uint8_t **)calloc(count_bytes + 1, sizeof(uint8_t *));
+	size_t len_bytes = Len_bytes(bytes);
 
-	if (!chars || !locs)
+	chars_t chars = Alloc_chars(len_bytes);
+	locs_t locs = Alloc_locs(len_bytes + 1);
+
+	if (Is_chars_empty(chars) || Is_locs_empty(locs))
 		return 0;
 
-	locs[0] = bytes;
+	// The start of the first char will be the start of the bytes
+
+	locs.index[0] = bytes.index;
 
 	// Chew through the byte span with Try_decode_utf8
 
-	size_t i_byte = 0;
 	size_t count_chars = 0;
-	while (i_byte < count_bytes)
+	while (!Is_bytes_empty(bytes))
 	{
 		char32_t ch;
-		int len;
-		if (Try_decode_utf8(bytes + i_byte, bytes + count_bytes, &ch, &len))
+		size_t len_ch;
+		if (Try_decode_utf8(bytes, &ch, &len_ch))
 		{
-			chars[count_chars] = ch;
-			locs[count_chars + 1] = bytes + i_byte + len;
-			i_byte += len;
+			chars.index[count_chars] = ch;
+			locs.index[count_chars + 1] = bytes.index + len_ch;
+			bytes.index += len_ch;
 		}
 		else
 		{
-			chars[count_chars] = UINT32_MAX;
-			locs[count_chars + 1] = bytes + i_byte + 1;
-			++i_byte;
+			chars.index[count_chars] = UINT32_MAX;
+			locs.index[count_chars + 1] = bytes.index + 1;
+			++bytes.index;
 		}
 
 		++count_chars;
 	}
-	assert(i_byte == count_bytes);
 
 	// \r and \r\n to \n
 
@@ -291,13 +340,13 @@ size_t Try_decode_logical_codepoints_(
 	
 	while (i_from < count_chars)
 	{
-		char32_t ch = chars[i_from];
+		char32_t ch = chars.index[i_from];
 		bool is_cr = ch == '\r';
 		if (is_cr)
 			ch = '\n';
 
 		size_t i_from_next = i_from + 1;
-		if (is_cr && (i_from + 1 < count_chars) && chars[i_from + 1] == '\n')
+		if (is_cr && (i_from + 1 < count_chars) && chars.index[i_from + 1] == '\n')
 		{
 			i_from_next = i_from + 2;
 		}
@@ -305,8 +354,8 @@ size_t Try_decode_logical_codepoints_(
 		char chr = (char)ch;
 		(void)chr;
 		Move_codepoint_and_locs_(
-			chars,
-			locs,
+			chars.index,
+			locs.index,
 			ch,
 			i_from_next,
 			&i_from,
@@ -322,8 +371,8 @@ size_t Try_decode_logical_codepoints_(
 	while (i_from < count_chars)
 	{
 		if (i_from + 2 < count_chars && 
-			chars[i_from] == '?' && 
-			chars[i_from + 1] == '?')
+			chars.index[i_from] == '?' && 
+			chars.index[i_from + 1] == '?')
 		{
 			char32_t pairs[][2] =
 			{
@@ -340,10 +389,10 @@ size_t Try_decode_logical_codepoints_(
 
 			int iPairMatch = -1;
 
-			for (int iPair = 0; iPair < LEN(pairs); ++iPair)
+			for (int iPair = 0; iPair < LEN_ARY(pairs); ++iPair)
 			{
 				char32_t * pair = pairs[iPair];
-				if (pair[0] == chars[i_from + 2])
+				if (pair[0] == chars.index[i_from + 2])
 				{
 					iPairMatch = iPair;
 					break;
@@ -353,8 +402,8 @@ size_t Try_decode_logical_codepoints_(
 			if (iPairMatch != -1)
 			{
 				Move_codepoint_and_locs_(
-					chars,
-					locs,
+					chars.index,
+					locs.index,
 					pairs[iPairMatch][1],
 					i_from + 3,
 					&i_from,
@@ -365,9 +414,9 @@ size_t Try_decode_logical_codepoints_(
 		}
 
 		Move_codepoint_and_locs_(
-			chars,
-			locs,
-			chars[i_from],
+			chars.index,
+			locs.index,
+			chars.index[i_from],
 			i_from + 1,
 			&i_from,
 			&i_to);
@@ -381,13 +430,13 @@ size_t Try_decode_logical_codepoints_(
 	
 	while (i_from < count_chars)
 	{
-		size_t after_esc_eol = After_escaped_end_of_lines_(chars, count_chars, i_from);
+		size_t after_esc_eol = After_escaped_end_of_lines_(chars.index, Len_chars(chars), i_from);
 		if (after_esc_eol == i_from)
 		{
 			Move_codepoint_and_locs_(
-				chars,
-				locs,
-				chars[i_from],
+				chars.index,
+				locs.index,
+				chars.index[i_from],
 				i_from + 1,
 				&i_from,
 				&i_to);
@@ -402,17 +451,19 @@ size_t Try_decode_logical_codepoints_(
 		else
 		{
 			Move_codepoint_and_locs_(
-				chars,
-				locs,
-				chars[after_esc_eol],
+				chars.index,
+				locs.index,
+				chars.index[after_esc_eol],
 				after_esc_eol + 1,
 				&i_from,
 				&i_to);
 		}
 	}
 	count_chars = i_to;
+	chars.end = chars.index + count_chars;
+	locs.end = locs.index + count_chars + 1;
 	
-	// return arrays and length
+	// return chars + locs
 
 	*chars_out = chars;
 	*locs_out = locs;
@@ -933,7 +984,7 @@ void Lex_punctuation(
 		{"/", TokenKind_slash},
 	};
 
-	for (int i_puctuation = 0; i_puctuation < LEN(puctuations); ++i_puctuation)
+	for (int i_puctuation = 0; i_puctuation < LEN_ARY(puctuations); ++i_puctuation)
 	{
 		punctution_t punctuation = puctuations[i_puctuation];
 		const char * str_puctuation = punctuation.str;
@@ -1014,7 +1065,7 @@ bool Starts_id(char32_t ch)
 		{ 0xFE20, 0xFE2F }
 	};
 
-	for (int i = 0; i < LEN(no); ++i)
+	for (int i = 0; i < LEN_ARY(no); ++i)
 	{
 		char32_t first = no[i][0];
 		char32_t last = no[i][1];
@@ -1053,7 +1104,7 @@ bool Starts_id(char32_t ch)
 		{ 0xD0000, 0xDFFFD }, { 0xE0000, 0xEFFFD }
 	};
 
-	for (int i = 0; i < LEN(yes); ++i)
+	for (int i = 0; i < LEN_ARY(yes); ++i)
 	{
 		char32_t first = yes[i][0];
 		char32_t last = yes[i][1];
@@ -1281,7 +1332,7 @@ bool Extends_id(char32_t ch)
 		{ 0x3000, 0x3000 }
 	};
 
-	for (int i = 0; i < LEN(ws); ++i)
+	for (int i = 0; i < LEN_ARY(ws); ++i)
 	{
 		char32_t first = ws[i][0];
 		char32_t last = ws[i][1];
@@ -1783,9 +1834,9 @@ void clean_and_print_char(char ch)
 void Print_token(
 	TokenKind tokk,
 	int line,
-	int col,
-	const char * tok_begin,
-	const char * tok_end)
+	long long col,
+	uint8_t * loc_begin,
+	uint8_t * loc_end)
 {
 	// Token Kind
 
@@ -1794,7 +1845,7 @@ void Print_token(
 	// token loc
 
 	printf(
-		":%d:%d",
+		":%d:%lld",
 		line,
 		col);
 
@@ -1810,16 +1861,16 @@ void Print_token(
 
 	printf("\" ");
 #else
-	(void)tok_begin;
-	(void)tok_end;
+	(void)loc_begin;
+	(void)loc_end;
 #endif
 
 	printf("\n");
 }
 
-int Len_eol(const char * str)
+int Len_eol(uint8_t * str)
 {
-	char ch = str[0];
+	uint8_t ch = str[0];
 
 	if (ch == '\n')
 	{
@@ -1843,16 +1894,16 @@ int Len_eol(const char * str)
 }
 
 void InspectSpanForEol(
-	const char * pChBegin,
-	const char * pChEnd,
+	uint8_t * pChBegin,
+	uint8_t * pChEnd,
 	int * pCLine,
-	const char ** ppStartOfLine)
+	uint8_t ** ppStartOfLine)
 {
 	// BUG if we care about having random access to line info, 
 	//  we would need a smarter answer than InspectSpanForEol...
 
 	int cLine = 0;
-	const char * pStartOfLine = NULL;
+	uint8_t * pStartOfLine = NULL;
 
 	while (pChBegin < pChEnd)
 	{
@@ -1877,13 +1928,13 @@ void InspectSpanForEol(
 	*ppStartOfLine = pStartOfLine;
 }
 
-void PrintRawTokens(const uint8_t * bytes, size_t count_bytes)
+void PrintRawTokens(bytes_t bytes)
 {
 	// Munch bytes to logical characters
 
-	const char32_t * chars;
-	const uint8_t ** locs;
-	size_t count_chars = Try_decode_logical_codepoints_(bytes, count_bytes, &chars, &locs);
+	chars_t chars;
+	locs_t locs;
+	size_t count_chars = Try_decode_logical_codepoints_(bytes, &chars, &locs);
 	if (!count_chars)
 		return;
 
@@ -1891,12 +1942,12 @@ void PrintRawTokens(const uint8_t * bytes, size_t count_bytes)
 
 	for (size_t i = 0; i < count_chars; ++i)
 	{
-		assert(locs[i + 1] > locs[i + 0]);
+		assert(locs.index[i + 1] > locs.index[i + 0]);
 	}
 
 	// Keep track of line info
 
-	const char * line_start = (const char *)bytes;
+	uint8_t * line_start = bytes.index;
 	int line = 1;
 
 	// Lex!
@@ -1906,23 +1957,23 @@ void PrintRawTokens(const uint8_t * bytes, size_t count_bytes)
 	{
 		size_t i_after;
 		TokenKind tokk;
-		Lex(chars, count_chars, i, &i_after, &tokk);
+		Lex(chars.index, Len_chars(chars), i, &i_after, &tokk);
 
-		const char * pChTokBegin = (const char *)locs[i];
-		const char * pChTokEnd = (const char *)locs[i_after];
+		uint8_t * loc_begin = locs.index[i];
+		uint8_t * loc_end = locs.index[i_after];
 
 		Print_token(
 			tokk,
 			line,
-			(int)(pChTokBegin - line_start + 1),
-			pChTokBegin,
-			pChTokEnd);
+			loc_begin - line_start + 1,
+			loc_begin,
+			loc_end);
 
 		// Handle eol
 
 		int cLine;
-		const char * pStartOfLine;
-		InspectSpanForEol(pChTokBegin, pChTokEnd, &cLine, &pStartOfLine);
+		uint8_t * pStartOfLine;
+		InspectSpanForEol(loc_begin, loc_end, &cLine, &pStartOfLine);
 
 		if (cLine)
 		{
@@ -2060,7 +2111,9 @@ int wmain(int argc, wchar_t *argv[])
 
 	// Print tokens
 
-	PrintRawTokens(
-		file_bytes, 
-		file_length);
+	bytes_t bytes;
+	bytes.index = file_bytes;
+	bytes.end = file_bytes + file_length;
+
+	PrintRawTokens(bytes);
 }
