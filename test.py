@@ -17,16 +17,18 @@ def build_clang():
 	# build llvm-project/build/Release/bin/clang.exe
 	# BB (matthewd) should re write this without os.chdir, they are confusing
 
+	cwd = os.getcwd()
+
 	if not os.path.exists('untracked'):
 		os.mkdir('untracked')
 
 	if not os.path.exists('untracked/3rd_party'):
 		os.mkdir('untracked/3rd_party')
+	
 	os.chdir('untracked/3rd_party')
 	
 	if os.path.exists('llvm-project'):
-		os.chdir('..')
-		os.chdir('..')
+		os.chdir(cwd)
 		return
 	
 	print('downloading and building clang')
@@ -61,8 +63,7 @@ def build_clang():
 		'build/tools/clang/tools/driver/clang.vcxproj', 
 		'/property:Configuration=Release'])
 
-	os.chdir('..')
-	os.chdir('..')
+	os.chdir(cwd)
 
 def setup_tests():
 	# generate test/input
@@ -170,8 +171,12 @@ def ensure_test_output():
 	# copy directory structure of test/input to test/output
 
 	print('mkdir ...')
-	for in_path, out_path in test_cases():
-		Path(os.path.dirname(out_path)).mkdir(parents=True, exist_ok=True)
+	in_dir = os.path.abspath("untracked/test/input")
+	out_dir = os.path.abspath("untracked/test/output")
+	for root, _, _ in os.walk(in_dir):
+		rel_path = os.path.relpath(root, in_dir)
+		out_path = os.path.join(out_dir, rel_path)
+		Path(out_path).mkdir(parents=True, exist_ok=True)
 	
 	# generate test/output
 	# NOTE(matthewd) clang is a little heavy weight, so we limit to 19 workers
