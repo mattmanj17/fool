@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wchar.h>
+#include <uchar.h>
 
 #define LEN(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
 
@@ -30,7 +31,7 @@ int Leading_ones(uint8_t byte)
 bool Try_decode_utf8(
 	const uint8_t * index,
 	const uint8_t * end,
-	uint32_t * cp_out,
+	char32_t * ch_out,
 	int * len_out)
 {
 	// Try_decode_utf8 Roughly based on Table 3.1B in unicode Corrigendum #1
@@ -101,60 +102,60 @@ bool Try_decode_utf8(
 
 	// Get the significant bits from the first byte
 
-	uint32_t cp = index[0];
+	char32_t ch = index[0];
 	switch (len)
 	{
-	case 2: cp &= 0x1F; break;
-	case 3: cp &= 0x0F; break;
-	case 4: cp &= 0x07; break;
+	case 2: ch &= 0x1F; break;
+	case 3: ch &= 0x0F; break;
+	case 4: ch &= 0x07; break;
 	}
 
 	// Get bits from the trailing bytes
 
 	for (int i = 1; i < len; ++i)
 	{
-		cp <<= 6;
-		cp |= (index[i] & 0x3F);
+		ch <<= 6;
+		ch |= (index[i] & 0x3F);
 	}
 
 	// Check for illegal codepoints
 
-	if (cp >= 0xD800 && cp <= 0xDFFF)
+	if (ch >= 0xD800 && ch <= 0xDFFF)
 		return false;
 
-	if (cp > 0x10FFFF)
+	if (ch > 0x10FFFF)
 		return false;
 
 	// Check for 'overlong encodings'
 
-	if (cp <= 0x7f && len > 1)
+	if (ch <= 0x7f && len > 1)
 		return false;
 
-	if (cp <= 0x7ff && len > 2)
+	if (ch <= 0x7ff && len > 2)
 		return false;
 
-	if (cp <= 0xffff && len > 3)
+	if (ch <= 0xffff && len > 3)
 		return false;
 
-	// We did it, return cp and len
+	// We did it, return ch and len
 
-	*cp_out = cp;
+	*ch_out = ch;
 	*len_out = len;
 	return true;
 }
 
-bool Is_hz_ws(uint32_t cp)
+bool Is_hz_ws(char32_t ch)
 {
-	return cp == ' ' || cp == '\t' || cp == '\f' || cp == '\v';
+	return ch == ' ' || ch == '\t' || ch == '\f' || ch == '\v';
 }
 
-bool Is_ws(uint32_t cp)
+bool Is_ws(char32_t ch)
 {
-	return Is_hz_ws(cp) || cp == '\n' || cp == '\r';
+	return Is_hz_ws(ch) || ch == '\n' || ch == '\r';
 }
 
 size_t After_escaped_end_of_line_(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count,
 	size_t i)
 {
@@ -197,7 +198,7 @@ size_t After_escaped_end_of_line_(
 }
 
 size_t After_escaped_end_of_lines_(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count,
 	size_t i)
 {
@@ -214,9 +215,9 @@ size_t After_escaped_end_of_lines_(
 }
 
 void Move_codepoint_and_locs_(
-	uint32_t * chars, 
+	char32_t * chars, 
 	const uint8_t ** locs,
-	uint32_t ch,
+	char32_t ch,
 	size_t i_from_next,
 	size_t * i_from_ref,
 	size_t * i_to_ref)
@@ -239,7 +240,7 @@ void Move_codepoint_and_locs_(
 size_t Try_decode_logical_codepoints_(
 	const uint8_t * bytes,
 	size_t count_bytes,
-	const uint32_t ** chars_out,
+	const char32_t ** chars_out,
 	const uint8_t *** locs_out)
 {
 	// In the worst case, we will have a codepoint for every byte
@@ -250,7 +251,7 @@ size_t Try_decode_logical_codepoints_(
 	//  for most codepoints, the end is the same as the beggining of the next one,
 	//  except for the last one, which must have an explicit extra loc to denote its end
 
-	uint32_t * chars = (uint32_t *)calloc(count_bytes, sizeof(uint32_t));
+	char32_t * chars = (char32_t *)calloc(count_bytes, sizeof(char32_t));
 	const uint8_t ** locs = (const uint8_t **)calloc(count_bytes + 1, sizeof(uint8_t *));
 
 	if (!chars || !locs)
@@ -264,11 +265,11 @@ size_t Try_decode_logical_codepoints_(
 	size_t count_chars = 0;
 	while (i_byte < count_bytes)
 	{
-		uint32_t cp;
+		char32_t ch;
 		int len;
-		if (Try_decode_utf8(bytes + i_byte, bytes + count_bytes, &cp, &len))
+		if (Try_decode_utf8(bytes + i_byte, bytes + count_bytes, &ch, &len))
 		{
-			chars[count_chars] = cp;
+			chars[count_chars] = ch;
 			locs[count_chars + 1] = bytes + i_byte + len;
 			i_byte += len;
 		}
@@ -290,7 +291,7 @@ size_t Try_decode_logical_codepoints_(
 	
 	while (i_from < count_chars)
 	{
-		uint32_t ch = chars[i_from];
+		char32_t ch = chars[i_from];
 		bool is_cr = ch == '\r';
 		if (is_cr)
 			ch = '\n';
@@ -324,7 +325,7 @@ size_t Try_decode_logical_codepoints_(
 			chars[i_from] == '?' && 
 			chars[i_from + 1] == '?')
 		{
-			uint32_t pairs[][2] =
+			char32_t pairs[][2] =
 			{
 				{ '<', '{' },
 				{ '>', '}' },
@@ -341,7 +342,7 @@ size_t Try_decode_logical_codepoints_(
 
 			for (int iPair = 0; iPair < LEN(pairs); ++iPair)
 			{
-				uint32_t * pair = pairs[iPair];
+				char32_t * pair = pairs[iPair];
 				if (pair[0] == chars[i_from + 2])
 				{
 					iPairMatch = iPair;
@@ -857,7 +858,7 @@ typedef enum TokenKind
 } TokenKind;
 
 void Lex_punctuation(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count_chars,
 	size_t i,
 	TokenKind * tokk_out,
@@ -946,10 +947,12 @@ void Lex_punctuation(
 
 		for (size_t i_ch = 0; i_ch < len; ++i_ch)
 		{
-			char ch = str_puctuation[i_ch];
-			uint32_t cp_ch = (uint32_t)ch;
+			// This code is messy + has bad var names...
 
-			uint32_t cp = chars[i_peek];
+			char ch = str_puctuation[i_ch];
+			char32_t cp_ch = (char32_t)ch;
+
+			char32_t cp = chars[i_peek];
 			++i_peek;
 
 			if (cp != cp_ch)
@@ -971,7 +974,7 @@ void Lex_punctuation(
 	*tokk_out = TokenKind_unknown;
 }
 
-bool Starts_id(uint32_t ch)
+bool Starts_id(char32_t ch)
 {
 	// Letters
 
@@ -1003,7 +1006,7 @@ bool Starts_id(uint32_t ch)
 
 	// These codepoints are not allowed as the start of an id
 
-	static const uint32_t no[][2] =
+	static const char32_t no[][2] =
 	{
 		{ 0x0300, 0x036F },
 		{ 0x1DC0, 0x1DFF },
@@ -1013,15 +1016,15 @@ bool Starts_id(uint32_t ch)
 
 	for (int i = 0; i < LEN(no); ++i)
 	{
-		uint32_t first = no[i][0];
-		uint32_t last = no[i][1];
+		char32_t first = no[i][0];
+		char32_t last = no[i][1];
 		if (ch >= first && ch <= last)
 			return false;
 	}
 
 	// These code points are allowed to start an id (minus ones from 'no')
 
-	static const uint32_t yes[][2] =
+	static const char32_t yes[][2] =
 	{
 		{ 0x00A8, 0x00A8 }, { 0x00AA, 0x00AA }, { 0x00AD, 0x00AD },
 		{ 0x00AF, 0x00AF }, { 0x00B2, 0x00B5 }, { 0x00B7, 0x00BA },
@@ -1052,8 +1055,8 @@ bool Starts_id(uint32_t ch)
 
 	for (int i = 0; i < LEN(yes); ++i)
 	{
-		uint32_t first = yes[i][0];
-		uint32_t last = yes[i][1];
+		char32_t first = yes[i][0];
+		char32_t last = yes[i][1];
 		if (ch >= first && ch <= last)
 			return true;
 	}
@@ -1061,7 +1064,7 @@ bool Starts_id(uint32_t ch)
 	return false;
 }
 
-bool Is_valid_ucn(uint32_t ch)
+bool Is_valid_ucn(char32_t ch)
 {
 	// A universal character name shall not specify a character whose
 	//  short identifier is less than 00A0, nor one in the range 
@@ -1076,7 +1079,7 @@ bool Is_valid_ucn(uint32_t ch)
 	return true;
 }
 
-uint32_t Hex_val_from_ch(uint32_t ch)
+uint32_t Hex_val_from_ch(char32_t ch)
 {
 	if (ch >= '0' && ch <= '9')
 		return ch - '0';
@@ -1097,10 +1100,10 @@ uint32_t Hex_val_from_ch(uint32_t ch)
 }
 
 void Peek_ucn(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count_chars,
 	size_t i,
-	uint32_t * ch_out,
+	char32_t * ch_out,
 	size_t * i_after_out)
 {
 	*ch_out = UINT32_MAX;
@@ -1122,7 +1125,7 @@ void Peek_ucn(
 
 	// Look for 'u' or 'U' after '\\'
 
-	uint32_t ch_u = chars[i];
+	char32_t ch_u = chars[i];
 	if (ch_u != 'u' && ch_u != 'U')
 		return;
 
@@ -1146,14 +1149,14 @@ void Peek_ucn(
 
 	// Look for correct number of hex digits
 
-	uint32_t ch_result = 0;
+	char32_t ch_result = 0;
 	int digits_read = 0;
 	bool delimited = false;
 	bool got_end_delim = false;
 
 	while (i < count_chars && ((digits_read < digits_need) || delimited))
 	{
-		uint32_t ch = chars[i];
+		char32_t ch = chars[i];
 
 		// Check for '{' (delimited ucns)
 
@@ -1175,7 +1178,7 @@ void Peek_ucn(
 
 		// Check if valid hex digit
 
-		uint32_t digit_val = Hex_val_from_ch(ch);
+		char32_t digit_val = Hex_val_from_ch(ch);
 		if (digit_val == UINT32_MAX)
 		{
 			if (delimited)
@@ -1233,7 +1236,7 @@ void Peek_ucn(
 	*i_after_out = i;
 }
 
-bool Extends_id(uint32_t ch)
+bool Extends_id(char32_t ch)
 {
 	if (ch >= 'a' && ch <= 'z')
 		return true;
@@ -1265,7 +1268,7 @@ bool Extends_id(uint32_t ch)
 	//  and produce an invalid pp token. I suspect no one
 	//  actually cares, since dump_raw_tokens is only for debugging...
 
-	static const uint32_t ws[][2] =
+	static const char32_t ws[][2] =
 	{
 		{ 0x0085, 0x0085 },
 		{ 0x00A0, 0x00A0 },
@@ -1280,8 +1283,8 @@ bool Extends_id(uint32_t ch)
 
 	for (int i = 0; i < LEN(ws); ++i)
 	{
-		uint32_t first = ws[i][0];
-		uint32_t last = ws[i][1];
+		char32_t first = ws[i][0];
+		char32_t last = ws[i][1];
 		if (ch >= first && ch <= last)
 			return false;
 	}
@@ -1290,7 +1293,7 @@ bool Extends_id(uint32_t ch)
 }
 
 size_t After_rest_of_id(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count_chars,
 	size_t i)
 {
@@ -1304,7 +1307,7 @@ size_t After_rest_of_id(
 
 		if (chars[i] == '\\')
 		{
-			uint32_t ch;
+			char32_t ch;
 			size_t i_after;
 			Peek_ucn(chars, count_chars, i, &ch, &i_after);
 			if (i_after != i && Extends_id(ch))
@@ -1321,7 +1324,7 @@ size_t After_rest_of_id(
 }
 
 size_t After_rest_of_ppnum(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count_chars,
 	size_t i)
 {
@@ -1371,7 +1374,7 @@ size_t After_rest_of_ppnum(
 
 	while (i < count_chars)
 	{
-		uint32_t ch = chars[i];
+		char32_t ch = chars[i];
 
 		if (ch == '.')
 		{
@@ -1410,7 +1413,7 @@ size_t After_rest_of_ppnum(
 		}
 		else if (ch == '\\')
 		{
-			uint32_t ch_ucn;
+			char32_t ch_ucn;
 			size_t i_after;
 
 			Peek_ucn(chars, count_chars, i, &ch_ucn, &i_after);
@@ -1436,7 +1439,7 @@ size_t After_rest_of_ppnum(
 }
 
 size_t After_rest_of_line_comment(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count_chars,
 	size_t i)
 {
@@ -1452,7 +1455,7 @@ size_t After_rest_of_line_comment(
 }
 
 void Lex_rest_of_block_comment(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count_chars,
 	size_t i,
 	size_t * i_after_out,
@@ -1462,12 +1465,12 @@ void Lex_rest_of_block_comment(
 
 	while (i < count_chars)
 	{
-		uint32_t ch0 = chars[i];
+		char32_t ch0 = chars[i];
 		++i;
 
 		if (i < count_chars)
 		{
-			uint32_t ch1 = chars[i];
+			char32_t ch1 = chars[i];
 			if (ch0 == '*' && ch1 == '/')
 			{
 				tokk = TokenKind_comment;
@@ -1483,20 +1486,20 @@ void Lex_rest_of_block_comment(
 
 void Lex_rest_of_str_lit_(
 	bool use_dquote,
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count_chars,
 	size_t i,
 	size_t * i_after_out,
 	bool * valid_out)
 {
-	uint32_t ch_close = (use_dquote) ? (uint32_t)'"' : (uint32_t)'\'' ;
+	char32_t ch_close = (use_dquote) ? U'"' : U'\'';
 
 	bool closed = false;
 	int len = 0;
 
 	while (i < count_chars)
 	{
-		uint32_t ch = chars[i];
+		char32_t ch = chars[i];
 		char chr = (char)ch;
 		(void)chr;
 
@@ -1544,7 +1547,7 @@ void Lex_rest_of_str_lit_(
 }
 
 size_t After_whitespace(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count_chars,
 	size_t i)
 {
@@ -1560,15 +1563,15 @@ size_t After_whitespace(
 }
 
 void Lex(
-	const uint32_t * chars,
+	const char32_t * chars,
 	size_t count_chars,
 	size_t i,
 	size_t * i_after_out,
 	TokenKind * tokk_out)
 {
-	uint32_t ch_0 = chars[i + 0];
-	uint32_t ch_1 = (count_chars - i >= 2) ? chars[i + 1] : '\0';
-	uint32_t ch_2 = (count_chars - i >= 3) ? chars[i + 2] : '\0';
+	char32_t ch_0 = chars[i + 0];
+	char32_t ch_1 = (count_chars - i >= 2) ? chars[i + 1] : '\0';
+	char32_t ch_2 = (count_chars - i >= 3) ? chars[i + 2] : '\0';
 
 	// Decide what to do
 
@@ -1681,7 +1684,7 @@ void Lex(
 	}
 	else if (ch_0 =='\\')
 	{
-		uint32_t ch;
+		char32_t ch;
 		size_t i_after;
 		Peek_ucn(chars, count_chars, i, &ch, &i_after);
 		if (i_after != i)
@@ -1878,7 +1881,7 @@ void PrintRawTokens(const uint8_t * bytes, size_t count_bytes)
 {
 	// Munch bytes to logical characters
 
-	const uint32_t * chars;
+	const char32_t * chars;
 	const uint8_t ** locs;
 	size_t count_chars = Try_decode_logical_codepoints_(bytes, count_bytes, &chars, &locs);
 	if (!count_chars)
