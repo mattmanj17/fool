@@ -29,7 +29,7 @@ typedef struct name##_t \
 	type * end; \
 } name##_t; \
 \
-name##_t Alloc_##name(size_t len) \
+name##_t name##_alloc(size_t len) \
 { \
 	name##_t span; \
 	span.index = (type *)calloc(len, sizeof(type)); \
@@ -37,7 +37,7 @@ name##_t Alloc_##name(size_t len) \
 	return span; \
 } \
 \
-size_t Len_##name(name##_t span) \
+size_t name##_len(name##_t span) \
 { \
 	if (!span.index) \
 		return 0; \
@@ -49,14 +49,27 @@ size_t Len_##name(name##_t span) \
 	return (size_t)count; \
 } \
 \
-bool Is_##name##_empty(name##_t span) \
+bool name##_empty(name##_t span) \
 { \
-	return Len_##name(span) == 0; \
+	return name##_len(span) == 0; \
+} \
+\
+bool name##_index_valid(name##_t span, size_t index) \
+{ \
+	return index < name##_len(span); \
 }
 
 DECL_SPAN(bytes, byte_t);
 DECL_SPAN(chars, char32_t);
 DECL_SPAN(locs, byte_t *);
+
+char32_t chars_lookup_safe(chars_t chars, size_t index)
+{
+	if (!chars_index_valid(chars, index))
+		return U'\0';
+
+	return chars.index[index];
+}
 
 
 
@@ -109,7 +122,7 @@ bool Try_decode_utf8(
 
 	// Check if we have no bytes at all
 
-	size_t len_bytes = Len_bytes(bytes);
+	size_t len_bytes = bytes_len(bytes);
 	if (!len_bytes)
 		return false;
 
@@ -298,12 +311,12 @@ size_t Try_decode_logical_codepoints_(
 	//  for most codepoints, the end is the same as the beggining of the next one,
 	//  except for the last one, which must have an explicit extra loc to denote its end
 
-	size_t len_bytes = Len_bytes(bytes);
+	size_t len_bytes = bytes_len(bytes);
 
-	chars_t chars = Alloc_chars(len_bytes);
-	locs_t locs = Alloc_locs(len_bytes + 1);
+	chars_t chars = chars_alloc(len_bytes);
+	locs_t locs = locs_alloc(len_bytes + 1);
 
-	if (Is_chars_empty(chars) || Is_locs_empty(locs))
+	if (chars_empty(chars) || locs_empty(locs))
 		return 0;
 
 	// The start of the first char will be the start of the bytes
@@ -313,7 +326,7 @@ size_t Try_decode_logical_codepoints_(
 	// Chew through the byte span with Try_decode_utf8
 
 	size_t count_chars = 0;
-	while (!Is_bytes_empty(bytes))
+	while (!bytes_empty(bytes))
 	{
 		char32_t ch;
 		size_t len_ch;
@@ -430,7 +443,7 @@ size_t Try_decode_logical_codepoints_(
 	
 	while (i_from < count_chars)
 	{
-		size_t after_esc_eol = After_escaped_end_of_lines_(chars.index, Len_chars(chars), i_from);
+		size_t after_esc_eol = After_escaped_end_of_lines_(chars.index, chars_len(chars), i_from);
 		if (after_esc_eol == i_from)
 		{
 			Move_codepoint_and_locs_(
@@ -1957,7 +1970,7 @@ void PrintRawTokens(bytes_t bytes)
 	{
 		size_t i_after;
 		TokenKind tokk;
-		Lex(chars.index, Len_chars(chars), i, &i_after, &tokk);
+		Lex(chars.index, chars_len(chars), i, &i_after, &tokk);
 
 		byte_t * loc_begin = locs.index[i];
 		byte_t * loc_end = locs.index[i_after];
