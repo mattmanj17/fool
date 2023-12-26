@@ -14,9 +14,19 @@
 
 // Some basic stuff
 
-#define LEN_ARY(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
+#define ARY_LEN(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
 
 typedef unsigned char byte_t;
+
+bool ch_hz_ws(char32_t ch)
+{
+	return ch == ' ' || ch == '\t' || ch == '\f' || ch == '\v';
+}
+
+bool ch_ws(char32_t ch)
+{
+	return ch_hz_ws(ch) || ch == '\n' || ch == '\r';
+}
 
 
 
@@ -75,7 +85,7 @@ char32_t chars_lookup_safe(chars_t chars, size_t index)
 
 // utf8
 
-int Leading_ones(byte_t byte)
+int utf8_leading_ones(byte_t byte)
 {
 	int count = 0;
 	for (byte_t mask = (1 << 7); mask; mask >>= 1)
@@ -89,7 +99,7 @@ int Leading_ones(byte_t byte)
 	return count;
 }
 
-bool Try_decode_utf8(
+bool utf8_try_decode(
 	bytes_t bytes,
 	char32_t * ch_out,
 	size_t * len_ch_out)
@@ -129,7 +139,7 @@ bool Try_decode_utf8(
 	// Check if first byte is a trailing byte (1 leading 1),
 	//  or if too many leading ones.
 
-	int leading_ones = Leading_ones(bytes.index[0]);
+	int leading_ones = utf8_leading_ones(bytes.index[0]);
 
 	if (leading_ones == 1)
 		return false;
@@ -157,7 +167,7 @@ bool Try_decode_utf8(
 
 	for (size_t i = 1; i < len_ch; ++i)
 	{
-		if (Leading_ones(bytes.index[i]) != 1)
+		if (utf8_leading_ones(bytes.index[i]) != 1)
 			return false;
 	}
 
@@ -205,16 +215,6 @@ bool Try_decode_utf8(
 	return true;
 }
 
-bool Is_hz_ws(char32_t ch)
-{
-	return ch == ' ' || ch == '\t' || ch == '\f' || ch == '\v';
-}
-
-bool Is_ws(char32_t ch)
-{
-	return Is_hz_ws(ch) || ch == '\n' || ch == '\r';
-}
-
 size_t After_escaped_end_of_line_(
 	const char32_t * chars,
 	size_t count,
@@ -229,7 +229,7 @@ size_t After_escaped_end_of_line_(
 		return i;
 
 	size_t i_peek = i + 1;
-	while (i_peek < count && Is_hz_ws(chars[i_peek]))
+	while (i_peek < count && ch_hz_ws(chars[i_peek]))
 	{
 		++i_peek;
 	}
@@ -330,7 +330,7 @@ size_t Try_decode_logical_codepoints_(
 	{
 		char32_t ch;
 		size_t len_ch;
-		if (Try_decode_utf8(bytes, &ch, &len_ch))
+		if (utf8_try_decode(bytes, &ch, &len_ch))
 		{
 			chars.index[count_chars] = ch;
 			locs.index[count_chars + 1] = bytes.index + len_ch;
@@ -402,7 +402,7 @@ size_t Try_decode_logical_codepoints_(
 
 			int iPairMatch = -1;
 
-			for (int iPair = 0; iPair < LEN_ARY(pairs); ++iPair)
+			for (int iPair = 0; iPair < ARY_LEN(pairs); ++iPair)
 			{
 				char32_t * pair = pairs[iPair];
 				if (pair[0] == chars.index[i_from + 2])
@@ -997,7 +997,7 @@ void Lex_punctuation(
 		{"/", TokenKind_slash},
 	};
 
-	for (int i_puctuation = 0; i_puctuation < LEN_ARY(puctuations); ++i_puctuation)
+	for (int i_puctuation = 0; i_puctuation < ARY_LEN(puctuations); ++i_puctuation)
 	{
 		punctution_t punctuation = puctuations[i_puctuation];
 		const char * str_puctuation = punctuation.str;
@@ -1078,7 +1078,7 @@ bool Starts_id(char32_t ch)
 		{ 0xFE20, 0xFE2F }
 	};
 
-	for (int i = 0; i < LEN_ARY(no); ++i)
+	for (int i = 0; i < ARY_LEN(no); ++i)
 	{
 		char32_t first = no[i][0];
 		char32_t last = no[i][1];
@@ -1117,7 +1117,7 @@ bool Starts_id(char32_t ch)
 		{ 0xD0000, 0xDFFFD }, { 0xE0000, 0xEFFFD }
 	};
 
-	for (int i = 0; i < LEN_ARY(yes); ++i)
+	for (int i = 0; i < ARY_LEN(yes); ++i)
 	{
 		char32_t first = yes[i][0];
 		char32_t last = yes[i][1];
@@ -1345,7 +1345,7 @@ bool Extends_id(char32_t ch)
 		{ 0x3000, 0x3000 }
 	};
 
-	for (int i = 0; i < LEN_ARY(ws); ++i)
+	for (int i = 0; i < ARY_LEN(ws); ++i)
 	{
 		char32_t first = ws[i][0];
 		char32_t last = ws[i][1];
@@ -1617,7 +1617,7 @@ size_t After_whitespace(
 {
 	while (i < count_chars)
 	{
-		if (!Is_ws(chars[i]))
+		if (!ch_ws(chars[i]))
 			break;
 
 		++i;
@@ -1740,7 +1740,7 @@ void Lex(
 		*i_after_out = After_rest_of_ppnum(chars, count_chars, i);
 		*tokk_out = TokenKind_numeric_constant;
 	}
-	else if (Is_ws(ch_0) || ch_0 == '\0')
+	else if (ch_ws(ch_0) || ch_0 == '\0')
 	{
 		++i;
 		*i_after_out = After_whitespace(chars, count_chars, i);
