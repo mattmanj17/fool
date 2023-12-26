@@ -18,14 +18,28 @@
 
 typedef unsigned char byte_t;
 
-bool ch_hz_ws(char32_t ch)
+bool Is_hz_ws(char32_t ch)
 {
 	return ch == ' ' || ch == '\t' || ch == '\f' || ch == '\v';
 }
 
-bool ch_ws(char32_t ch)
+bool Is_ws(char32_t ch)
 {
-	return ch_hz_ws(ch) || ch == '\n' || ch == '\r';
+	return Is_hz_ws(ch) || ch == '\n' || ch == '\r';
+}
+
+int Leading_ones(byte_t byte)
+{
+	int count = 0;
+	for (byte_t mask = (1 << 7); mask; mask >>= 1)
+	{
+		if (!(byte & mask))
+			break;
+
+		++count;
+	}
+
+	return count;
 }
 
 
@@ -69,13 +83,13 @@ bool name##_index_valid(name##_t span, size_t index) \
 	return index < name##_len(span); \
 }
 
-DECL_SPAN(bytes, byte_t);
-DECL_SPAN(chars, char32_t);
-DECL_SPAN(locs, byte_t *);
+DECL_SPAN(Bytes, byte_t);
+DECL_SPAN(Chars, char32_t);
+DECL_SPAN(Locs, byte_t *);
 
-char32_t chars_lookup_safe(chars_t chars, size_t index)
+char32_t Char_at_index_safe(Chars_t chars, size_t index)
 {
-	if (!chars_index_valid(chars, index))
+	if (!Chars_index_valid(chars, index))
 		return U'\0';
 
 	return chars.index[index];
@@ -85,22 +99,8 @@ char32_t chars_lookup_safe(chars_t chars, size_t index)
 
 // utf8
 
-int utf8_leading_ones(byte_t byte)
-{
-	int count = 0;
-	for (byte_t mask = (1 << 7); mask; mask >>= 1)
-	{
-		if (!(byte & mask))
-			break;
-
-		++count;
-	}
-
-	return count;
-}
-
-bool utf8_try_decode(
-	bytes_t bytes,
+bool Utf8_try_decode(
+	Bytes_t bytes,
 	char32_t * ch_out,
 	size_t * len_ch_out)
 {
@@ -132,14 +132,14 @@ bool utf8_try_decode(
 
 	// Check if we have no bytes at all
 
-	size_t len_bytes = bytes_len(bytes);
+	size_t len_bytes = Bytes_len(bytes);
 	if (!len_bytes)
 		return false;
 
 	// Check if first byte is a trailing byte (1 leading 1),
 	//  or if too many leading ones.
 
-	int leading_ones = utf8_leading_ones(bytes.index[0]);
+	int leading_ones = Leading_ones(bytes.index[0]);
 
 	if (leading_ones == 1)
 		return false;
@@ -167,7 +167,7 @@ bool utf8_try_decode(
 
 	for (size_t i = 1; i < len_ch; ++i)
 	{
-		if (utf8_leading_ones(bytes.index[i]) != 1)
+		if (Leading_ones(bytes.index[i]) != 1)
 			return false;
 	}
 
@@ -229,7 +229,7 @@ size_t After_escaped_end_of_line_(
 		return i;
 
 	size_t i_peek = i + 1;
-	while (i_peek < count && ch_hz_ws(chars[i_peek]))
+	while (i_peek < count && Is_hz_ws(chars[i_peek]))
 	{
 		++i_peek;
 	}
@@ -299,9 +299,9 @@ void Move_codepoint_and_locs_(
 }
 
 size_t Try_decode_logical_codepoints_(
-	bytes_t bytes,
-	chars_t * chars_out,
-	locs_t * locs_out)
+	Bytes_t bytes,
+	Chars_t * chars_out,
+	Locs_t * locs_out)
 {
 	// In the worst case, we will have a codepoint for every byte
 	//  in the original span, so allocate enough space for that.
@@ -311,12 +311,12 @@ size_t Try_decode_logical_codepoints_(
 	//  for most codepoints, the end is the same as the beggining of the next one,
 	//  except for the last one, which must have an explicit extra loc to denote its end
 
-	size_t len_bytes = bytes_len(bytes);
+	size_t len_bytes = Bytes_len(bytes);
 
-	chars_t chars = chars_alloc(len_bytes);
-	locs_t locs = locs_alloc(len_bytes + 1);
+	Chars_t chars = Chars_alloc(len_bytes);
+	Locs_t locs = Locs_alloc(len_bytes + 1);
 
-	if (chars_empty(chars) || locs_empty(locs))
+	if (Chars_empty(chars) || Locs_empty(locs))
 		return 0;
 
 	// The start of the first char will be the start of the bytes
@@ -326,11 +326,11 @@ size_t Try_decode_logical_codepoints_(
 	// Chew through the byte span with Try_decode_utf8
 
 	size_t count_chars = 0;
-	while (!bytes_empty(bytes))
+	while (!Bytes_empty(bytes))
 	{
 		char32_t ch;
 		size_t len_ch;
-		if (utf8_try_decode(bytes, &ch, &len_ch))
+		if (Utf8_try_decode(bytes, &ch, &len_ch))
 		{
 			chars.index[count_chars] = ch;
 			locs.index[count_chars + 1] = bytes.index + len_ch;
@@ -443,7 +443,7 @@ size_t Try_decode_logical_codepoints_(
 	
 	while (i_from < count_chars)
 	{
-		size_t after_esc_eol = After_escaped_end_of_lines_(chars.index, chars_len(chars), i_from);
+		size_t after_esc_eol = After_escaped_end_of_lines_(chars.index, Chars_len(chars), i_from);
 		if (after_esc_eol == i_from)
 		{
 			Move_codepoint_and_locs_(
@@ -1617,7 +1617,7 @@ size_t After_whitespace(
 {
 	while (i < count_chars)
 	{
-		if (!ch_ws(chars[i]))
+		if (!Is_ws(chars[i]))
 			break;
 
 		++i;
@@ -1740,7 +1740,7 @@ void Lex(
 		*i_after_out = After_rest_of_ppnum(chars, count_chars, i);
 		*tokk_out = TokenKind_numeric_constant;
 	}
-	else if (ch_ws(ch_0) || ch_0 == '\0')
+	else if (Is_ws(ch_0) || ch_0 == '\0')
 	{
 		++i;
 		*i_after_out = After_whitespace(chars, count_chars, i);
@@ -1941,12 +1941,12 @@ void InspectSpanForEol(
 	*ppStartOfLine = pStartOfLine;
 }
 
-void PrintRawTokens(bytes_t bytes)
+void PrintRawTokens(Bytes_t bytes)
 {
 	// Munch bytes to logical characters
 
-	chars_t chars;
-	locs_t locs;
+	Chars_t chars;
+	Locs_t locs;
 	size_t count_chars = Try_decode_logical_codepoints_(bytes, &chars, &locs);
 	if (!count_chars)
 		return;
@@ -1970,7 +1970,7 @@ void PrintRawTokens(bytes_t bytes)
 	{
 		size_t i_after;
 		TokenKind tokk;
-		Lex(chars.index, chars_len(chars), i, &i_after, &tokk);
+		Lex(chars.index, Chars_len(chars), i, &i_after, &tokk);
 
 		byte_t * loc_begin = locs.index[i];
 		byte_t * loc_end = locs.index[i_after];
@@ -2124,7 +2124,7 @@ int wmain(int argc, wchar_t *argv[])
 
 	// Print tokens
 
-	bytes_t bytes;
+	Bytes_t bytes;
 	bytes.index = file_bytes;
 	bytes.end = file_bytes + file_length;
 
