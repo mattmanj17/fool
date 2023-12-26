@@ -99,7 +99,7 @@ char32_t Char_at_index_safe(Chars_t chars, size_t index)
 
 // utf8
 
-bool Utf8_try_decode(
+bool Try_decode_utf8(
 	Bytes_t bytes,
 	char32_t * ch_out,
 	size_t * len_ch_out)
@@ -330,7 +330,7 @@ size_t Try_decode_logical_codepoints_(
 	{
 		char32_t ch;
 		size_t len_ch;
-		if (Utf8_try_decode(bytes, &ch, &len_ch))
+		if (Try_decode_utf8(bytes, &ch, &len_ch))
 		{
 			chars.index[count_chars] = ch;
 			locs.index[count_chars + 1] = bytes.index + len_ch;
@@ -1941,7 +1941,7 @@ void InspectSpanForEol(
 	*ppStartOfLine = pStartOfLine;
 }
 
-void PrintRawTokens(Bytes_t bytes)
+void Print_raw_tokens(Bytes_t bytes)
 {
 	// Munch bytes to logical characters
 
@@ -2128,5 +2128,5 @@ int wmain(int argc, wchar_t *argv[])
 	bytes.index = file_bytes;
 	bytes.end = file_bytes + file_length;
 
-	PrintRawTokens(bytes);
+	Print_raw_tokens(bytes);
 }
