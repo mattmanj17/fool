@@ -16,7 +16,7 @@
 
 #define ARY_LEN(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
 
-typedef unsigned char byte_t;
+typedef unsigned char Byte_t;
 
 bool Is_hz_ws(char32_t ch)
 {
@@ -28,10 +28,10 @@ bool Is_ws(char32_t ch)
 	return Is_hz_ws(ch) || ch == '\n' || ch == '\r';
 }
 
-int Leading_ones(byte_t byte)
+int Leading_ones(Byte_t byte)
 {
 	int count = 0;
-	for (byte_t mask = (1 << 7); mask; mask >>= 1)
+	for (Byte_t mask = (1 << 7); mask; mask >>= 1)
 	{
 		if (!(byte & mask))
 			break;
@@ -83,9 +83,9 @@ bool name##_index_valid(name##_t span, size_t index) \
 	return index < name##_len(span); \
 }
 
-DECL_SPAN(Bytes, byte_t);
+DECL_SPAN(Bytes, Byte_t);
 DECL_SPAN(Chars, char32_t);
-DECL_SPAN(Locs, byte_t *);
+DECL_SPAN(Locs, Byte_t *);
 
 char32_t Char_at_index_safe(Chars_t chars, size_t index)
 {
@@ -277,7 +277,7 @@ size_t After_escaped_end_of_lines_(
 
 void Move_codepoint_and_locs_(
 	char32_t * chars, 
-	byte_t ** locs,
+	Byte_t ** locs,
 	char32_t ch,
 	size_t i_from_next,
 	size_t * i_from_ref,
@@ -933,12 +933,12 @@ void Lex_punctuation(
 		const char * str;
 		TokenKind tokk;
 		int _padding;
-	} punctution_t;
+	} Punctution_t;
 
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
 
-	static punctution_t puctuations[] =
+	static Punctution_t puctuations[] =
 	{
 		{"%:%:", TokenKind_hashhash},
 		{">>=", TokenKind_greatergreaterequal},
@@ -999,7 +999,7 @@ void Lex_punctuation(
 
 	for (int i_puctuation = 0; i_puctuation < ARY_LEN(puctuations); ++i_puctuation)
 	{
-		punctution_t punctuation = puctuations[i_puctuation];
+		Punctution_t punctuation = puctuations[i_puctuation];
 		const char * str_puctuation = punctuation.str;
 		size_t len = strlen(str_puctuation);
 
@@ -1848,8 +1848,8 @@ void Print_token(
 	TokenKind tokk,
 	int line,
 	long long col,
-	byte_t * loc_begin,
-	byte_t * loc_end)
+	Byte_t * loc_begin,
+	Byte_t * loc_end)
 {
 	// Token Kind
 
@@ -1881,9 +1881,9 @@ void Print_token(
 	printf("\n");
 }
 
-int Len_eol(byte_t * str)
+int Len_eol(Byte_t * str)
 {
-	byte_t ch = str[0];
+	Byte_t ch = str[0];
 
 	if (ch == '\n')
 	{
@@ -1907,16 +1907,16 @@ int Len_eol(byte_t * str)
 }
 
 void InspectSpanForEol(
-	byte_t * pChBegin,
-	byte_t * pChEnd,
+	Byte_t * pChBegin,
+	Byte_t * pChEnd,
 	int * pCLine,
-	byte_t ** ppStartOfLine)
+	Byte_t ** ppStartOfLine)
 {
 	// BUG if we care about having random access to line info, 
 	//  we would need a smarter answer than InspectSpanForEol...
 
 	int cLine = 0;
-	byte_t * pStartOfLine = NULL;
+	Byte_t * pStartOfLine = NULL;
 
 	while (pChBegin < pChEnd)
 	{
@@ -1960,7 +1960,7 @@ void Print_raw_tokens(Bytes_t bytes)
 
 	// Keep track of line info
 
-	byte_t * line_start = bytes.index;
+	Byte_t * line_start = bytes.index;
 	int line = 1;
 
 	// Lex!
@@ -1972,8 +1972,8 @@ void Print_raw_tokens(Bytes_t bytes)
 		TokenKind tokk;
 		Lex(chars.index, Chars_len(chars), i, &i_after, &tokk);
 
-		byte_t * loc_begin = locs.index[i];
-		byte_t * loc_end = locs.index[i_after];
+		Byte_t * loc_begin = locs.index[i];
+		Byte_t * loc_end = locs.index[i_after];
 
 		Print_token(
 			tokk,
@@ -1985,7 +1985,7 @@ void Print_raw_tokens(Bytes_t bytes)
 		// Handle eol
 
 		int cLine;
-		byte_t * pStartOfLine;
+		Byte_t * pStartOfLine;
 		InspectSpanForEol(loc_begin, loc_end, &cLine, &pStartOfLine);
 
 		if (cLine)
@@ -2024,7 +2024,7 @@ int wmain(int argc, wchar_t *argv[])
 
 	// Read file
 
-	byte_t * file_bytes;
+	Byte_t * file_bytes;
 	size_t file_length;
 	{
 		FILE * file = _wfopen(path, L"rb");
@@ -2072,7 +2072,7 @@ int wmain(int argc, wchar_t *argv[])
 
 		// Allocate space to read file
 
-		file_bytes = (byte_t *)calloc(file_length, 1);
+		file_bytes = (Byte_t *)calloc(file_length, 1);
 		if (!file_bytes)
 		{
 			printf(
