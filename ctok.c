@@ -225,6 +225,16 @@ void Decode_utf8(
 	assert(Bytes_len(bytes) <= Chars_len(*chars_r));
 	assert(Bytes_len(bytes) + 1 <= Locs_len(*locs_r));
 
+	// Deal with potential UTF-8 BOM
+
+	if (Bytes_len(bytes) >= 3 &&
+		bytes.index[0] == '\xEF' &&
+		bytes.index[1] == '\xBB' &&
+		bytes.index[2] == '\xBF')
+	{
+		bytes.index += 3;
+	}
+
 	// The start of the first char will be the start of the bytes
 
 	locs_r->index[0] = bytes.index;
@@ -1969,9 +1979,12 @@ void Print_raw_tokens(Bytes_t bytes)
 	Scrub_trigraphs(&chars, &locs);
 	Scrub_escaped_line_breaks(&chars, &locs);
 
+	if (Chars_empty(chars) || Locs_empty(locs))
+		return;
+
 	// Keep track of line info
 
-	Byte_t * line_start = bytes.index;
+	Byte_t * line_start = *locs.index;
 	int line = 1;
 
 	// Lex!
@@ -2120,17 +2133,6 @@ int wmain(int argc, wchar_t *argv[])
 		// BUG (matthewd) ignoring return value?
 
 		fclose(file);
-	}
-
-	// Deal with potential UTF-8 BOM
-
-	if (file_length >= 3 &&
-		file_bytes[0] == '\xEF' &&
-		file_bytes[1] == '\xBB' &&
-		file_bytes[2] == '\xBF')
-	{
-		file_bytes += 3;
-		file_length -= 3;
 	}
 
 	// Print tokens
