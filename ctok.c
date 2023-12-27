@@ -99,7 +99,7 @@ char32_t Char_at_index_safe(Chars_t chars, size_t index)
 
 // utf8
 
-bool Try_decode_utf8(
+bool Try_decode_utf8_ch(
 	Bytes_t bytes,
 	char32_t * ch_out,
 	size_t * len_ch_out)
@@ -213,6 +213,44 @@ bool Try_decode_utf8(
 	*ch_out = ch;
 	*len_ch_out = len_ch;
 	return true;
+}
+
+void Decode_utf8(
+	Bytes_t bytes,
+	Chars_t * chars_r,
+	Locs_t * locs_r)
+{
+	assert(Bytes_len(bytes) <= Chars_len(*chars_r));
+	assert(Bytes_len(bytes) + 1 <= Locs_len(*locs_r));
+
+	// The start of the first char will be the start of the bytes
+
+	locs_r->index[0] = bytes.index;
+
+	// Chew through the byte span with Try_decode_utf8
+
+	size_t count_chars = 0;
+	while (!Bytes_empty(bytes))
+	{
+		char32_t ch;
+		size_t len_ch;
+		if (Try_decode_utf8_ch(bytes, &ch, &len_ch))
+		{
+			chars_r->index[count_chars] = ch;
+			locs_r->index[count_chars + 1] = bytes.index + len_ch;
+			bytes.index += len_ch;
+		}
+		else
+		{
+			chars_r->index[count_chars] = UINT32_MAX;
+			locs_r->index[count_chars + 1] = bytes.index + 1;
+			++bytes.index;
+		}
+
+		++count_chars;
+	}
+	chars_r->end = chars_r->index + count_chars;
+	locs_r->end = locs_r->index + count_chars + 1;
 }
 
 
@@ -440,9 +478,9 @@ void Try_decode_logical_codepoints(
 	// In the worst case, we will have a codepoint for every byte
 	//  in the original span, so allocate enough space for that.
 
-	//  Note that the locations array is one longer than the codepoint array,
-	//  since we want to store the begining and end of each codepoint.
-	//  for most codepoints, the end is the same as the beggining of the next one,
+	//  Note that the locations array is one longer than the character array,
+	//  since we want to store the begining and end of each character.
+	//  for most chars, the end is the same as the beginning of the next one,
 	//  except for the last one, which must have an explicit extra loc to denote its end
 
 	size_t len_bytes = Bytes_len(bytes);
@@ -453,34 +491,9 @@ void Try_decode_logical_codepoints(
 	if (Chars_empty(chars) || Locs_empty(locs))
 		return;
 
-	// The start of the first char will be the start of the bytes
+	// Decode + scrub
 
-	locs.index[0] = bytes.index;
-
-	// Chew through the byte span with Try_decode_utf8
-
-	size_t count_chars = 0;
-	while (!Bytes_empty(bytes))
-	{
-		char32_t ch;
-		size_t len_ch;
-		if (Try_decode_utf8(bytes, &ch, &len_ch))
-		{
-			chars.index[count_chars] = ch;
-			locs.index[count_chars + 1] = bytes.index + len_ch;
-			bytes.index += len_ch;
-		}
-		else
-		{
-			chars.index[count_chars] = UINT32_MAX;
-			locs.index[count_chars + 1] = bytes.index + 1;
-			++bytes.index;
-		}
-
-		++count_chars;
-	}
-	chars.end = chars.index + count_chars;
-	locs.end = locs.index + count_chars + 1;
+	Decode_utf8(bytes, &chars, &locs);
 
 	Scrub_carriage_returns(&chars, &locs);
 	Scrub_trigraphs(&chars, &locs);
@@ -491,9 +504,6 @@ void Try_decode_logical_codepoints(
 	*chars_out = chars;
 	*locs_out = locs;
 }
-
-
-
 
 
 
