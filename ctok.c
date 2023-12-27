@@ -1563,7 +1563,7 @@ void Lex_rest_of_block_comment(
 	*tokk_out = tokk;
 }
 
-void Lex_rest_of_str_lit_(
+void Lex_rest_of_str_lit(
 	bool use_dquote,
 	const char32_t * chars,
 	size_t count_chars,
@@ -1659,7 +1659,7 @@ void Lex(
 		i += 3;
 
 		bool valid;
-		Lex_rest_of_str_lit_(
+		Lex_rest_of_str_lit(
 			true,
 			chars,
 			count_chars,
@@ -1675,7 +1675,7 @@ void Lex(
 		i += 2;
 
 		bool valid;
-		Lex_rest_of_str_lit_(
+		Lex_rest_of_str_lit(
 			ch_1 == '"', 
 			chars, 
 			count_chars, 
@@ -1710,7 +1710,7 @@ void Lex(
 		++i;
 
 		bool valid;
-		Lex_rest_of_str_lit_(
+		Lex_rest_of_str_lit(
 			ch_0 == '"', 
 			chars, 
 			count_chars, 
