@@ -215,90 +215,138 @@ bool Try_decode_utf8(
 	return true;
 }
 
-size_t After_escaped_end_of_line_(
-	const char32_t * chars,
-	size_t count,
-	size_t i)
+
+
+// 'scrub' : helpers for walking over chars and replacing 
+//   runs of chars with new single chars
+
+typedef struct Scrub_t
 {
-	// Note : returning i implies 'there was no esc eol'
+	Chars_t chars;
+	Locs_t locs;
+	
+	char32_t * ch_from;
+	Byte_t ** loc_from;
+} Scrub_t;
 
-	if (i >= count)
-		return i;
+Scrub_t Start_scrub(
+	Chars_t chars,
+	Locs_t locs)
+{
+	Scrub_t scrub;
+	scrub.chars = chars;
+	scrub.locs = locs;
 
-	if (chars[i] != '\\')
-		return i;
+	scrub.ch_from = chars.index;
+	scrub.loc_from = locs.index;
 
-	size_t i_peek = i + 1;
-	while (i_peek < count && Is_hz_ws(chars[i_peek]))
-	{
-		++i_peek;
-	}
-
-	if (i_peek >= count)
-		return i;
-
-	if (chars[i_peek] == '\n')
-	{
-		return i_peek + 1;
-	}
-
-	if (chars[i_peek] == '\r')
-	{
-		// BB (matthewd) this is currently never hit, since we scrub
-		//  away \r before we call this
-
-		++i_peek;
-
-		if (i_peek < count && chars[i_peek] == '\n')
-			return i_peek + 1;
-
-		return i_peek;
-	}
-
-	return i;
+	return scrub;
 }
 
-size_t After_escaped_end_of_lines_(
-	const char32_t * chars,
-	size_t count,
-	size_t i)
+bool Is_scrub_done(Scrub_t scrub)
 {
-	while (i < count)
+	return scrub.ch_from >= scrub.chars.end;
+}
+
+char32_t Scrub_ch(Scrub_t scrub, size_t index)
+{
+	Chars_t chars_from;
+	chars_from.index = scrub.ch_from;
+	chars_from.end = scrub.chars.end;
+	return Char_at_index_safe(chars_from, index);
+}
+
+void Advance_scrub(
+	Scrub_t * scrub_r,
+	char32_t ch,
+	size_t len_scrub)
+{
+	assert(scrub_r->chars.index < scrub_r->chars.end);
+	assert(scrub_r->locs.index < scrub_r->locs.end);
+	
+	assert(scrub_r->ch_from < scrub_r->chars.end);
+	assert(scrub_r->loc_from < scrub_r->locs.end);
+
+	// Set next 'to' char to ch, and copy starting loc.
+
+	scrub_r->chars.index[0] = ch;
+	scrub_r->locs.index[0] = scrub_r->loc_from[0];
+
+	// Inc from/to
+
+	scrub_r->ch_from += len_scrub;
+	scrub_r->loc_from += len_scrub;
+
+	scrub_r->chars.index += 1;
+	scrub_r->locs.index += 1;
+
+	// Copy ending loc. Need to do this in case we are the last char
+
+	assert(scrub_r->locs.index < scrub_r->locs.end);
+	assert(scrub_r->loc_from < scrub_r->locs.end);
+
+	scrub_r->locs.index[0] = scrub_r->loc_from[0];
+}
+
+void End_scrub(
+	Scrub_t scrub, 
+	Chars_t * chars_r,
+	Locs_t * locs_r)
+{
+	chars_r->end = scrub.chars.index;
+	locs_r->end = scrub.locs.index + 1;
+}
+
+void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
+{
+	// Get length of leading esc eols
+
+	size_t len = 0;
+	while (true)
 	{
-		size_t after_esc_eol = After_escaped_end_of_line_(chars, count, i);
-		if (after_esc_eol == i)
+		size_t i = len;
+		if (Scrub_ch(*scrub_r, i) != '\\')
 			break;
 
-		i = after_esc_eol;
+		++i;
+
+		while (Is_hz_ws(Scrub_ch(*scrub_r, i)))
+		{
+			++i;
+		}
+
+		// Do not need to check for \r. since that 
+		//  has already been scrubbed.
+
+		if (Scrub_ch(*scrub_r, i) != '\n')
+			break;
+
+		len = i + 1;
 	}
 
-	return i;
+	// Advance now that we have the length
+
+	if (len == 0)
+	{
+		Advance_scrub(scrub_r, Scrub_ch(*scrub_r, 0), 1);
+	}
+	else if (scrub_r->ch_from + len == scrub_r->chars.end)
+	{
+		// Drop trailing escaped line break
+		//  (do not include it in a character)
+		
+		scrub_r->ch_from = scrub_r->chars.end;
+	}
+	else
+	{
+		Advance_scrub(
+			scrub_r, 
+			Scrub_ch(*scrub_r, len), 
+			len + 1);
+	}
 }
 
-void Move_codepoint_and_locs_(
-	char32_t * chars, 
-	Byte_t ** locs,
-	char32_t ch,
-	size_t i_from_next,
-	size_t * i_from_ref,
-	size_t * i_to_ref)
-{
-	size_t i_from = *i_from_ref;
-	size_t i_to = *i_to_ref;
-
-	chars[i_to] = ch;
-	locs[i_to] = locs[i_from];
-
-	i_from = i_from_next;
-	++i_to;
-
-	locs[i_to] = locs[i_from];
-
-	*i_from_ref = i_from;
-	*i_to_ref = i_to;
-}
-
-size_t Try_decode_logical_codepoints_(
+void Try_decode_logical_codepoints(
 	Bytes_t bytes,
 	Chars_t * chars_out,
 	Locs_t * locs_out)
@@ -317,7 +365,7 @@ size_t Try_decode_logical_codepoints_(
 	Locs_t locs = Locs_alloc(len_bytes + 1);
 
 	if (Chars_empty(chars) || Locs_empty(locs))
-		return 0;
+		return;
 
 	// The start of the first char will be the start of the bytes
 
@@ -345,48 +393,40 @@ size_t Try_decode_logical_codepoints_(
 
 		++count_chars;
 	}
+	chars.end = chars.index + count_chars;
+	locs.end = locs.index + count_chars + 1;
 
 	// \r and \r\n to \n
 
-	size_t i_from = 0;
-	size_t i_to = 0;
-	
-	while (i_from < count_chars)
+	Scrub_t scrub = Start_scrub(chars, locs);
+	while (!Is_scrub_done(scrub))
 	{
-		char32_t ch = chars.index[i_from];
+		char32_t ch = Scrub_ch(scrub, 0);
 		bool is_cr = ch == '\r';
 		if (is_cr)
 			ch = '\n';
 
-		size_t i_from_next = i_from + 1;
-		if (is_cr && (i_from + 1 < count_chars) && chars.index[i_from + 1] == '\n')
+		size_t len_scrub = 1;
+		if (is_cr && Scrub_ch(scrub, 1) == '\n')
 		{
-			i_from_next = i_from + 2;
+			len_scrub = 2;
 		}
 
-		char chr = (char)ch;
-		(void)chr;
-		Move_codepoint_and_locs_(
-			chars.index,
-			locs.index,
-			ch,
-			i_from_next,
-			&i_from,
-			&i_to);
+		Advance_scrub(&scrub, ch, len_scrub);
 	}
-	count_chars = i_to;
-	
+	End_scrub(scrub, &chars, &locs);
+
 	// trigraphs
 
-	i_from = 0;
-	i_to = 0;
-
-	while (i_from < count_chars)
+	scrub = Start_scrub(chars, locs);
+	while (!Is_scrub_done(scrub))
 	{
-		if (i_from + 2 < count_chars && 
-			chars.index[i_from] == '?' && 
-			chars.index[i_from + 1] == '?')
+		char32_t ch0 = Scrub_ch(scrub, 0);
+
+		if (ch0 == '?' && Scrub_ch(scrub, 1) == '?')
 		{
+			char32_t ch2 = Scrub_ch(scrub, 2);
+
 			char32_t pairs[][2] =
 			{
 				{ '<', '{' },
@@ -400,89 +440,46 @@ size_t Try_decode_logical_codepoints_(
 				{ '-', '~' },
 			};
 
-			int iPairMatch = -1;
-
-			for (int iPair = 0; iPair < ARY_LEN(pairs); ++iPair)
+			int i_match = -1;
+			for (int i = 0; i < ARY_LEN(pairs); ++i)
 			{
-				char32_t * pair = pairs[iPair];
-				if (pair[0] == chars.index[i_from + 2])
+				if (pairs[i][0] == ch2)
 				{
-					iPairMatch = iPair;
+					i_match = i;
 					break;
 				}
 			}
 
-			if (iPairMatch != -1)
+			if (i_match != -1)
 			{
-				Move_codepoint_and_locs_(
-					chars.index,
-					locs.index,
-					pairs[iPairMatch][1],
-					i_from + 3,
-					&i_from,
-					&i_to);
+				char32_t ch_replace = pairs[i_match][1];
+				Advance_scrub(&scrub, ch_replace, 3);
 
 				continue;
 			}
 		}
 
-		Move_codepoint_and_locs_(
-			chars.index,
-			locs.index,
-			chars.index[i_from],
-			i_from + 1,
-			&i_from,
-			&i_to);
+		Advance_scrub(&scrub, ch0, 1);
 	}
-	count_chars = i_to;
-	
+	End_scrub(scrub, &chars, &locs);
+
 	// escaped line breaks
 
-	i_from = 0;
-	i_to = 0;
-	
-	while (i_from < count_chars)
+	scrub = Start_scrub(chars, locs);
+	while (!Is_scrub_done(scrub))
 	{
-		size_t after_esc_eol = After_escaped_end_of_lines_(chars.index, Chars_len(chars), i_from);
-		if (after_esc_eol == i_from)
-		{
-			Move_codepoint_and_locs_(
-				chars.index,
-				locs.index,
-				chars.index[i_from],
-				i_from + 1,
-				&i_from,
-				&i_to);
-		}
-		else if (after_esc_eol == count_chars)
-		{
-			// Drop trailing escaped line break
-			//  (do not include it in a character)
-
-			i_from = count_chars;
-		}
-		else
-		{
-			Move_codepoint_and_locs_(
-				chars.index,
-				locs.index,
-				chars.index[after_esc_eol],
-				after_esc_eol + 1,
-				&i_from,
-				&i_to);
-		}
+		Scrub_leading_escaped_line_breaks(&scrub);
 	}
-	count_chars = i_to;
-	chars.end = chars.index + count_chars;
-	locs.end = locs.index + count_chars + 1;
-	
+	End_scrub(scrub, &chars, &locs);
+
 	// return chars + locs
 
 	*chars_out = chars;
 	*locs_out = locs;
-	
-	return count_chars;
 }
+
+
+
 
 
 
@@ -1945,18 +1942,38 @@ void Print_raw_tokens(Bytes_t bytes)
 {
 	// Munch bytes to logical characters
 
-	Chars_t chars;
-	Locs_t locs;
-	size_t count_chars = Try_decode_logical_codepoints_(bytes, &chars, &locs);
-	if (!count_chars)
+	Chars_t chars = {0};
+	Locs_t locs = {0};
+	Try_decode_logical_codepoints(bytes, &chars, &locs);
+	if (Chars_empty(chars) || Locs_empty(locs))
 		return;
 
-	//
-
-	for (size_t i = 0; i < count_chars; ++i)
+#if 0
+	for (int i = 0; locs.index + i < locs.end - 1; ++i)
 	{
-		assert(locs.index[i + 1] > locs.index[i + 0]);
+		Byte_t ** index = locs.index + i;
+		long long dbyte = *index - *locs.index;
+		(void)dbyte;
+		assert(*index < *(index + 1));
 	}
+
+	for (char32_t * index = chars.index; index < chars.end; ++index)
+	{
+		char32_t ch = index[0];
+		if (ch < 127)
+		{
+			//clean_and_print_char((char)ch);
+			printf("%c", (char)ch);
+		}
+		else
+		{
+			printf("`");
+		}
+	}
+	printf("\n");
+	printf("HONK!!!!!!\n");
+	printf("\n");
+#endif
 
 	// Keep track of line info
 
@@ -1966,7 +1983,7 @@ void Print_raw_tokens(Bytes_t bytes)
 	// Lex!
 
 	size_t i = 0;
-	while (i < count_chars)
+	while (chars.index + i < chars.end)
 	{
 		size_t i_after;
 		TokenKind tokk;
