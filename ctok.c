@@ -476,437 +476,442 @@ void Scrub_escaped_line_breaks(
 
 // Lex
 
+#define TOKEN_KINDS()\
+	X(unknown)\
+	X(eof)\
+	X(eod)\
+	X(code_completion)\
+	X(comment)\
+	X(identifier)\
+	X(raw_identifier)\
+	X(numeric_constant)\
+	X(char_constant)\
+	X(wide_char_constant)\
+	X(utf8_char_constant)\
+	X(utf16_char_constant)\
+	X(utf32_char_constant)\
+	X(string_literal)\
+	X(wide_string_literal)\
+	X(header_name)\
+	X(utf8_string_literal)\
+	X(utf16_string_literal)\
+	X(utf32_string_literal)\
+	X(l_square)\
+	X(r_square)\
+	X(l_paren)\
+	X(r_paren)\
+	X(l_brace)\
+	X(r_brace)\
+	X(period)\
+	X(ellipsis)\
+	X(amp)\
+	X(ampamp)\
+	X(ampequal)\
+	X(star)\
+	X(starequal)\
+	X(plus)\
+	X(plusplus)\
+	X(plusequal)\
+	X(minus)\
+	X(arrow)\
+	X(minusminus)\
+	X(minusequal )\
+	X(tilde)\
+	X(exclaim)\
+	X(exclaimequal)\
+	X(slash)\
+	X(slashequal)\
+	X(percent)\
+	X(percentequal)\
+	X(less)\
+	X(lessless)\
+	X(lessequal)\
+	X(lesslessequal)\
+	X(spaceship)\
+	X(greater)\
+	X(greatergreater)\
+	X(greaterequal)\
+	X(greatergreaterequal)\
+	X(caret)\
+	X(caretequal)\
+	X(pipe)\
+	X(pipepipe)\
+	X(pipeequal)\
+	X(question)\
+	X(colon)\
+	X(semi)\
+	X(equal)\
+	X(equalequal)\
+	X(comma)\
+	X(hash)\
+	X(hashhash)\
+	X(hashat)\
+	X(periodstar)\
+	X(arrowstar)\
+	X(coloncolon)\
+	X(at)\
+	X(lesslessless)\
+	X(greatergreatergreater)\
+	X(caretcaret)\
+\
+	X(kw_auto)\
+	X(kw_break)\
+	X(kw_case)\
+	X(kw_char)\
+	X(kw_const)\
+	X(kw_continue)\
+	X(kw_default)\
+	X(kw_do)\
+	X(kw_double)\
+	X(kw_else)\
+	X(kw_enum)\
+	X(kw_extern)\
+	X(kw_float)\
+	X(kw_for)\
+	X(kw_goto)\
+	X(kw_if)\
+	X(kw_int)\
+	X(kw__ExtInt)\
+	X(kw__BitInt)\
+	X(kw_long)\
+	X(kw_register)\
+	X(kw_return)\
+	X(kw_short)\
+	X(kw_signed)\
+	X(kw_sizeof)\
+	X(kw_static)\
+	X(kw_struct)\
+	X(kw_switch)\
+	X(kw_typedef)\
+	X(kw_union)\
+	X(kw_unsigned)\
+	X(kw_void)\
+	X(kw_volatile)\
+	X(kw_while)\
+	X(kw__Alignas)\
+	X(kw__Alignof)\
+	X(kw__Atomic)\
+	X(kw__Bool)\
+	X(kw__Complex)\
+	X(kw__Generic)\
+	X(kw__Imaginary)\
+	X(kw__Noreturn)\
+	X(kw__Static_assert)\
+	X(kw__Thread_local)\
+	X(kw___func__)\
+	X(kw___objc_yes)\
+	X(kw___objc_no)\
+	X(kw_asm)\
+	X(kw_bool)\
+	X(kw_catch)\
+	X(kw_class)\
+	X(kw_const_cast)\
+	X(kw_delete)\
+	X(kw_dynamic_cast)\
+	X(kw_explicit)\
+	X(kw_export)\
+	X(kw_false)\
+	X(kw_friend)\
+	X(kw_mutable)\
+	X(kw_namespace)\
+	X(kw_new)\
+	X(kw_operator)\
+	X(kw_private)\
+	X(kw_protected)\
+	X(kw_public)\
+	X(kw_reinterpret_cast)\
+	X(kw_static_cast)\
+	X(kw_template)\
+	X(kw_this)\
+	X(kw_throw)\
+	X(kw_true)\
+	X(kw_try)\
+	X(kw_typename)\
+	X(kw_typeid)\
+	X(kw_using)\
+	X(kw_virtual)\
+	X(kw_wchar_t)\
+	X(kw_restrict)\
+	X(kw_inline)\
+	X(kw_alignas)\
+	X(kw_alignof)\
+	X(kw_char16_t)\
+	X(kw_char32_t)\
+	X(kw_constexpr)\
+	X(kw_decltype)\
+	X(kw_noexcept)\
+	X(kw_nullptr)\
+	X(kw_static_assert)\
+	X(kw_thread_local)\
+	X(kw_co_await)\
+	X(kw_co_return)\
+	X(kw_co_yield)\
+	X(kw_module)\
+	X(kw_import)\
+	X(kw_consteval)\
+	X(kw_constinit)\
+	X(kw_concept)\
+	X(kw_requires)\
+	X(kw_char8_t)\
+	X(kw__Float16)\
+	X(kw_typeof)\
+	X(kw_typeof_unqual)\
+	X(kw__Accum)\
+	X(kw__Fract)\
+	X(kw__Sat)\
+	X(kw__Decimal32)\
+	X(kw__Decimal64)\
+	X(kw__Decimal128)\
+	X(kw___null)\
+	X(kw___alignof)\
+	X(kw___attribute)\
+	X(kw___builtin_choose_expr)\
+	X(kw___builtin_offsetof)\
+	X(kw___builtin_FILE)\
+	X(kw___builtin_FILE_NAME)\
+	X(kw___builtin_FUNCTION)\
+	X(kw___builtin_FUNCSIG)\
+	X(kw___builtin_LINE)\
+	X(kw___builtin_COLUMN)\
+	X(kw___builtin_source_location)\
+	X(kw___builtin_types_compatible_p)\
+	X(kw___builtin_va_arg)\
+	X(kw___extension__)\
+	X(kw___float128)\
+	X(kw___ibm128)\
+	X(kw___imag)\
+	X(kw___int128)\
+	X(kw___label__)\
+	X(kw___real)\
+	X(kw___thread)\
+	X(kw___FUNCTION__)\
+	X(kw___PRETTY_FUNCTION__)\
+	X(kw___auto_type)\
+	X(kw___FUNCDNAME__)\
+	X(kw___FUNCSIG__)\
+	X(kw_L__FUNCTION__)\
+	X(kw_L__FUNCSIG__)\
+	X(kw___is_interface_class)\
+	X(kw___is_sealed)\
+	X(kw___is_destructible)\
+	X(kw___is_trivially_destructible)\
+	X(kw___is_nothrow_destructible)\
+	X(kw___is_nothrow_assignable)\
+	X(kw___is_constructible)\
+	X(kw___is_nothrow_constructible)\
+	X(kw___is_assignable)\
+	X(kw___has_nothrow_move_assign)\
+	X(kw___has_trivial_move_assign)\
+	X(kw___has_trivial_move_constructor)\
+	X(kw___has_nothrow_assign)\
+	X(kw___has_nothrow_copy)\
+	X(kw___has_nothrow_constructor)\
+	X(kw___has_trivial_assign)\
+	X(kw___has_trivial_copy)\
+	X(kw___has_trivial_constructor)\
+	X(kw___has_trivial_destructor)\
+	X(kw___has_virtual_destructor)\
+	X(kw___is_abstract)\
+	X(kw___is_aggregate)\
+	X(kw___is_base_of)\
+	X(kw___is_class)\
+	X(kw___is_convertible_to)\
+	X(kw___is_empty)\
+	X(kw___is_enum)\
+	X(kw___is_final)\
+	X(kw___is_literal)\
+	X(kw___is_pod)\
+	X(kw___is_polymorphic)\
+	X(kw___is_standard_layout)\
+	X(kw___is_trivial)\
+	X(kw___is_trivially_assignable)\
+	X(kw___is_trivially_constructible)\
+	X(kw___is_trivially_copyable)\
+	X(kw___is_union)\
+	X(kw___has_unique_object_representations)\
+	X(kw___add_lvalue_reference)\
+	X(kw___add_pointer)\
+	X(kw___add_rvalue_reference)\
+	X(kw___decay)\
+	X(kw___make_signed)\
+	X(kw___make_unsigned)\
+	X(kw___remove_all_extents)\
+	X(kw___remove_const)\
+	X(kw___remove_cv)\
+	X(kw___remove_cvref)\
+	X(kw___remove_extent)\
+	X(kw___remove_pointer)\
+	X(kw___remove_reference_t)\
+	X(kw___remove_restrict)\
+	X(kw___remove_volatile)\
+	X(kw___underlying_type)\
+	X(kw___is_trivially_relocatable)\
+	X(kw___is_trivially_equality_comparable)\
+	X(kw___is_bounded_array)\
+	X(kw___is_unbounded_array)\
+	X(kw___is_nullptr)\
+	X(kw___is_scoped_enum)\
+	X(kw___is_referenceable)\
+	X(kw___can_pass_in_regs)\
+	X(kw___reference_binds_to_temporary)\
+	X(kw___is_lvalue_expr)\
+	X(kw___is_rvalue_expr)\
+	X(kw___is_arithmetic)\
+	X(kw___is_floating_point)\
+	X(kw___is_integral)\
+	X(kw___is_complete_type)\
+	X(kw___is_void)\
+	X(kw___is_array)\
+	X(kw___is_function)\
+	X(kw___is_reference)\
+	X(kw___is_lvalue_reference)\
+	X(kw___is_rvalue_reference)\
+	X(kw___is_fundamental)\
+	X(kw___is_object)\
+	X(kw___is_scalar)\
+	X(kw___is_compound)\
+	X(kw___is_pointer)\
+	X(kw___is_member_object_pointer)\
+	X(kw___is_member_function_pointer)\
+	X(kw___is_member_pointer)\
+	X(kw___is_const)\
+	X(kw___is_volatile)\
+	X(kw___is_signed)\
+	X(kw___is_unsigned)\
+	X(kw___is_same)\
+	X(kw___is_convertible)\
+	X(kw___array_rank)\
+	X(kw___array_extent)\
+	X(kw___private_extern__)\
+	X(kw___module_private__)\
+	X(kw___declspec)\
+	X(kw___cdecl)\
+	X(kw___stdcall)\
+	X(kw___fastcall)\
+	X(kw___thiscall)\
+	X(kw___regcall)\
+	X(kw___vectorcall)\
+	X(kw___forceinline)\
+	X(kw___unaligned)\
+	X(kw___super)\
+	X(kw___global)\
+	X(kw___local)\
+	X(kw___constant)\
+	X(kw___private)\
+	X(kw___generic)\
+	X(kw___kernel)\
+	X(kw___read_only)\
+	X(kw___write_only)\
+	X(kw___read_write)\
+	X(kw___builtin_astype)\
+	X(kw_vec_step)\
+	X(kw_image1d_t)\
+	X(kw_image1d_array_t)\
+	X(kw_image1d_buffer_t)\
+	X(kw_image2d_t)\
+	X(kw_image2d_array_t)\
+	X(kw_image2d_depth_t)\
+	X(kw_image2d_array_depth_t)\
+	X(kw_image2d_msaa_t)\
+	X(kw_image2d_array_msaa_t)\
+	X(kw_image2d_msaa_depth_t)\
+	X(kw_image2d_array_msaa_depth_t)\
+	X(kw_image3d_t)\
+	X(kw_pipe)\
+	X(kw_addrspace_cast)\
+	X(kw___noinline__)\
+	X(kw_cbuffer)\
+	X(kw_tbuffer)\
+	X(kw_groupshared)\
+	X(kw___builtin_omp_required_simd_align)\
+	X(kw___pascal)\
+	X(kw___vector)\
+	X(kw___pixel)\
+	X(kw___bool)\
+	X(kw___bf16)\
+	X(kw_half)\
+	X(kw___bridge)\
+	X(kw___bridge_transfer)\
+	X(kw___bridge_retained)\
+	X(kw___bridge_retain)\
+	X(kw___covariant)\
+	X(kw___contravariant)\
+	X(kw___kindof)\
+	X(kw__Nonnull)\
+	X(kw__Nullable)\
+	X(kw__Nullable_result)\
+	X(kw__Null_unspecified)\
+	X(kw___funcref)\
+	X(kw___ptr64)\
+	X(kw___ptr32)\
+	X(kw___sptr)\
+	X(kw___uptr)\
+	X(kw___w64)\
+	X(kw___uuidof)\
+	X(kw___try)\
+	X(kw___finally)\
+	X(kw___leave)\
+	X(kw___int64)\
+	X(kw___if_exists)\
+	X(kw___if_not_exists)\
+	X(kw___single_inheritance)\
+	X(kw___multiple_inheritance)\
+	X(kw___virtual_inheritance)\
+	X(kw___interface)\
+	X(kw___builtin_convertvector)\
+	X(kw___builtin_bit_cast)\
+	X(kw___builtin_available)\
+	X(kw___builtin_sycl_unique_stable_name)\
+	X(kw___arm_streaming)\
+	X(kw___unknown_anytype)\
+\
+	X(annot_cxxscope)\
+	X(annot_typename)\
+	X(annot_template_id)\
+	X(annot_non_type)\
+	X(annot_non_type_undeclared)\
+	X(annot_non_type_dependent)\
+	X(annot_overload_set)\
+	X(annot_primary_expr)\
+	X(annot_decltype)\
+	X(annot_pragma_unused)\
+	X(annot_pragma_vis)\
+	X(annot_pragma_pack)\
+	X(annot_pragma_parser_crash)\
+	X(annot_pragma_captured)\
+	X(annot_pragma_dump)\
+	X(annot_pragma_msstruct)\
+	X(annot_pragma_align)\
+	X(annot_pragma_weak)\
+	X(annot_pragma_weakalias)\
+	X(annot_pragma_redefine_extname)\
+	X(annot_pragma_fp_contract)\
+	X(annot_pragma_fenv_access)\
+	X(annot_pragma_fenv_access_ms)\
+	X(annot_pragma_fenv_round)\
+	X(annot_pragma_float_control)\
+	X(annot_pragma_ms_pointers_to_members)\
+	X(annot_pragma_ms_vtordisp)\
+	X(annot_pragma_ms_pragma)\
+	X(annot_pragma_opencl_extension)\
+	X(annot_attr_openmp)\
+	X(annot_pragma_openmp)\
+	X(annot_pragma_openmp_end)\
+	X(annot_pragma_loop_hint)\
+	X(annot_pragma_fp)\
+	X(annot_pragma_attribute)\
+	X(annot_pragma_riscv)\
+	X(annot_module_include)\
+	X(annot_module_begin)\
+	X(annot_module_end)\
+	X(annot_header_unit)\
+	X(annot_repl_input_end)
+
 typedef enum Tokk_t
 {
-	Tokk_unknown = 0,
-	Tokk_eof = 1,
-	Tokk_eod = 2,
-	Tokk_code_completion = 3,
-	Tokk_comment = 4,
-	Tokk_identifier = 5,
-	Tokk_raw_identifier = 6,
-	Tokk_numeric_constant = 7,
-	Tokk_char_constant = 8,
-	Tokk_wide_char_constant = 9,
-	Tokk_utf8_char_constant = 10,
-	Tokk_utf16_char_constant = 11,
-	Tokk_utf32_char_constant = 12,
-	Tokk_string_literal = 13,
-	Tokk_wide_string_literal = 14,
-	Tokk_header_name = 15,
-	Tokk_utf8_string_literal = 16,
-	Tokk_utf16_string_literal = 17,
-	Tokk_utf32_string_literal = 18,
-	Tokk_l_square = 19,
-	Tokk_r_square = 20,
-	Tokk_l_paren = 21,
-	Tokk_r_paren = 22,
-	Tokk_l_brace = 23,
-	Tokk_r_brace = 24,
-	Tokk_period = 25,
-	Tokk_ellipsis = 26,
-	Tokk_amp = 27,
-	Tokk_ampamp = 28,
-	Tokk_ampequal = 29,
-	Tokk_star = 30,
-	Tokk_starequal = 31,
-	Tokk_plus = 32,
-	Tokk_plusplus = 33,
-	Tokk_plusequal = 34,
-	Tokk_minus = 35,
-	Tokk_arrow = 36,
-	Tokk_minusminus = 37,
-	Tokk_minusequal  = 38,
-	Tokk_tilde = 39,
-	Tokk_exclaim = 40,
-	Tokk_exclaimequal = 41,
-	Tokk_slash = 42,
-	Tokk_slashequal = 43,
-	Tokk_percent = 44,
-	Tokk_percentequal = 45,
-	Tokk_less = 46,
-	Tokk_lessless = 47,
-	Tokk_lessequal = 48,
-	Tokk_lesslessequal = 49,
-	Tokk_spaceship = 50,
-	Tokk_greater = 51,
-	Tokk_greatergreater = 52,
-	Tokk_greaterequal = 53,
-	Tokk_greatergreaterequal = 54,
-	Tokk_caret = 55,
-	Tokk_caretequal = 56,
-	Tokk_pipe = 57,
-	Tokk_pipepipe = 58,
-	Tokk_pipeequal = 59,
-	Tokk_question = 60,
-	Tokk_colon = 61,
-	Tokk_semi = 62,
-	Tokk_equal = 63,
-	Tokk_equalequal = 64,
-	Tokk_comma = 65,
-	Tokk_hash = 66,
-	Tokk_hashhash = 67,
-	Tokk_hashat = 68,
-	Tokk_periodstar = 69,
-	Tokk_arrowstar = 70,
-	Tokk_coloncolon = 71,
-	Tokk_at = 72,
-	Tokk_lesslessless = 73,
-	Tokk_greatergreatergreater = 74,
-	Tokk_caretcaret = 75,
-	
-	Tokk_kw_auto = 76,
-	Tokk_kw_break = 77,
-	Tokk_kw_case = 78,
-	Tokk_kw_char = 79,
-	Tokk_kw_const = 80,
-	Tokk_kw_continue = 81,
-	Tokk_kw_default = 82,
-	Tokk_kw_do = 83,
-	Tokk_kw_double = 84,
-	Tokk_kw_else = 85,
-	Tokk_kw_enum = 86,
-	Tokk_kw_extern = 87,
-	Tokk_kw_float = 88,
-	Tokk_kw_for = 89,
-	Tokk_kw_goto = 90,
-	Tokk_kw_if = 91,
-	Tokk_kw_int = 92,
-	Tokk_kw__ExtInt = 93,
-	Tokk_kw__BitInt = 94,
-	Tokk_kw_long = 95,
-	Tokk_kw_register = 96,
-	Tokk_kw_return = 97,
-	Tokk_kw_short = 98,
-	Tokk_kw_signed = 99,
-	Tokk_kw_sizeof = 100,
-	Tokk_kw_static = 101,
-	Tokk_kw_struct = 102,
-	Tokk_kw_switch = 103,
-	Tokk_kw_typedef = 104,
-	Tokk_kw_union = 105,
-	Tokk_kw_unsigned = 106,
-	Tokk_kw_void = 107,
-	Tokk_kw_volatile = 108,
-	Tokk_kw_while = 109,
-	Tokk_kw__Alignas = 110,
-	Tokk_kw__Alignof = 111,
-	Tokk_kw__Atomic = 112,
-	Tokk_kw__Bool = 113,
-	Tokk_kw__Complex = 114,
-	Tokk_kw__Generic = 115,
-	Tokk_kw__Imaginary = 116,
-	Tokk_kw__Noreturn = 117,
-	Tokk_kw__Static_assert = 118,
-	Tokk_kw__Thread_local = 119,
-	Tokk_kw___func__ = 120,
-	Tokk_kw___objc_yes = 121,
-	Tokk_kw___objc_no = 122,
-	Tokk_kw_asm = 123,
-	Tokk_kw_bool = 124,
-	Tokk_kw_catch = 125,
-	Tokk_kw_class = 126,
-	Tokk_kw_const_cast = 127,
-	Tokk_kw_delete = 128,
-	Tokk_kw_dynamic_cast = 129,
-	Tokk_kw_explicit = 130,
-	Tokk_kw_export = 131,
-	Tokk_kw_false = 132,
-	Tokk_kw_friend = 133,
-	Tokk_kw_mutable = 134,
-	Tokk_kw_namespace = 135,
-	Tokk_kw_new = 136,
-	Tokk_kw_operator = 137,
-	Tokk_kw_private = 138,
-	Tokk_kw_protected = 139,
-	Tokk_kw_public = 140,
-	Tokk_kw_reinterpret_cast = 141,
-	Tokk_kw_static_cast = 142,
-	Tokk_kw_template = 143,
-	Tokk_kw_this = 144,
-	Tokk_kw_throw = 145,
-	Tokk_kw_true = 146,
-	Tokk_kw_try = 147,
-	Tokk_kw_typename = 148,
-	Tokk_kw_typeid = 149,
-	Tokk_kw_using = 150,
-	Tokk_kw_virtual = 151,
-	Tokk_kw_wchar_t = 152,
-	Tokk_kw_restrict = 153,
-	Tokk_kw_inline = 154,
-	Tokk_kw_alignas = 155,
-	Tokk_kw_alignof = 156,
-	Tokk_kw_char16_t = 157,
-	Tokk_kw_char32_t = 158,
-	Tokk_kw_constexpr = 159,
-	Tokk_kw_decltype = 160,
-	Tokk_kw_noexcept = 161,
-	Tokk_kw_nullptr = 162,
-	Tokk_kw_static_assert = 163,
-	Tokk_kw_thread_local = 164,
-	Tokk_kw_co_await = 165,
-	Tokk_kw_co_return = 166,
-	Tokk_kw_co_yield = 167,
-	Tokk_kw_module = 168,
-	Tokk_kw_import = 169,
-	Tokk_kw_consteval = 170,
-	Tokk_kw_constinit = 171,
-	Tokk_kw_concept = 172,
-	Tokk_kw_requires = 173,
-	Tokk_kw_char8_t = 174,
-	Tokk_kw__Float16 = 175,
-	Tokk_kw_typeof = 176,
-	Tokk_kw_typeof_unqual = 177,
-	Tokk_kw__Accum = 178,
-	Tokk_kw__Fract = 179,
-	Tokk_kw__Sat = 180,
-	Tokk_kw__Decimal32 = 181,
-	Tokk_kw__Decimal64 = 182,
-	Tokk_kw__Decimal128 = 183,
-	Tokk_kw___null = 184,
-	Tokk_kw___alignof = 185,
-	Tokk_kw___attribute = 186,
-	Tokk_kw___builtin_choose_expr = 187,
-	Tokk_kw___builtin_offsetof = 188,
-	Tokk_kw___builtin_FILE = 189,
-	Tokk_kw___builtin_FILE_NAME = 190,
-	Tokk_kw___builtin_FUNCTION = 191,
-	Tokk_kw___builtin_FUNCSIG = 192,
-	Tokk_kw___builtin_LINE = 193,
-	Tokk_kw___builtin_COLUMN = 194,
-	Tokk_kw___builtin_source_location = 195,
-	Tokk_kw___builtin_types_compatible_p = 196,
-	Tokk_kw___builtin_va_arg = 197,
-	Tokk_kw___extension__ = 198,
-	Tokk_kw___float128 = 199,
-	Tokk_kw___ibm128 = 200,
-	Tokk_kw___imag = 201,
-	Tokk_kw___int128 = 202,
-	Tokk_kw___label__ = 203,
-	Tokk_kw___real = 204,
-	Tokk_kw___thread = 205,
-	Tokk_kw___FUNCTION__ = 206,
-	Tokk_kw___PRETTY_FUNCTION__ = 207,
-	Tokk_kw___auto_type = 208,
-	Tokk_kw___FUNCDNAME__ = 209,
-	Tokk_kw___FUNCSIG__ = 210,
-	Tokk_kw_L__FUNCTION__ = 211,
-	Tokk_kw_L__FUNCSIG__ = 212,
-	Tokk_kw___is_interface_class = 213,
-	Tokk_kw___is_sealed = 214,
-	Tokk_kw___is_destructible = 215,
-	Tokk_kw___is_trivially_destructible = 216,
-	Tokk_kw___is_nothrow_destructible = 217,
-	Tokk_kw___is_nothrow_assignable = 218,
-	Tokk_kw___is_constructible = 219,
-	Tokk_kw___is_nothrow_constructible = 220,
-	Tokk_kw___is_assignable = 221,
-	Tokk_kw___has_nothrow_move_assign = 222,
-	Tokk_kw___has_trivial_move_assign = 223,
-	Tokk_kw___has_trivial_move_constructor = 224,
-	Tokk_kw___has_nothrow_assign = 225,
-	Tokk_kw___has_nothrow_copy = 226,
-	Tokk_kw___has_nothrow_constructor = 227,
-	Tokk_kw___has_trivial_assign = 228,
-	Tokk_kw___has_trivial_copy = 229,
-	Tokk_kw___has_trivial_constructor = 230,
-	Tokk_kw___has_trivial_destructor = 231,
-	Tokk_kw___has_virtual_destructor = 232,
-	Tokk_kw___is_abstract = 233,
-	Tokk_kw___is_aggregate = 234,
-	Tokk_kw___is_base_of = 235,
-	Tokk_kw___is_class = 236,
-	Tokk_kw___is_convertible_to = 237,
-	Tokk_kw___is_empty = 238,
-	Tokk_kw___is_enum = 239,
-	Tokk_kw___is_final = 240,
-	Tokk_kw___is_literal = 241,
-	Tokk_kw___is_pod = 242,
-	Tokk_kw___is_polymorphic = 243,
-	Tokk_kw___is_standard_layout = 244,
-	Tokk_kw___is_trivial = 245,
-	Tokk_kw___is_trivially_assignable = 246,
-	Tokk_kw___is_trivially_constructible = 247,
-	Tokk_kw___is_trivially_copyable = 248,
-	Tokk_kw___is_union = 249,
-	Tokk_kw___has_unique_object_representations = 250,
-	Tokk_kw___add_lvalue_reference = 251,
-	Tokk_kw___add_pointer = 252,
-	Tokk_kw___add_rvalue_reference = 253,
-	Tokk_kw___decay = 254,
-	Tokk_kw___make_signed = 255,
-	Tokk_kw___make_unsigned = 256,
-	Tokk_kw___remove_all_extents = 257,
-	Tokk_kw___remove_const = 258,
-	Tokk_kw___remove_cv = 259,
-	Tokk_kw___remove_cvref = 260,
-	Tokk_kw___remove_extent = 261,
-	Tokk_kw___remove_pointer = 262,
-	Tokk_kw___remove_reference_t = 263,
-	Tokk_kw___remove_restrict = 264,
-	Tokk_kw___remove_volatile = 265,
-	Tokk_kw___underlying_type = 266,
-	Tokk_kw___is_trivially_relocatable = 267,
-	Tokk_kw___is_trivially_equality_comparable = 268,
-	Tokk_kw___is_bounded_array = 269,
-	Tokk_kw___is_unbounded_array = 270,
-	Tokk_kw___is_nullptr = 271,
-	Tokk_kw___is_scoped_enum = 272,
-	Tokk_kw___is_referenceable = 273,
-	Tokk_kw___can_pass_in_regs = 274,
-	Tokk_kw___reference_binds_to_temporary = 275,
-	Tokk_kw___is_lvalue_expr = 276,
-	Tokk_kw___is_rvalue_expr = 277,
-	Tokk_kw___is_arithmetic = 278,
-	Tokk_kw___is_floating_point = 279,
-	Tokk_kw___is_integral = 280,
-	Tokk_kw___is_complete_type = 281,
-	Tokk_kw___is_void = 282,
-	Tokk_kw___is_array = 283,
-	Tokk_kw___is_function = 284,
-	Tokk_kw___is_reference = 285,
-	Tokk_kw___is_lvalue_reference = 286,
-	Tokk_kw___is_rvalue_reference = 287,
-	Tokk_kw___is_fundamental = 288,
-	Tokk_kw___is_object = 289,
-	Tokk_kw___is_scalar = 290,
-	Tokk_kw___is_compound = 291,
-	Tokk_kw___is_pointer = 292,
-	Tokk_kw___is_member_object_pointer = 293,
-	Tokk_kw___is_member_function_pointer = 294,
-	Tokk_kw___is_member_pointer = 295,
-	Tokk_kw___is_const = 296,
-	Tokk_kw___is_volatile = 297,
-	Tokk_kw___is_signed = 298,
-	Tokk_kw___is_unsigned = 299,
-	Tokk_kw___is_same = 300,
-	Tokk_kw___is_convertible = 301,
-	Tokk_kw___array_rank = 302,
-	Tokk_kw___array_extent = 303,
-	Tokk_kw___private_extern__ = 304,
-	Tokk_kw___module_private__ = 305,
-	Tokk_kw___declspec = 306,
-	Tokk_kw___cdecl = 307,
-	Tokk_kw___stdcall = 308,
-	Tokk_kw___fastcall = 309,
-	Tokk_kw___thiscall = 310,
-	Tokk_kw___regcall = 311,
-	Tokk_kw___vectorcall = 312,
-	Tokk_kw___forceinline = 313,
-	Tokk_kw___unaligned = 314,
-	Tokk_kw___super = 315,
-	Tokk_kw___global = 316,
-	Tokk_kw___local = 317,
-	Tokk_kw___constant = 318,
-	Tokk_kw___private = 319,
-	Tokk_kw___generic = 320,
-	Tokk_kw___kernel = 321,
-	Tokk_kw___read_only = 322,
-	Tokk_kw___write_only = 323,
-	Tokk_kw___read_write = 324,
-	Tokk_kw___builtin_astype = 325,
-	Tokk_kw_vec_step = 326,
-	Tokk_kw_image1d_t = 327,
-	Tokk_kw_image1d_array_t = 328,
-	Tokk_kw_image1d_buffer_t = 329,
-	Tokk_kw_image2d_t = 330,
-	Tokk_kw_image2d_array_t = 331,
-	Tokk_kw_image2d_depth_t = 332,
-	Tokk_kw_image2d_array_depth_t = 333,
-	Tokk_kw_image2d_msaa_t = 334,
-	Tokk_kw_image2d_array_msaa_t = 335,
-	Tokk_kw_image2d_msaa_depth_t = 336,
-	Tokk_kw_image2d_array_msaa_depth_t = 337,
-	Tokk_kw_image3d_t = 338,
-	Tokk_kw_pipe = 339,
-	Tokk_kw_addrspace_cast = 340,
-	Tokk_kw___noinline__ = 341,
-	Tokk_kw_cbuffer = 342,
-	Tokk_kw_tbuffer = 343,
-	Tokk_kw_groupshared = 344,
-	Tokk_kw___builtin_omp_required_simd_align = 345,
-	Tokk_kw___pascal = 346,
-	Tokk_kw___vector = 347,
-	Tokk_kw___pixel = 348,
-	Tokk_kw___bool = 349,
-	Tokk_kw___bf16 = 350,
-	Tokk_kw_half = 351,
-	Tokk_kw___bridge = 352,
-	Tokk_kw___bridge_transfer = 353,
-	Tokk_kw___bridge_retained = 354,
-	Tokk_kw___bridge_retain = 355,
-	Tokk_kw___covariant = 356,
-	Tokk_kw___contravariant = 357,
-	Tokk_kw___kindof = 358,
-	Tokk_kw__Nonnull = 359,
-	Tokk_kw__Nullable = 360,
-	Tokk_kw__Nullable_result = 361,
-	Tokk_kw__Null_unspecified = 362,
-	Tokk_kw___funcref = 363,
-	Tokk_kw___ptr64 = 364,
-	Tokk_kw___ptr32 = 365,
-	Tokk_kw___sptr = 366,
-	Tokk_kw___uptr = 367,
-	Tokk_kw___w64 = 368,
-	Tokk_kw___uuidof = 369,
-	Tokk_kw___try = 370,
-	Tokk_kw___finally = 371,
-	Tokk_kw___leave = 372,
-	Tokk_kw___int64 = 373,
-	Tokk_kw___if_exists = 374,
-	Tokk_kw___if_not_exists = 375,
-	Tokk_kw___single_inheritance = 376,
-	Tokk_kw___multiple_inheritance = 377,
-	Tokk_kw___virtual_inheritance = 378,
-	Tokk_kw___interface = 379,
-	Tokk_kw___builtin_convertvector = 380,
-	Tokk_kw___builtin_bit_cast = 381,
-	Tokk_kw___builtin_available = 382,
-	Tokk_kw___builtin_sycl_unique_stable_name = 383,
-	Tokk_kw___arm_streaming = 384,
-	Tokk_kw___unknown_anytype = 385,
-
-	Tokk_annot_cxxscope = 386,
-	Tokk_annot_typename = 387,
-	Tokk_annot_template_id = 388,
-	Tokk_annot_non_type = 389,
-	Tokk_annot_non_type_undeclared = 390,
-	Tokk_annot_non_type_dependent = 391,
-	Tokk_annot_overload_set = 392,
-	Tokk_annot_primary_expr = 393,
-	Tokk_annot_decltype = 394,
-	Tokk_annot_pragma_unused = 395,
-	Tokk_annot_pragma_vis = 396,
-	Tokk_annot_pragma_pack = 397,
-	Tokk_annot_pragma_parser_crash = 398,
-	Tokk_annot_pragma_captured = 399,
-	Tokk_annot_pragma_dump = 400,
-	Tokk_annot_pragma_msstruct = 401,
-	Tokk_annot_pragma_align = 402,
-	Tokk_annot_pragma_weak = 403,
-	Tokk_annot_pragma_weakalias = 404,
-	Tokk_annot_pragma_redefine_extname = 405,
-	Tokk_annot_pragma_fp_contract = 406,
-	Tokk_annot_pragma_fenv_access = 407,
-	Tokk_annot_pragma_fenv_access_ms = 408,
-	Tokk_annot_pragma_fenv_round = 409,
-	Tokk_annot_pragma_float_control = 410,
-	Tokk_annot_pragma_ms_pointers_to_members = 411,
-	Tokk_annot_pragma_ms_vtordisp = 412,
-	Tokk_annot_pragma_ms_pragma = 413,
-	Tokk_annot_pragma_opencl_extension = 414,
-	Tokk_annot_attr_openmp = 415,
-	Tokk_annot_pragma_openmp = 416,
-	Tokk_annot_pragma_openmp_end = 417,
-	Tokk_annot_pragma_loop_hint = 418,
-	Tokk_annot_pragma_fp = 419,
-	Tokk_annot_pragma_attribute = 420,
-	Tokk_annot_pragma_riscv = 421,
-	Tokk_annot_module_include = 422,
-	Tokk_annot_module_begin = 423,
-	Tokk_annot_module_end = 424,
-	Tokk_annot_header_unit = 425,
-	Tokk_annot_repl_input_end = 426,
+#define X(id) Tokk_##id,
+TOKEN_KINDS()
+#undef X
 } Tokk_t;
 
 void Lex_punctuation(
