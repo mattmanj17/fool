@@ -217,8 +217,7 @@ bool Try_decode_utf8(
 
 
 
-// 'scrub' : helpers for walking over chars and replacing 
-//   runs of chars with new single chars
+// 'scrub' : replace patterns in chars
 
 typedef struct Scrub_t
 {
@@ -279,13 +278,6 @@ void Advance_scrub(
 
 	scrub_r->chars.index += 1;
 	scrub_r->locs.index += 1;
-
-	// Copy ending loc. Need to do this in case we are the last char
-
-	assert(scrub_r->locs.index < scrub_r->locs.end);
-	assert(scrub_r->loc_from < scrub_r->locs.end);
-
-	scrub_r->locs.index[0] = scrub_r->loc_from[0];
 }
 
 void End_scrub(
@@ -293,8 +285,90 @@ void End_scrub(
 	Chars_t * chars_r,
 	Locs_t * locs_r)
 {
+	// Move last loc (the end of the last token)
+
+	assert(scrub.locs.index < scrub.locs.end);
+	assert(scrub.loc_from < scrub.locs.end);
+
+	scrub.locs.index[0] = scrub.loc_from[0];
+
+	// Set end ptrs
+
 	chars_r->end = scrub.chars.index;
 	locs_r->end = scrub.locs.index + 1;
+}
+
+void Scrub_carriage_returns(
+	Chars_t * chars_r,
+	Locs_t * locs_r)
+{
+	Scrub_t scrub = Start_scrub(*chars_r, *locs_r);
+	while (!Is_scrub_done(scrub))
+	{
+		char32_t ch = Scrub_ch(scrub, 0);
+		bool is_cr = ch == '\r';
+		if (is_cr)
+			ch = '\n';
+
+		size_t len_scrub = 1;
+		if (is_cr && Scrub_ch(scrub, 1) == '\n')
+		{
+			len_scrub = 2;
+		}
+
+		Advance_scrub(&scrub, ch, len_scrub);
+	}
+	End_scrub(scrub, chars_r, locs_r);
+}
+
+void Scrub_trigraphs(
+	Chars_t * chars_r,
+	Locs_t * locs_r)
+{
+	Scrub_t scrub = Start_scrub(*chars_r, *locs_r);
+	while (!Is_scrub_done(scrub))
+	{
+		char32_t ch0 = Scrub_ch(scrub, 0);
+
+		if (ch0 == '?' && Scrub_ch(scrub, 1) == '?')
+		{
+			char32_t ch2 = Scrub_ch(scrub, 2);
+
+			char32_t pairs[][2] =
+			{
+				{ '<', '{' },
+				{ '>', '}' },
+				{ '(', '[' },
+				{ ')', ']' },
+				{ '=', '#' },
+				{ '/', '\\' },
+				{ '\'', '^' },
+				{ '!', '|' },
+				{ '-', '~' },
+			};
+
+			int i_match = -1;
+			for (int i = 0; i < ARY_LEN(pairs); ++i)
+			{
+				if (pairs[i][0] == ch2)
+				{
+					i_match = i;
+					break;
+				}
+			}
+
+			if (i_match != -1)
+			{
+				char32_t ch_replace = pairs[i_match][1];
+				Advance_scrub(&scrub, ch_replace, 3);
+
+				continue;
+			}
+		}
+
+		Advance_scrub(&scrub, ch0, 1);
+	}
+	End_scrub(scrub, chars_r, locs_r);
 }
 
 void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
@@ -344,6 +418,18 @@ void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
 			Scrub_ch(*scrub_r, len), 
 			len + 1);
 	}
+}
+
+void Scrub_escaped_line_breaks(
+	Chars_t * chars_r,
+	Locs_t * locs_r)
+{
+	Scrub_t scrub = Start_scrub(*chars_r, *locs_r);
+	while (!Is_scrub_done(scrub))
+	{
+		Scrub_leading_escaped_line_breaks(&scrub);
+	}
+	End_scrub(scrub, chars_r, locs_r);
 }
 
 void Try_decode_logical_codepoints(
@@ -396,81 +482,9 @@ void Try_decode_logical_codepoints(
 	chars.end = chars.index + count_chars;
 	locs.end = locs.index + count_chars + 1;
 
-	// \r and \r\n to \n
-
-	Scrub_t scrub = Start_scrub(chars, locs);
-	while (!Is_scrub_done(scrub))
-	{
-		char32_t ch = Scrub_ch(scrub, 0);
-		bool is_cr = ch == '\r';
-		if (is_cr)
-			ch = '\n';
-
-		size_t len_scrub = 1;
-		if (is_cr && Scrub_ch(scrub, 1) == '\n')
-		{
-			len_scrub = 2;
-		}
-
-		Advance_scrub(&scrub, ch, len_scrub);
-	}
-	End_scrub(scrub, &chars, &locs);
-
-	// trigraphs
-
-	scrub = Start_scrub(chars, locs);
-	while (!Is_scrub_done(scrub))
-	{
-		char32_t ch0 = Scrub_ch(scrub, 0);
-
-		if (ch0 == '?' && Scrub_ch(scrub, 1) == '?')
-		{
-			char32_t ch2 = Scrub_ch(scrub, 2);
-
-			char32_t pairs[][2] =
-			{
-				{ '<', '{' },
-				{ '>', '}' },
-				{ '(', '[' },
-				{ ')', ']' },
-				{ '=', '#' },
-				{ '/', '\\' },
-				{ '\'', '^' },
-				{ '!', '|' },
-				{ '-', '~' },
-			};
-
-			int i_match = -1;
-			for (int i = 0; i < ARY_LEN(pairs); ++i)
-			{
-				if (pairs[i][0] == ch2)
-				{
-					i_match = i;
-					break;
-				}
-			}
-
-			if (i_match != -1)
-			{
-				char32_t ch_replace = pairs[i_match][1];
-				Advance_scrub(&scrub, ch_replace, 3);
-
-				continue;
-			}
-		}
-
-		Advance_scrub(&scrub, ch0, 1);
-	}
-	End_scrub(scrub, &chars, &locs);
-
-	// escaped line breaks
-
-	scrub = Start_scrub(chars, locs);
-	while (!Is_scrub_done(scrub))
-	{
-		Scrub_leading_escaped_line_breaks(&scrub);
-	}
-	End_scrub(scrub, &chars, &locs);
+	Scrub_carriage_returns(&chars, &locs);
+	Scrub_trigraphs(&chars, &locs);
+	Scrub_escaped_line_breaks(&chars, &locs);
 
 	// return chars + locs
 
