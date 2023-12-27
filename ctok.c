@@ -470,41 +470,6 @@ void Scrub_escaped_line_breaks(
 	End_scrub(scrub, chars_r, locs_r);
 }
 
-void Try_decode_logical_codepoints(
-	Bytes_t bytes,
-	Chars_t * chars_out,
-	Locs_t * locs_out)
-{
-	// In the worst case, we will have a codepoint for every byte
-	//  in the original span, so allocate enough space for that.
-
-	//  Note that the locations array is one longer than the character array,
-	//  since we want to store the begining and end of each character.
-	//  for most chars, the end is the same as the beginning of the next one,
-	//  except for the last one, which must have an explicit extra loc to denote its end
-
-	size_t len_bytes = Bytes_len(bytes);
-
-	Chars_t chars = Chars_alloc(len_bytes);
-	Locs_t locs = Locs_alloc(len_bytes + 1);
-
-	if (Chars_empty(chars) || Locs_empty(locs))
-		return;
-
-	// Decode + scrub
-
-	Decode_utf8(bytes, &chars, &locs);
-
-	Scrub_carriage_returns(&chars, &locs);
-	Scrub_trigraphs(&chars, &locs);
-	Scrub_escaped_line_breaks(&chars, &locs);
-
-	// return chars + locs
-
-	*chars_out = chars;
-	*locs_out = locs;
-}
-
 
 
 // Lex
@@ -1964,40 +1929,29 @@ void InspectSpanForEol(
 
 void Print_raw_tokens(Bytes_t bytes)
 {
-	// Munch bytes to logical characters
+	// In the worst case, we will have a codepoint for every byte
+	//  in the original span, so allocate enough space for that.
 
-	Chars_t chars = {0};
-	Locs_t locs = {0};
-	Try_decode_logical_codepoints(bytes, &chars, &locs);
+	//  Note that the locations array is one longer than the character array,
+	//  since we want to store the begining and end of each character.
+	//  for most chars, the end is the same as the beginning of the next one,
+	//  except for the last one, which must have an explicit extra loc to denote its end
+
+	size_t len_bytes = Bytes_len(bytes);
+
+	Chars_t chars = Chars_alloc(len_bytes);
+	Locs_t locs = Locs_alloc(len_bytes + 1);
+
 	if (Chars_empty(chars) || Locs_empty(locs))
 		return;
 
-#if 0
-	for (int i = 0; locs.index + i < locs.end - 1; ++i)
-	{
-		Byte_t ** index = locs.index + i;
-		long long dbyte = *index - *locs.index;
-		(void)dbyte;
-		assert(*index < *(index + 1));
-	}
+	// Decode + scrub
 
-	for (char32_t * index = chars.index; index < chars.end; ++index)
-	{
-		char32_t ch = index[0];
-		if (ch < 127)
-		{
-			//clean_and_print_char((char)ch);
-			printf("%c", (char)ch);
-		}
-		else
-		{
-			printf("`");
-		}
-	}
-	printf("\n");
-	printf("HONK!!!!!!\n");
-	printf("\n");
-#endif
+	Decode_utf8(bytes, &chars, &locs);
+
+	Scrub_carriage_returns(&chars, &locs);
+	Scrub_trigraphs(&chars, &locs);
+	Scrub_escaped_line_breaks(&chars, &locs);
 
 	// Keep track of line info
 
