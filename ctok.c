@@ -909,10 +909,22 @@ void Scrub_escaped_line_breaks(
 
 typedef enum Tokk_t
 {
-#define X(id) Tokk_##id,
-TOKEN_KINDS()
-#undef X
+	#define X(id) Tokk_##id,
+	TOKEN_KINDS()
+	#undef X
 } Tokk_t;
+
+const char * Str_from_tokk(Tokk_t tokk)
+{
+	static const char *  str_for_tokk[] =
+	{
+		#define X(id) #id,
+		TOKEN_KINDS()	
+		#undef X
+	};
+
+	return str_for_tokk[tokk];
+}
 
 void Lex_punctuation(
 	const char32_t * chars,
@@ -1778,98 +1790,95 @@ void Lex(
 
 // printing tokens
 
-void clean_and_print_char(char ch)
+void Print_byte_escaped(Byte_t byte)
 {
-  switch (ch)
-  { 
-  case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
-  case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j':
-  case 'k': case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't':
-  case 'u': case 'v': case 'w': case 'x': case 'y': case 'z':
-  case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J':
-  case 'K': case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T':
-  case 'U': case 'V': case 'W': case 'X': case 'Y': case 'Z':
-  case '!': case '\'': case '#': case '$': case '%': case '&': case '(': case ')': case '*': case '+':
-  case ',': case '-': case '.': case '/': case ':': case ';': case '<': case '=': case '>': case '?':
-  case '@': case '[': case ']': case '^': case '_': case '`': case '{': case '|': case '}': case '~':
-    printf("%c", ch);
-    break;
-
-  case '"':
-    printf("\\\"");
-    break;
-
-  case '\\':
-    printf("\\\\");
-    break;
-  
-  case '\f':
-    printf("\\f");
-    break;
-
-  case '\n':
-    printf("\\n");
-    break;
-
-  case '\r':
-    printf("\\r");
-    break;
-
-  case '\t':
-    printf("\\t");
-    break;
-
-  case '\v':
-    printf("\\v");
-    break;
-
-  default:
-    unsigned char highNibble = (unsigned char)((ch >> 4) & 0xF);
-    unsigned char lowNibble = (unsigned char)(ch & 0xF);
-
-    char highNibbleChar = highNibble < 10 ? '0' + highNibble : 'A' + (highNibble - 10);
-    char lowNibbleChar = lowNibble < 10 ? '0' + lowNibble : 'A' + (lowNibble - 10);
-
-    printf("\\x");
-    printf("%c", highNibbleChar);
-	printf("%c", lowNibbleChar);
-    break;
-  }
+	switch (byte)
+	{ 
+	case '0': case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+	case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g': case 'h': case 'i': case 'j':
+	case 'k': case 'l': case 'm': case 'n': case 'o': case 'p': case 'q': case 'r': case 's': case 't':
+	case 'u': case 'v': case 'w': case 'x': case 'y': case 'z':
+	case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G': case 'H': case 'I': case 'J':
+	case 'K': case 'L': case 'M': case 'N': case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T':
+	case 'U': case 'V': case 'W': case 'X': case 'Y': case 'Z':
+	case '!': case '\'': case '#': case '$': case '%': case '&': case '(': case ')': case '*': case '+':
+	case ',': case '-': case '.': case '/': case ':': case ';': case '<': case '=': case '>': case '?':
+	case '@': case '[': case ']': case '^': case '_': case '`': case '{': case '|': case '}': case '~':
+		printf("%c", byte);
+		break;
+	
+	case '"':
+		printf("\\\"");
+		break;
+	
+	case '\\':
+		printf("\\\\");
+		break;
+	
+	case '\f':
+		printf("\\f");
+		break;
+	
+	case '\n':
+		printf("\\n");
+		break;
+	
+	case '\r':
+		printf("\\r");
+		break;
+	
+	case '\t':
+		printf("\\t");
+		break;
+	
+	case '\v':
+		printf("\\v");
+		break;
+	
+	default:
+		{
+	    	Byte_t high_nibble = (Byte_t)((byte >> 4) & 0xF);
+	    	Byte_t low_nibble = (Byte_t)(byte & 0xF);
+	    	
+			char high_nibble_char = high_nibble < 10 ? '0' + high_nibble : 'A' + (high_nibble - 10);
+	    	char low_nibble_char = low_nibble < 10 ? '0' + low_nibble : 'A' + (low_nibble - 10);
+	    	
+			printf("\\x");
+	    	printf("%c", high_nibble_char);
+	    	printf("%c", low_nibble_char);
+		}
+		break;
+	}
 }
 
 void Print_token(
 	Tokk_t tokk,
-	int line,
-	long long col,
 	Byte_t * loc_begin,
-	Byte_t * loc_end)
+	Byte_t * loc_end,
+	int line,
+	long long col)
 {
 	// Token Kind
 
-	printf("%d", tokk);
+	printf("%s", Str_from_tokk(tokk));
+
+	// Token text
+
+	printf(" \"");
+
+	for (; loc_begin < loc_end; ++loc_begin)
+	{
+		Print_byte_escaped(*loc_begin);
+	}
+
+	printf("\" ");
 
 	// token loc
 
 	printf(
-		":%d:%lld",
+		"%d:%lld",
 		line,
 		col);
-
-#if 0
-	// token text
-
-	printf("  \"");
-
-	for (; tok_begin < tok_end; ++tok_begin)
-	{
-		clean_and_print_char(*tok_begin);
-	}
-
-	printf("\" ");
-#else
-	(void)loc_begin;
-	(void)loc_end;
-#endif
 
 	printf("\n");
 }
@@ -1979,10 +1988,10 @@ void Print_raw_tokens(Bytes_t bytes)
 
 		Print_token(
 			tokk,
-			line,
-			loc_begin - line_start + 1,
 			loc_begin,
-			loc_end);
+			loc_end,
+			line,
+			loc_begin - line_start + 1);
 
 		// Handle eol
 

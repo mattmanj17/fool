@@ -306,6 +306,12 @@ int wmain(int argc, wchar_t *argv[])
 
 		if (ws_lengths.len_esc_eol)
 		{
+			// ... but drop esc eols at the end of files.
+			//  Clang handles these weird...
+
+			if (input + len_ws >= end)
+				break;
+
 			memcpy(
 				output + output_length, 
 				ws_buffers.esc_eols, 

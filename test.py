@@ -41,7 +41,7 @@ def build_clang():
 	os.chdir('llvm-project')
 	
 	print('git switch')
-	subprocess.run(['git', 'switch', '17.0.3-branch-v2'])
+	subprocess.run(['git', 'switch', '17.0.3-branch'])
 	
 	os.mkdir('build')
 	os.chdir('build')
