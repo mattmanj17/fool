@@ -1865,8 +1865,8 @@ void Print_token(
 	Tokk_t tokk,
 	Byte_t * loc_begin,
 	Byte_t * loc_end,
-	int line,
-	long long col)
+	size_t line,
+	size_t col)
 {
 	// Token Kind
 
@@ -1886,71 +1886,59 @@ void Print_token(
 	// token loc
 
 	printf(
-		"%d:%lld",
+		"%zd:%zd",
 		line,
 		col);
 
 	printf("\n");
 }
 
-int Len_eol(Byte_t * str)
+size_t Len_leading_line_break(
+	Byte_t * loc_begin,
+	Byte_t * loc_end)
 {
-	Byte_t ch = str[0];
+	long long bytes_len = loc_end - loc_begin;
+	if (bytes_len <= 0)
+		return 0;
 
-	if (ch == '\n')
+	Byte_t byte = loc_begin[0];
+	if (byte == '\n')
+		return 1;
+
+	if (byte == '\r')
 	{
+		if (bytes_len >= 2 && loc_begin[1] == '\n')
+			return 2;
+
 		return 1;
 	}
-	else if (ch == '\r')
-	{
-		if (str[1] == '\n')
-		{
-			return 2;
-		}
-		else
-		{
-			return 1;
-		}
-	}
-	else
-	{
-		return 0;
-	}
+
+	return 0;
 }
 
-void InspectSpanForEol(
-	Byte_t * pChBegin,
-	Byte_t * pChEnd,
-	int * pCLine,
-	Byte_t ** ppStartOfLine)
+void Advance_line_info(
+	Byte_t * loc_begin,
+	Byte_t * loc_end,
+	size_t * line_r,
+	size_t * col_r)
 {
-	// BUG if we care about having random access to line info, 
-	//  we would need a smarter answer than InspectSpanForEol...
-
-	int cLine = 0;
-	Byte_t * pStartOfLine = NULL;
-
-	while (pChBegin < pChEnd)
+	while (loc_begin < loc_end)
 	{
-		// BUG what if pChEnd straddles an EOL?
-
-		int len_eol = Len_eol(pChBegin);
-
-		if (len_eol)
+		size_t len = Len_leading_line_break(loc_begin, loc_end);
+		if (len)
 		{
-			pChBegin += len_eol;
+			loc_begin += len;
 
-			++cLine;
-			pStartOfLine = pChBegin;
+			*line_r += 1;
+			*col_r = 1;
 		}
 		else
 		{
-			++pChBegin;
+			loc_begin += 1;
+
+			*col_r += 1;
 		}
 	}
-
-	*pCLine = cLine;
-	*ppStartOfLine = pStartOfLine;
 }
 
 void Print_raw_tokens(Bytes_t bytes)
@@ -1984,8 +1972,8 @@ void Print_raw_tokens(Bytes_t bytes)
 
 	// Keep track of line info
 
-	Byte_t * line_start = *locs.index;
-	int line = 1;
+	size_t line = 1;
+	size_t col = 1;
 
 	// Lex!
 
@@ -1998,27 +1986,18 @@ void Print_raw_tokens(Bytes_t bytes)
 
 		Byte_t * loc_begin = locs.index[i];
 		Byte_t * loc_end = locs.index[i_after];
-
 		Print_token(
 			tokk,
 			loc_begin,
 			loc_end,
 			line,
-			loc_begin - line_start + 1);
+			col);
 
-		// Handle eol
-
-		int cLine;
-		Byte_t * pStartOfLine;
-		InspectSpanForEol(loc_begin, loc_end, &cLine, &pStartOfLine);
-
-		if (cLine)
-		{
-			line += cLine;
-			line_start = pStartOfLine;
-		}
-
-		// Advance
+		Advance_line_info(
+			loc_begin,
+			loc_end,
+			&line,
+			&col);
 
 		i = i_after;
 	}
