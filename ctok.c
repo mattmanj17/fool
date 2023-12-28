@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h> // strlen only in Lex_punctuation...
 #include <uchar.h>
 
 // fuck windows
@@ -486,6 +485,8 @@ void Scrub_escaped_line_breaks(
 
 // Lex
 
+// TODO TokkLen_t !!!!!!
+
 #define TOKEN_KINDS()\
 	X(unknown)\
 	X(eof)\
@@ -937,119 +938,135 @@ const char * Str_from_tokk(Tokk_t tokk)
 }
 
 void Lex_punctuation(
-	const char32_t * chars,
-	size_t count_chars,
-	size_t i,
+	Chars_t chars,
 	Tokk_t * tokk_out,
-	size_t * i_after_out)
+	size_t * len_out)
 {
+	// No chars? no punct
+
+	if (Chars_empty(chars))
+	{
+		*len_out = 0;
+		*tokk_out = Tokk_unknown;
+
+		return;
+	}
+
+	// Punctuation sorted by length
+
 	typedef struct
 	{
-		const char * str;
+		const char32_t * str;
 		Tokk_t tokk;
-		int _padding;
-	} Punctution_t;
+	} Punctuation_t;
 
 	// "::" is included to match clang
 	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
 
-	static Punctution_t puctuations[] =
+	static Punctuation_t puncts[] =
 	{
-		{"%:%:", Tokk_hashhash},
-		{">>=", Tokk_greatergreaterequal},
-		{"<<=", Tokk_lesslessequal},
-		{"...", Tokk_ellipsis},
-		{"|=", Tokk_pipeequal},
-		{"||", Tokk_pipepipe},
-		{"^=", Tokk_caretequal},
-		{"==", Tokk_equalequal},
-		{"::", Tokk_coloncolon},
-		{":>", Tokk_r_square},
-		{"-=", Tokk_minusequal},
-		{"--", Tokk_minusminus},
-		{"->", Tokk_arrow},
-		{"+=", Tokk_plusequal},
-		{"++", Tokk_plusplus},
-		{"*=", Tokk_starequal},
-		{"&=", Tokk_ampequal},
-		{"&&", Tokk_ampamp},
-		{"##", Tokk_hashhash},
-		{"!=", Tokk_exclaimequal},
-		{">=", Tokk_greaterequal},
-		{">>", Tokk_greatergreater},
-		{"<=", Tokk_lessequal},
-		{"<:", Tokk_l_square},
-		{"<%", Tokk_l_brace},
-		{"<<", Tokk_lessless},
-		{"%>", Tokk_r_brace},
-		{"%=", Tokk_percentequal},
-		{"%:", Tokk_hash},
-		{"/=", Tokk_slashequal},
-		{"~", Tokk_tilde},
-		{"}", Tokk_r_brace},
-		{"{", Tokk_l_brace},
-		{"]", Tokk_r_square},
-		{"[", Tokk_l_square},
-		{"?", Tokk_question},
-		{";", Tokk_semi},
-		{",", Tokk_comma},
-		{")", Tokk_r_paren},
-		{"(", Tokk_l_paren},
-		{"|", Tokk_pipe},
-		{"^", Tokk_caret},
-		{"=", Tokk_equal},
-		{":", Tokk_colon},
-		{"-", Tokk_minus},
-		{"+", Tokk_plus},
-		{"*", Tokk_star},
-		{"&", Tokk_amp},
-		{"#", Tokk_hash},
-		{"!", Tokk_exclaim},
-		{">", Tokk_greater},
-		{"<", Tokk_less},
-		{"%", Tokk_percent},
-		{".", Tokk_period},
-		{"/", Tokk_slash},
+		{U"%:%:", Tokk_hashhash},
+		{U">>=", Tokk_greatergreaterequal},
+		{U"<<=", Tokk_lesslessequal},
+		{U"...", Tokk_ellipsis},
+		{U"|=", Tokk_pipeequal},
+		{U"||", Tokk_pipepipe},
+		{U"^=", Tokk_caretequal},
+		{U"==", Tokk_equalequal},
+		{U"::", Tokk_coloncolon},
+		{U":>", Tokk_r_square},
+		{U"-=", Tokk_minusequal},
+		{U"--", Tokk_minusminus},
+		{U"->", Tokk_arrow},
+		{U"+=", Tokk_plusequal},
+		{U"++", Tokk_plusplus},
+		{U"*=", Tokk_starequal},
+		{U"&=", Tokk_ampequal},
+		{U"&&", Tokk_ampamp},
+		{U"##", Tokk_hashhash},
+		{U"!=", Tokk_exclaimequal},
+		{U">=", Tokk_greaterequal},
+		{U">>", Tokk_greatergreater},
+		{U"<=", Tokk_lessequal},
+		{U"<:", Tokk_l_square},
+		{U"<%", Tokk_l_brace},
+		{U"<<", Tokk_lessless},
+		{U"%>", Tokk_r_brace},
+		{U"%=", Tokk_percentequal},
+		{U"%:", Tokk_hash},
+		{U"/=", Tokk_slashequal},
+		{U"~", Tokk_tilde},
+		{U"}", Tokk_r_brace},
+		{U"{", Tokk_l_brace},
+		{U"]", Tokk_r_square},
+		{U"[", Tokk_l_square},
+		{U"?", Tokk_question},
+		{U";", Tokk_semi},
+		{U",", Tokk_comma},
+		{U")", Tokk_r_paren},
+		{U"(", Tokk_l_paren},
+		{U"|", Tokk_pipe},
+		{U"^", Tokk_caret},
+		{U"=", Tokk_equal},
+		{U":", Tokk_colon},
+		{U"-", Tokk_minus},
+		{U"+", Tokk_plus},
+		{U"*", Tokk_star},
+		{U"&", Tokk_amp},
+		{U"#", Tokk_hash},
+		{U"!", Tokk_exclaim},
+		{U">", Tokk_greater},
+		{U"<", Tokk_less},
+		{U"%", Tokk_percent},
+		{U".", Tokk_period},
+		{U"/", Tokk_slash},
 	};
 
-	for (int i_puctuation = 0; i_puctuation < ARY_LEN(puctuations); ++i_puctuation)
+	for (int i_punct = 0; i_punct < ARY_LEN(puncts); ++i_punct)
 	{
-		Punctution_t punctuation = puctuations[i_puctuation];
-		const char * str_puctuation = punctuation.str;
-		size_t len = strlen(str_puctuation);
+		Punctuation_t punct = puncts[i_punct];
+		const char32_t * str = punct.str;
 
-		if (i + len > count_chars)
+		// Empty str in punct? skip it
+
+		if (str[0] == '\0')
 			continue;
 
-		size_t i_peek = i;
-		bool found_match = true;
+		// Check if chars starts with str
 
-		for (size_t i_ch = 0; i_ch < len; ++i_ch)
+		bool found_match = false;
+
+		char32_t * index_peek = chars.index;
+		while (index_peek < chars.end)
 		{
-			// This code is messy + has bad var names...
+			if (index_peek[0] != str[0])
+				break;
 
-			char ch = str_puctuation[i_ch];
-			char32_t cp_ch = (char32_t)ch;
+			++index_peek;
+			++str;
 
-			char32_t cp = chars[i_peek];
-			++i_peek;
-
-			if (cp != cp_ch)
+			if (str[0] == '\0')
 			{
-				found_match = false;
+				// Reached end of str, so we have a match
+
+				found_match = true;
 				break;
 			}
 		}
 
 		if (found_match)
 		{
-			*i_after_out = i_peek;
-			*tokk_out = punctuation.tokk;
+			// Found a match, return len + tokk
+
+			*len_out = (size_t)(index_peek - chars.index);
+			*tokk_out = punct.tokk;
 			return;
 		}
 	}
 
-	*i_after_out = i + 1;
+	// Just return leading char as an unknown token
+
+	*len_out = 1;
 	*tokk_out = Tokk_unknown;
 }
 
@@ -1642,12 +1659,16 @@ size_t After_whitespace(
 }
 
 void Lex(
-	const char32_t * chars,
+	char32_t * chars,
 	size_t count_chars,
 	size_t i,
 	size_t * i_after_out,
 	Tokk_t * tokk_out)
 {
+	Chars_t chars_;
+	chars_.index = chars + i;
+	chars_.end = chars + count_chars;
+
 	char32_t ch_0 = chars[i + 0];
 	char32_t ch_1 = (count_chars - i >= 2) ? chars[i + 1] : '\0';
 	char32_t ch_2 = (count_chars - i >= 3) ? chars[i + 2] : '\0';
@@ -1792,7 +1813,9 @@ void Lex(
 	}
 	else
 	{
-		Lex_punctuation(chars, count_chars, i, tokk_out, i_after_out);
+		size_t len;
+		Lex_punctuation(chars_, tokk_out, &len);
+		*i_after_out = i + len;
 	}
 }
 
