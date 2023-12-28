@@ -1195,33 +1195,31 @@ uint32_t Hex_val_from_ch(char32_t ch)
 	return UINT32_MAX;
 }
 
-void Peek_ucn(
-	const char32_t * chars,
-	size_t count_chars,
-	size_t i,
+void Lex_ucn(
+	Chars_t chars,
 	char32_t * ch_out,
-	size_t * i_after_out)
+	char32_t ** ch_after_out)
 {
 	*ch_out = UINT32_MAX;
-	*i_after_out = i;
+	*ch_after_out = NULL;
 
-	if (i >= count_chars)
+	if (Chars_empty(chars))
 		return;
 
 	// Check for leading '\\'
 
-	if (chars[i] != '\\')
+	if (chars.index[0] != '\\')
 		return;
 
 	// Advance past '\\'
 
-	++i;
-	if (i >= count_chars)
+	++chars.index;
+	if (Chars_empty(chars))
 		return;
 
 	// Look for 'u' or 'U' after '\\'
 
-	char32_t ch_u = chars[i];
+	char32_t ch_u = chars.index[0];
 	if (ch_u != 'u' && ch_u != 'U')
 		return;
 
@@ -1239,8 +1237,8 @@ void Peek_ucn(
 
 	// Advance past u/U
 
-	++i;
-	if (i >= count_chars)
+	++chars.index;
+	if (Chars_empty(chars))
 		return;
 
 	// Look for correct number of hex digits
@@ -1250,16 +1248,16 @@ void Peek_ucn(
 	bool delimited = false;
 	bool got_end_delim = false;
 
-	while (i < count_chars && ((digits_read < digits_need) || delimited))
+	while (!Chars_empty(chars) && ((digits_read < digits_need) || delimited))
 	{
-		char32_t ch = chars[i];
+		char32_t ch = chars.index[0];
 
 		// Check for '{' (delimited ucns)
 
 		if (!delimited && digits_read == 0 && ch == '{')
 		{
 			delimited = true;
-			++i;
+			++chars.index;
 			continue;
 		}
 
@@ -1268,7 +1266,7 @@ void Peek_ucn(
 		if (delimited && ch == '}')
 		{
 			got_end_delim = true;
-			++i;
+			++chars.index;
 			break;
 		}
 
@@ -1299,7 +1297,7 @@ void Peek_ucn(
 
 		// Advance to next digit
 
-		++i;
+		++chars.index;
 	}
 
 	// No digits read?
@@ -1329,7 +1327,7 @@ void Peek_ucn(
 	// Return result
 
 	*ch_out = ch_result;
-	*i_after_out = i;
+	*ch_after_out = chars.index;
 }
 
 bool Extends_id(char32_t ch)
@@ -1389,7 +1387,7 @@ bool Extends_id(char32_t ch)
 }
 
 size_t After_rest_of_id(
-	const char32_t * chars,
+	char32_t * chars,
 	size_t count_chars,
 	size_t i)
 {
@@ -1403,12 +1401,16 @@ size_t After_rest_of_id(
 
 		if (chars[i] == '\\')
 		{
+			Chars_t chars_;
+			chars_.index = chars + i;
+			chars_.end = chars + count_chars;
+
 			char32_t ch;
-			size_t i_after;
-			Peek_ucn(chars, count_chars, i, &ch, &i_after);
-			if (i_after != i && Extends_id(ch))
+			char32_t * ch_after;
+			Lex_ucn(chars_, &ch, &ch_after);
+			if (ch_after && Extends_id(ch))
 			{
-				i = i_after;
+				i = (size_t)(ch_after - chars);
 				continue;
 			}
 		}
@@ -1420,7 +1422,7 @@ size_t After_rest_of_id(
 }
 
 size_t After_rest_of_ppnum(
-	const char32_t * chars,
+	char32_t * chars,
 	size_t count_chars,
 	size_t i)
 {
@@ -1509,13 +1511,17 @@ size_t After_rest_of_ppnum(
 		}
 		else if (ch == '\\')
 		{
-			char32_t ch_ucn;
-			size_t i_after;
+			Chars_t chars_;
+			chars_.index = chars + i;
+			chars_.end = chars + count_chars;
 
-			Peek_ucn(chars, count_chars, i, &ch_ucn, &i_after);
-			if (i_after != i && Extends_id(ch_ucn))
+			char32_t ch_ucn;
+			char32_t * ch_after;
+
+			Lex_ucn(chars_, &ch_ucn, &ch_after);
+			if (ch_after && Extends_id(ch_ucn))
 			{
-				i = i_after;
+				i = (size_t)(ch_after - chars);
 				continue;
 			}
 			else
@@ -1785,13 +1791,13 @@ void Lex(
 	else if (ch_0 =='\\')
 	{
 		char32_t ch;
-		size_t i_after;
-		Peek_ucn(chars, count_chars, i, &ch, &i_after);
-		if (i_after != i)
+		char32_t * ch_after;
+		Lex_ucn(chars_, &ch, &ch_after);
+		if (ch_after)
 		{
 			if (Starts_id(ch))
 			{
-				i = i_after;
+				i = (size_t)(ch_after - chars);
 				*i_after_out = After_rest_of_id(chars, count_chars, i);
 				*tokk_out = Tokk_raw_identifier;
 			}
@@ -1799,7 +1805,7 @@ void Lex(
 			{
 				// Bogus UCN, return it as an unknown token
 
-				*i_after_out = i_after;
+				*i_after_out = (size_t)(ch_after - chars);
 				*tokk_out = Tokk_unknown;
 			}
 		}
