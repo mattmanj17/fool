@@ -1525,20 +1525,18 @@ char32_t * After_rest_of_ppnum(Chars_t chars)
 	return chars.index;
 }
 
-size_t After_rest_of_line_comment(
-	const char32_t * chars,
-	size_t count_chars,
-	size_t i)
+char32_t * After_rest_of_line_comment(
+	Chars_t chars)
 {
-	while (i < count_chars)
+	while (!Chars_empty(chars))
 	{
-		if (chars[i] == '\n')
+		if (chars.index[0] == '\n')
 			break;
 
-		++i;
+		++chars.index;
 	}
 
-	return i;
+	return chars.index;
 }
 
 void Lex_rest_of_block_comment(
@@ -1745,8 +1743,9 @@ void Lex(
 	}
 	else if (ch_0 == '/' && ch_1 == '/')
 	{
-		i += 2;
-		*i_after_out = After_rest_of_line_comment(chars, count_chars, i);
+		chars_.index += 2;
+		char32_t * after = After_rest_of_line_comment(chars_);
+		*i_after_out = (size_t)(after - chars);
 		*tokk_out = Tokk_comment;
 	}
 	else if (ch_0 == '.' && ch_1 >= '0' && ch_1 <= '9')
