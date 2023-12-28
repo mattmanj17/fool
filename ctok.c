@@ -1638,52 +1638,41 @@ char32_t * After_whitespace(Chars_t chars)
 	return chars.index;
 }
 
-void Lex(
-	char32_t * chars,
-	size_t count_chars,
-	size_t i,
-	size_t * i_after_out,
-	Tokk_t * tokk_out)
+void Lex_leading_token(
+	Chars_t chars,
+	Tokk_t * tokk_out,
+	char32_t ** after_out)
 {
-	Chars_t chars_;
-	chars_.index = chars + i;
-	chars_.end = chars + count_chars;
-
-	char32_t ch_0 = chars[i + 0];
-	char32_t ch_1 = (count_chars - i >= 2) ? chars[i + 1] : '\0';
-	char32_t ch_2 = (count_chars - i >= 3) ? chars[i + 2] : '\0';
+	char32_t ch_0 = Char_at_index_safe(chars, 0);
+	char32_t ch_1 = Char_at_index_safe(chars, 1);
+	char32_t ch_2 = Char_at_index_safe(chars, 2);
 
 	// Decide what to do
 
 	if (ch_0 == 'u' && ch_1 == '8' && ch_2 == '"')
 	{
-		chars_.index += 3;
+		chars.index += 3;
 
 		bool valid;
-		char32_t * after;
 		Lex_rest_of_str_lit(
 			true,
-			chars_,
+			chars,
 			&valid,
-			&after);
+			after_out);
 
 		*tokk_out = (valid) ? Tokk_utf8_string_literal : Tokk_unknown;
-		*i_after_out = (size_t)(after - chars);
 	}
 	else if ((ch_0 == 'u' || ch_0 == 'U' || ch_0 == 'L') &&
 			 (ch_1 == '"' || ch_1 == '\''))
 	{
-		chars_.index += 2;
+		chars.index += 2;
 
 		bool valid;
-		char32_t * after;
 		Lex_rest_of_str_lit(
 			ch_1 == '"', 
-			chars_, 
+			chars, 
 			&valid,
-			&after);
-
-		*i_after_out = (size_t)(after - chars);
+			after_out);
 
 		if (!valid)
 		{
@@ -1709,17 +1698,14 @@ void Lex(
 	}
 	else if (ch_0 == '"' || ch_0 == '\'')
 	{
-		++chars_.index;
+		++chars.index;
 
 		bool valid;
-		char32_t * after;
 		Lex_rest_of_str_lit(
 			ch_0 == '"', 
-			chars_,
+			chars,
 			&valid,
-			&after);
-
-		*i_after_out = (size_t)(after - chars);
+			after_out);
 
 		if (!valid)
 		{
@@ -1731,67 +1717,57 @@ void Lex(
 	}
 	else if (ch_0 == '/' && ch_1 == '*')
 	{
-		chars_.index += 2;
-
-		char32_t * after;
-		Lex_rest_of_block_comment(chars_, tokk_out, &after);
-
-		*i_after_out = (size_t)(after - chars);
+		chars.index += 2;
+		Lex_rest_of_block_comment(chars, tokk_out, after_out);
 	}
 	else if (ch_0 == '/' && ch_1 == '/')
 	{
-		chars_.index += 2;
-		char32_t * after = After_rest_of_line_comment(chars_);
-		*i_after_out = (size_t)(after - chars);
+		chars.index += 2;
+		*after_out = After_rest_of_line_comment(chars);
 		*tokk_out = Tokk_comment;
 	}
 	else if (ch_0 == '.' && ch_1 >= '0' && ch_1 <= '9')
 	{
-		chars_.index += 2;
-		char32_t * after = After_rest_of_ppnum(chars_);
-		*i_after_out = (size_t)(after - chars);
+		chars.index += 2;
+		*after_out = After_rest_of_ppnum(chars);
 		*tokk_out = Tokk_numeric_constant;
 	}
 	else if (Starts_id(ch_0))
 	{
-		++i;
-		char32_t * after = After_rest_of_id(chars_);
-		*i_after_out = (size_t)(after - chars);
+		++chars.index;
+		*after_out = After_rest_of_id(chars);
 		*tokk_out = Tokk_raw_identifier;
 	}
 	else if (ch_0 >= '0' && ch_0 <= '9')
 	{
-		++chars_.index;
-		char32_t * after = After_rest_of_ppnum(chars_);
-		*i_after_out = (size_t)(after - chars);
+		++chars.index;
+		*after_out = After_rest_of_ppnum(chars);
 		*tokk_out = Tokk_numeric_constant;
 	}
 	else if (Is_ws(ch_0) || ch_0 == '\0')
 	{
-		++chars_.index;
-		char32_t * after = After_whitespace(chars_);
-		*i_after_out = (size_t)(after - chars);
+		++chars.index;
+		*after_out = After_whitespace(chars);
 		*tokk_out = Tokk_unknown;
 	}
 	else if (ch_0 =='\\')
 	{
 		char32_t ch;
 		char32_t * after;
-		Lex_ucn(chars_, &ch, &after);
+		Lex_ucn(chars, &ch, &after);
 		if (after)
 		{
 			if (Starts_id(ch))
 			{
-				chars_.index = after;
-				after = After_rest_of_id(chars_);
-				*i_after_out = (size_t)(after - chars);
+				chars.index = after;
+				*after_out = After_rest_of_id(chars);
 				*tokk_out = Tokk_raw_identifier;
 			}
 			else
 			{
 				// Bogus UCN, return it as an unknown token
 
-				*i_after_out = (size_t)(after - chars);
+				*after_out = after;
 				*tokk_out = Tokk_unknown;
 			}
 		}
@@ -1799,15 +1775,13 @@ void Lex(
 		{
 			// Stray backslash, return as unknown token
 			
-			*i_after_out = i + 1;
+			*after_out = chars.index + 1;
 			*tokk_out = Tokk_unknown;
 		}
 	}
 	else
 	{
-		char32_t * ch_after;
-		Lex_punctuation(chars_, tokk_out, &ch_after);
-		*i_after_out = (size_t)(ch_after - chars);
+		Lex_punctuation(chars, tokk_out, after_out);
 	}
 }
 
@@ -1992,15 +1966,18 @@ void Print_raw_tokens(Bytes_t bytes)
 
 	// Lex!
 
-	size_t i = 0;
-	while (chars.index + i < chars.end)
+	char32_t * ch_start = chars.index;
+	while (!Chars_empty(chars))
 	{
-		size_t i_after;
 		Tokk_t tokk;
-		Lex(chars.index, Chars_len(chars), i, &i_after, &tokk);
+		char32_t * after;
+		Lex_leading_token(chars, &tokk, &after);
 
-		Byte_t * loc_begin = locs.index[i];
-		Byte_t * loc_end = locs.index[i_after];
+		long long i_ch_begin = chars.index - ch_start;
+		long long i_ch_end = after - ch_start;
+
+		Byte_t * loc_begin = locs.index[i_ch_begin];
+		Byte_t * loc_end = locs.index[i_ch_end];
 		Print_token(
 			tokk,
 			loc_begin,
@@ -2014,7 +1991,7 @@ void Print_raw_tokens(Bytes_t bytes)
 			&line,
 			&col);
 
-		i = i_after;
+		chars.index = after;
 	}
 }
 
