@@ -85,8 +85,10 @@ bool name##_index_valid(name##_t span, size_t index) \
 }
 
 DECL_SPAN(Bytes, Byte_t);
+DECL_SPAN(Byte_locs, Byte_t *);
+
 DECL_SPAN(Chars, char32_t);
-DECL_SPAN(Locs, Byte_t *);
+DECL_SPAN(Char_locs, char32_t *);
 
 char32_t Char_at_index_safe(Chars_t chars, size_t index)
 {
@@ -219,10 +221,10 @@ bool Try_decode_utf8_ch(
 void Decode_utf8(
 	Bytes_t bytes,
 	Chars_t * chars_r,
-	Locs_t * locs_r)
+	Byte_locs_t * byte_locs_r)
 {
 	assert(Bytes_len(bytes) <= Chars_len(*chars_r));
-	assert(Bytes_len(bytes) + 1 <= Locs_len(*locs_r));
+	assert(Bytes_len(bytes) + 1 <= Byte_locs_len(*byte_locs_r));
 
 	// Deal with potential UTF-8 BOM
 
@@ -236,7 +238,7 @@ void Decode_utf8(
 
 	// The start of the first char will be the start of the bytes
 
-	locs_r->index[0] = bytes.index;
+	byte_locs_r->index[0] = bytes.index;
 
 	// Chew through the byte span with Try_decode_utf8
 
@@ -248,20 +250,20 @@ void Decode_utf8(
 		if (Try_decode_utf8_ch(bytes, &ch, &len_ch))
 		{
 			chars_r->index[count_chars] = ch;
-			locs_r->index[count_chars + 1] = bytes.index + len_ch;
+			byte_locs_r->index[count_chars + 1] = bytes.index + len_ch;
 			bytes.index += len_ch;
 		}
 		else
 		{
 			chars_r->index[count_chars] = UINT32_MAX;
-			locs_r->index[count_chars + 1] = bytes.index + 1;
+			byte_locs_r->index[count_chars + 1] = bytes.index + 1;
 			++bytes.index;
 		}
 
 		++count_chars;
 	}
 	chars_r->end = chars_r->index + count_chars;
-	locs_r->end = locs_r->index + count_chars + 1;
+	byte_locs_r->end = byte_locs_r->index + count_chars + 1;
 }
 
 
@@ -271,22 +273,22 @@ void Decode_utf8(
 typedef struct Scrub_t
 {
 	Chars_t chars;
-	Locs_t locs;
+	Byte_locs_t byte_locs;
 	
 	char32_t * ch_from;
-	Byte_t ** loc_from;
+	Byte_t ** byte_loc_from;
 } Scrub_t;
 
 Scrub_t Start_scrub(
 	Chars_t chars,
-	Locs_t locs)
+	Byte_locs_t byte_locs)
 {
 	Scrub_t scrub;
 	scrub.chars = chars;
-	scrub.locs = locs;
+	scrub.byte_locs = byte_locs;
 
 	scrub.ch_from = chars.index;
-	scrub.loc_from = locs.index;
+	scrub.byte_loc_from = byte_locs.index;
 
 	return scrub;
 }
@@ -310,48 +312,48 @@ void Advance_scrub(
 	size_t len_scrub)
 {
 	assert(scrub_r->chars.index < scrub_r->chars.end);
-	assert(scrub_r->locs.index < scrub_r->locs.end);
+	assert(scrub_r->byte_locs.index < scrub_r->byte_locs.end);
 	
 	assert(scrub_r->ch_from < scrub_r->chars.end);
-	assert(scrub_r->loc_from < scrub_r->locs.end);
+	assert(scrub_r->byte_loc_from < scrub_r->byte_locs.end);
 
 	// Set next 'to' char to ch, and copy starting loc.
 
 	scrub_r->chars.index[0] = ch;
-	scrub_r->locs.index[0] = scrub_r->loc_from[0];
+	scrub_r->byte_locs.index[0] = scrub_r->byte_loc_from[0];
 
 	// Inc from/to
 
 	scrub_r->ch_from += len_scrub;
-	scrub_r->loc_from += len_scrub;
+	scrub_r->byte_loc_from += len_scrub;
 
 	scrub_r->chars.index += 1;
-	scrub_r->locs.index += 1;
+	scrub_r->byte_locs.index += 1;
 }
 
 void End_scrub(
 	Scrub_t scrub, 
 	Chars_t * chars_r,
-	Locs_t * locs_r)
+	Byte_locs_t * byte_locs_r)
 {
 	// Move last loc (the end of the last token)
 
-	assert(scrub.locs.index < scrub.locs.end);
-	assert(scrub.loc_from < scrub.locs.end);
+	assert(scrub.byte_locs.index < scrub.byte_locs.end);
+	assert(scrub.byte_loc_from < scrub.byte_locs.end);
 
-	scrub.locs.index[0] = scrub.loc_from[0];
+	scrub.byte_locs.index[0] = scrub.byte_loc_from[0];
 
 	// Set end ptrs
 
 	chars_r->end = scrub.chars.index;
-	locs_r->end = scrub.locs.index + 1;
+	byte_locs_r->end = scrub.byte_locs.index + 1;
 }
 
 void Scrub_carriage_returns(
 	Chars_t * chars_r,
-	Locs_t * locs_r)
+	Byte_locs_t * byte_locs_r)
 {
-	Scrub_t scrub = Start_scrub(*chars_r, *locs_r);
+	Scrub_t scrub = Start_scrub(*chars_r, *byte_locs_r);
 	while (!Is_scrub_done(scrub))
 	{
 		char32_t ch = Scrub_ch(scrub, 0);
@@ -367,14 +369,14 @@ void Scrub_carriage_returns(
 
 		Advance_scrub(&scrub, ch, len_scrub);
 	}
-	End_scrub(scrub, chars_r, locs_r);
+	End_scrub(scrub, chars_r, byte_locs_r);
 }
 
 void Scrub_trigraphs(
 	Chars_t * chars_r,
-	Locs_t * locs_r)
+	Byte_locs_t * byte_locs_r)
 {
-	Scrub_t scrub = Start_scrub(*chars_r, *locs_r);
+	Scrub_t scrub = Start_scrub(*chars_r, *byte_locs_r);
 	while (!Is_scrub_done(scrub))
 	{
 		char32_t ch0 = Scrub_ch(scrub, 0);
@@ -417,7 +419,7 @@ void Scrub_trigraphs(
 
 		Advance_scrub(&scrub, ch0, 1);
 	}
-	End_scrub(scrub, chars_r, locs_r);
+	End_scrub(scrub, chars_r, byte_locs_r);
 }
 
 void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
@@ -471,14 +473,14 @@ void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
 
 void Scrub_escaped_line_breaks(
 	Chars_t * chars_r,
-	Locs_t * locs_r)
+	Byte_locs_t * byte_locs_r)
 {
-	Scrub_t scrub = Start_scrub(*chars_r, *locs_r);
+	Scrub_t scrub = Start_scrub(*chars_r, *byte_locs_r);
 	while (!Is_scrub_done(scrub))
 	{
 		Scrub_leading_escaped_line_breaks(&scrub);
 	}
-	End_scrub(scrub, chars_r, locs_r);
+	End_scrub(scrub, chars_r, byte_locs_r);
 }
 
 
@@ -936,6 +938,8 @@ const char * Str_from_tokk(Tokk_t tokk)
 
 	return str_for_tokk[tokk];
 }
+
+DECL_SPAN(Tokks, Tokk_t);
 
 void Lex_punctuation(
 	Chars_t chars,
@@ -1943,20 +1947,20 @@ void Print_raw_tokens(Bytes_t bytes)
 	size_t len_bytes = Bytes_len(bytes);
 
 	Chars_t chars = Chars_alloc(len_bytes);
-	Locs_t locs = Locs_alloc(len_bytes + 1);
+	Byte_locs_t byte_locs = Byte_locs_alloc(len_bytes + 1);
 
-	if (Chars_empty(chars) || Locs_empty(locs))
+	if (Chars_empty(chars) || Byte_locs_empty(byte_locs))
 		return;
 
 	// Decode + scrub
 
-	Decode_utf8(bytes, &chars, &locs);
+	Decode_utf8(bytes, &chars, &byte_locs);
 
-	Scrub_carriage_returns(&chars, &locs);
-	Scrub_trigraphs(&chars, &locs);
-	Scrub_escaped_line_breaks(&chars, &locs);
+	Scrub_carriage_returns(&chars, &byte_locs);
+	Scrub_trigraphs(&chars, &byte_locs);
+	Scrub_escaped_line_breaks(&chars, &byte_locs);
 
-	if (Chars_empty(chars) || Locs_empty(locs))
+	if (Chars_empty(chars) || Byte_locs_empty(byte_locs))
 		return;
 
 	// Keep track of line info
@@ -1976,8 +1980,8 @@ void Print_raw_tokens(Bytes_t bytes)
 		long long i_ch_begin = chars.index - ch_start;
 		long long i_ch_end = after - ch_start;
 
-		Byte_t * loc_begin = locs.index[i_ch_begin];
-		Byte_t * loc_end = locs.index[i_ch_end];
+		Byte_t * loc_begin = byte_locs.index[i_ch_begin];
+		Byte_t * loc_end = byte_locs.index[i_ch_end];
 		Print_token(
 			tokk,
 			loc_begin,

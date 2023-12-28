@@ -1,14 +1,10 @@
-clean up ctok.c after merging...
 
-make everything use spans...
+add lex_chars
+add Line_info_t
 
 TODO TokkLen_t
 Delimited 'U' is not allowed (find somthing in clang to explain this??)
 Extends_id BUG
-
-lex -> lex_leading_token
-add lex_chars
-add Line_info_t
 
 ---
 
