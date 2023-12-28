@@ -1569,22 +1569,18 @@ void Lex_rest_of_block_comment(
 
 void Lex_rest_of_str_lit(
 	bool use_dquote,
-	const char32_t * chars,
-	size_t count_chars,
-	size_t i,
-	size_t * i_after_out,
-	bool * valid_out)
+	Chars_t chars,
+	bool * valid_out,
+	char32_t ** after_out)
 {
 	char32_t ch_close = (use_dquote) ? U'"' : U'\'';
 
 	bool closed = false;
 	int len = 0;
 
-	while (i < count_chars)
+	while (!Chars_empty(chars))
 	{
-		char32_t ch = chars[i];
-		char chr = (char)ch;
-		(void)chr;
+		char32_t ch = chars.index[0];
 
 		// String without closing quote (which we support in raw lexing mode..)
 
@@ -1593,7 +1589,7 @@ void Lex_rest_of_str_lit(
 
 		// Anything else will be part of the str lit
 
-		++i;
+		++chars.index;
 
 		// Closing quote
 
@@ -1609,16 +1605,16 @@ void Lex_rest_of_str_lit(
 
 		// Deal with back slash
 
-		if (ch == '\\' && i < count_chars)
+		if (ch == '\\' && !Chars_empty(chars))
 		{
 			// Check if escaped char is '\"', '\'', or '\\',
 			//  the only escapes we need to handle in raw mode
 
-			ch = chars[i];
+			ch = chars.index[0];
 			if (ch == ch_close || ch == '\\')
 			{
 				++len;
-				++i;
+				++chars.index;
 			}
 		}
 	}
@@ -1626,7 +1622,7 @@ void Lex_rest_of_str_lit(
 	// zero length char lits are invalid
 
 	*valid_out = closed && (use_dquote || len > 0);
-	*i_after_out = i;
+	*after_out = chars.index;
 }
 
 size_t After_whitespace(
@@ -1664,32 +1660,33 @@ void Lex(
 
 	if (ch_0 == 'u' && ch_1 == '8' && ch_2 == '"')
 	{
-		i += 3;
+		chars_.index += 3;
 
 		bool valid;
+		char32_t * after;
 		Lex_rest_of_str_lit(
 			true,
-			chars,
-			count_chars,
-			i,
-			i_after_out,
-			&valid);
+			chars_,
+			&valid,
+			&after);
 
 		*tokk_out = (valid) ? Tokk_utf8_string_literal : Tokk_unknown;
+		*i_after_out = (size_t)(after - chars);
 	}
 	else if ((ch_0 == 'u' || ch_0 == 'U' || ch_0 == 'L') &&
 			 (ch_1 == '"' || ch_1 == '\''))
 	{
-		i += 2;
+		chars_.index += 2;
 
 		bool valid;
+		char32_t * after;
 		Lex_rest_of_str_lit(
 			ch_1 == '"', 
-			chars, 
-			count_chars, 
-			i, 
-			i_after_out, 
-			&valid);
+			chars_, 
+			&valid,
+			&after);
+
+		*i_after_out = (size_t)(after - chars);
 
 		if (!valid)
 		{
@@ -1715,16 +1712,17 @@ void Lex(
 	}
 	else if (ch_0 == '"' || ch_0 == '\'')
 	{
-		++i;
+		++chars_.index;
 
 		bool valid;
+		char32_t * after;
 		Lex_rest_of_str_lit(
 			ch_0 == '"', 
-			chars, 
-			count_chars, 
-			i, 
-			i_after_out, 
-			&valid);
+			chars_,
+			&valid,
+			&after);
+
+		*i_after_out = (size_t)(after - chars);
 
 		if (!valid)
 		{
