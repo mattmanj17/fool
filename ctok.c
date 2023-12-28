@@ -1625,20 +1625,17 @@ void Lex_rest_of_str_lit(
 	*after_out = chars.index;
 }
 
-size_t After_whitespace(
-	const char32_t * chars,
-	size_t count_chars,
-	size_t i)
+char32_t * After_whitespace(Chars_t chars)
 {
-	while (i < count_chars)
+	while (!Chars_empty(chars))
 	{
-		if (!Is_ws(chars[i]))
+		if (!Is_ws(chars.index[0]))
 			break;
 
-		++i;
+		++chars.index;
 	}
 
-	return i;
+	return chars.index;
 }
 
 void Lex(
@@ -1771,8 +1768,9 @@ void Lex(
 	}
 	else if (Is_ws(ch_0) || ch_0 == '\0')
 	{
-		++i;
-		*i_after_out = After_whitespace(chars, count_chars, i);
+		++chars_.index;
+		char32_t * after = After_whitespace(chars_);
+		*i_after_out = (size_t)(after - chars);
 		*tokk_out = Tokk_unknown;
 	}
 	else if (ch_0 =='\\')
