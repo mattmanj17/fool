@@ -1414,10 +1414,7 @@ char32_t * After_rest_of_id(Chars_t chars)
 	return chars.index;
 }
 
-size_t After_rest_of_ppnum(
-	char32_t * chars,
-	size_t count_chars,
-	size_t i)
+char32_t * After_rest_of_ppnum(Chars_t chars)
 {
 	/* NOTE (matthewd)
 		preprocesor numbers are a bit unintuative,
@@ -1463,25 +1460,25 @@ size_t After_rest_of_ppnum(
 	// Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 	// 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-	while (i < count_chars)
+	while (!Chars_empty(chars))
 	{
-		char32_t ch = chars[i];
+		char32_t ch = chars.index[0];
 
 		if (ch == '.')
 		{
-			++i;
+			++chars.index;
 			continue;
 		}
 		else if (ch == 'e' || ch == 'E' || ch == 'p' || ch == 'P')
 		{
-			++i;
+			++chars.index;
 
-			if (i < count_chars)
+			if (!Chars_empty(chars))
 			{
-				ch = chars[i];
+				ch = chars.index[0];
 				if (ch == '+' || ch == '-')
 				{
-					++i;
+					++chars.index;
 				}
 			}
 
@@ -1499,22 +1496,17 @@ size_t After_rest_of_ppnum(
 		{
 			// Everything (else) which extends ids can extend a ppnum
 
-			++i;
+			++chars.index;
 			continue;
 		}
 		else if (ch == '\\')
 		{
-			Chars_t chars_;
-			chars_.index = chars + i;
-			chars_.end = chars + count_chars;
-
 			char32_t ch_ucn;
-			char32_t * ch_after;
-
-			Lex_ucn(chars_, &ch_ucn, &ch_after);
-			if (ch_after && Extends_id(ch_ucn))
+			char32_t * after;
+			Lex_ucn(chars, &ch_ucn, &after);
+			if (after && Extends_id(ch_ucn))
 			{
-				i = (size_t)(ch_after - chars);
+				chars.index = after;
 				continue;
 			}
 			else
@@ -1530,7 +1522,7 @@ size_t After_rest_of_ppnum(
 		}
 	}
 
-	return i;
+	return chars.index;
 }
 
 size_t After_rest_of_line_comment(
@@ -1759,8 +1751,9 @@ void Lex(
 	}
 	else if (ch_0 == '.' && ch_1 >= '0' && ch_1 <= '9')
 	{
-		i += 2;
-		*i_after_out = After_rest_of_ppnum(chars, count_chars, i);
+		chars_.index += 2;
+		char32_t * after = After_rest_of_ppnum(chars_);
+		*i_after_out = (size_t)(after - chars);
 		*tokk_out = Tokk_numeric_constant;
 	}
 	else if (Starts_id(ch_0))
@@ -1772,8 +1765,9 @@ void Lex(
 	}
 	else if (ch_0 >= '0' && ch_0 <= '9')
 	{
-		++i;
-		*i_after_out = After_rest_of_ppnum(chars, count_chars, i);
+		++chars_.index;
+		char32_t * after = After_rest_of_ppnum(chars_);
+		*i_after_out = (size_t)(after - chars);
 		*tokk_out = Tokk_numeric_constant;
 	}
 	else if (Is_ws(ch_0) || ch_0 == '\0')
