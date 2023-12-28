@@ -1386,31 +1386,24 @@ bool Extends_id(char32_t ch)
 	return true;
 }
 
-size_t After_rest_of_id(
-	char32_t * chars,
-	size_t count_chars,
-	size_t i)
+char32_t * After_rest_of_id(Chars_t chars)
 {
-	while (i < count_chars)
+	while (!Chars_empty(chars))
 	{
-		if (Extends_id(chars[i]))
+		if (Extends_id(chars.index[0]))
 		{
-			++i;
+			++chars.index;
 			continue;
 		}
 
-		if (chars[i] == '\\')
+		if (chars.index[0] == '\\')
 		{
-			Chars_t chars_;
-			chars_.index = chars + i;
-			chars_.end = chars + count_chars;
-
 			char32_t ch;
-			char32_t * ch_after;
-			Lex_ucn(chars_, &ch, &ch_after);
-			if (ch_after && Extends_id(ch))
+			char32_t * after;
+			Lex_ucn(chars, &ch, &after);
+			if (after && Extends_id(ch))
 			{
-				i = (size_t)(ch_after - chars);
+				chars.index = after;
 				continue;
 			}
 		}
@@ -1418,7 +1411,7 @@ size_t After_rest_of_id(
 		break;
 	}
 
-	return i;
+	return chars.index;
 }
 
 size_t After_rest_of_ppnum(
@@ -1773,7 +1766,8 @@ void Lex(
 	else if (Starts_id(ch_0))
 	{
 		++i;
-		*i_after_out = After_rest_of_id(chars, count_chars, i);
+		char32_t * after = After_rest_of_id(chars_);
+		*i_after_out = (size_t)(after - chars);
 		*tokk_out = Tokk_raw_identifier;
 	}
 	else if (ch_0 >= '0' && ch_0 <= '9')
@@ -1791,21 +1785,22 @@ void Lex(
 	else if (ch_0 =='\\')
 	{
 		char32_t ch;
-		char32_t * ch_after;
-		Lex_ucn(chars_, &ch, &ch_after);
-		if (ch_after)
+		char32_t * after;
+		Lex_ucn(chars_, &ch, &after);
+		if (after)
 		{
 			if (Starts_id(ch))
 			{
-				i = (size_t)(ch_after - chars);
-				*i_after_out = After_rest_of_id(chars, count_chars, i);
+				chars_.index = after;
+				after = After_rest_of_id(chars_);
+				*i_after_out = (size_t)(after - chars);
 				*tokk_out = Tokk_raw_identifier;
 			}
 			else
 			{
 				// Bogus UCN, return it as an unknown token
 
-				*i_after_out = (size_t)(ch_after - chars);
+				*i_after_out = (size_t)(after - chars);
 				*tokk_out = Tokk_unknown;
 			}
 		}
