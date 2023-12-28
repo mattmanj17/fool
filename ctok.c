@@ -940,14 +940,14 @@ const char * Str_from_tokk(Tokk_t tokk)
 void Lex_punctuation(
 	Chars_t chars,
 	Tokk_t * tokk_out,
-	size_t * len_out)
+	char32_t ** ch_after_out)
 {
 	// No chars? no punct
 
 	if (Chars_empty(chars))
 	{
-		*len_out = 0;
 		*tokk_out = Tokk_unknown;
+		*ch_after_out = NULL;
 
 		return;
 	}
@@ -1058,16 +1058,16 @@ void Lex_punctuation(
 		{
 			// Found a match, return len + tokk
 
-			*len_out = (size_t)(index_peek - chars.index);
 			*tokk_out = punct.tokk;
+			*ch_after_out = index_peek;
 			return;
 		}
 	}
 
 	// Just return leading char as an unknown token
 
-	*len_out = 1;
 	*tokk_out = Tokk_unknown;
+	*ch_after_out = chars.index + 1;
 }
 
 bool Starts_id(char32_t ch)
@@ -1813,9 +1813,9 @@ void Lex(
 	}
 	else
 	{
-		size_t len;
-		Lex_punctuation(chars_, tokk_out, &len);
-		*i_after_out = i + len;
+		char32_t * ch_after;
+		Lex_punctuation(chars_, tokk_out, &ch_after);
+		*i_after_out = (size_t)(ch_after - chars);
 	}
 }
 
