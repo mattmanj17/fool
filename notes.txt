@@ -1,4 +1,14 @@
-clean up ctok.c after merging
+clean up ctok.c after merging...
+
+TODO TokkLen_t
+Delimited 'U' is not allowed (find somthing in clang to explain this??)
+Extends_id BUG
+
+make everything use spans...
+
+lex -> lex_leading_token
+add lex_chars
+add Line_info_t
 
 ---
 
