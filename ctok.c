@@ -1540,32 +1540,30 @@ char32_t * After_rest_of_line_comment(
 }
 
 void Lex_rest_of_block_comment(
-	const char32_t * chars,
-	size_t count_chars,
-	size_t i,
-	size_t * i_after_out,
-	Tokk_t * tokk_out)
+	Chars_t chars,
+	Tokk_t * tokk_out,
+	char32_t ** after_out)
 {
 	Tokk_t tokk = Tokk_unknown;
 
-	while (i < count_chars)
+	while (!Chars_empty(chars))
 	{
-		char32_t ch0 = chars[i];
-		++i;
+		char32_t ch0 = chars.index[0];
+		++chars.index;
 
-		if (i < count_chars)
+		if (!Chars_empty(chars))
 		{
-			char32_t ch1 = chars[i];
+			char32_t ch1 = chars.index[0];
 			if (ch0 == '*' && ch1 == '/')
 			{
 				tokk = Tokk_comment;
-				++i;
+				++chars.index;
 				break;
 			}
 		}
 	}
 
-	*i_after_out = i;
+	*after_out = chars.index;
 	*tokk_out = tokk;
 }
 
@@ -1738,8 +1736,12 @@ void Lex(
 	}
 	else if (ch_0 == '/' && ch_1 == '*')
 	{
-		i += 2;
-		Lex_rest_of_block_comment(chars, count_chars, i, i_after_out, tokk_out);
+		chars_.index += 2;
+
+		char32_t * after;
+		Lex_rest_of_block_comment(chars_, tokk_out, &after);
+
+		*i_after_out = (size_t)(after - chars);
 	}
 	else if (ch_0 == '/' && ch_1 == '/')
 	{
