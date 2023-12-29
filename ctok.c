@@ -1099,7 +1099,6 @@ bool Extends_id(char32_t ch)
 	if (ch == '$')
 		return true;
 
-
 	// All other ascii is invalid
 	
 	if (ch <= 0x7F) 
@@ -1333,11 +1332,6 @@ void Lex_ucn(
 	// No digits read?
 
 	if (digits_read == 0)
-		return;
-
-	// Delimited 'U' is not allowed (find somthing in clang to explain this??)
-
-	if (delimited && digits_need == 8)
 		return;
 
 	// Read wrong number of digits?

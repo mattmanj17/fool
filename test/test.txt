@@ -12,7 +12,6 @@ $
 \u009f
 \Udeadbeef
 \u{69}
-\U{69}
 \u{6h9}
 \uh
 AA
