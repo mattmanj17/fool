@@ -1074,7 +1074,7 @@ void Lex_punctuation(
 	*ch_after_out = chars.index + 1;
 }
 
-bool Starts_id(char32_t ch)
+bool Extends_id(char32_t ch)
 {
 	// Letters
 
@@ -1089,40 +1089,28 @@ bool Starts_id(char32_t ch)
 	if (ch == '_')
 		return true;
 
+	// Digits
+
+	if (ch >= '0' && ch <= '9')
+		return true;
+
 	// '$' allowed as an extension :/
 
 	if (ch == '$')
 		return true;
 
-	// All other ascii does not start ids
 
-	if (ch <= 0x7F)
+	// All other ascii is invalid
+	
+	if (ch <= 0x7F) 
 		return false;
 
-	// Bogus utf8 does not start ids
+	// Bogus utf8 does not extend ids
 
 	if (ch == UINT32_MAX)
 		return false;
 
-	// These codepoints are not allowed as the start of an id
-
-	static const char32_t no[][2] =
-	{
-		{ 0x0300, 0x036F },
-		{ 0x1DC0, 0x1DFF },
-		{ 0x20D0, 0x20FF },
-		{ 0xFE20, 0xFE2F }
-	};
-
-	for (int i = 0; i < ARY_LEN(no); ++i)
-	{
-		char32_t first = no[i][0];
-		char32_t last = no[i][1];
-		if (ch >= first && ch <= last)
-			return false;
-	}
-
-	// These code points are allowed to start an id (minus ones from 'no')
+	// These code points are allowed to extend an id
 
 	static const char32_t yes[][2] =
 	{
@@ -1162,6 +1150,44 @@ bool Starts_id(char32_t ch)
 	}
 
 	return false;
+}
+
+bool Starts_id(char32_t ch)
+{
+	// Does not extend ids? then does not start them either
+
+	if (!Extends_id(ch))
+		return false;
+
+	// Digits don't start ids
+
+	if (ch >= '0' && ch <= '9') 
+		return false;
+
+	// Any ascii that gets past Extends_id starts ids
+
+	if (ch <= 0x7F) 
+		return true;
+
+	// These codepoints are not allowed as the start of an id
+
+	static const char32_t no[][2] =
+	{
+		{ 0x0300, 0x036F },
+		{ 0x1DC0, 0x1DFF },
+		{ 0x20D0, 0x20FF },
+		{ 0xFE20, 0xFE2F }
+	};
+
+	for (int i = 0; i < ARY_LEN(no); ++i)
+	{
+		char32_t first = no[i][0];
+		char32_t last = no[i][1];
+		if (ch >= first && ch <= last)
+			return false;
+	}
+
+	return true;
 }
 
 bool Is_valid_ucn(char32_t ch)
@@ -1332,62 +1358,6 @@ void Lex_ucn(
 
 	*ch_out = ch_result;
 	*ch_after_out = chars.index;
-}
-
-bool Extends_id(char32_t ch)
-{
-	if (ch >= 'a' && ch <= 'z')
-		return true;
-
-	if (ch >= 'A' && ch <= 'Z')
-		return true;
-
-	if (ch == '_')
-		return true;
-
-	if (ch >= '0' && ch <= '9')
-		return true;
-
-	if (ch == '$') // '$' allowed as an extension :/
-		return true;
-
-	if (ch <= 0x7F) // All other ascii is invalid
-		return false;
-
-	if (ch == UINT32_MAX) // Bogus utf8 does not extend ids
-		return false;
-
-	// We are lexing in 'raw mode', and to match clang, 
-	//  once we are parsing an id, we just slurp up all
-	//  valid non-ascii-non-whitespace utf8...
-
-	// BUG I do not like this. the right thing to do is check c11_allowed from May_cp_start_id.
-	//  Clang seems to do the wrong thing here,
-	//  and produce an invalid pp token. I suspect no one
-	//  actually cares, since dump_raw_tokens is only for debugging...
-
-	static const char32_t ws[][2] =
-	{
-		{ 0x0085, 0x0085 },
-		{ 0x00A0, 0x00A0 },
-		{ 0x1680, 0x1680 },
-		{ 0x180E, 0x180E },
-		{ 0x2000, 0x200A },
-		{ 0x2028, 0x2029 },
-		{ 0x202F, 0x202F },
-		{ 0x205F, 0x205F },
-		{ 0x3000, 0x3000 }
-	};
-
-	for (int i = 0; i < ARY_LEN(ws); ++i)
-	{
-		char32_t first = ws[i][0];
-		char32_t last = ws[i][1];
-		if (ch >= first && ch <= last)
-			return false;
-	}
-
-	return true;
 }
 
 char32_t * After_rest_of_id(Chars_t chars)
