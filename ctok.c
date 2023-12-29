@@ -6,11 +6,6 @@
 #include <stdlib.h>
 #include <uchar.h>
 
-// fuck windows
-
-#include <fcntl.h>
-#include <io.h>
-
 
 
 // Some basic stuff
@@ -1969,10 +1964,6 @@ void Print_raw_tokens(Bytes_t bytes)
 
 int wmain(int argc, wchar_t *argv[])
 {
-	// Windows crap
-
-	(void) _setmode(_fileno(stdin), _O_BINARY);
-
 	// Get file path
 
 	if (argc != 2)
