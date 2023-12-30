@@ -1,7 +1,5 @@
 
-ack, go back to aos, not soa
-
-TODO TokkLen_t
+kill Byte_span_t?
 
 ---
 

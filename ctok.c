@@ -24,9 +24,9 @@ bool Is_ws(char32_t ch)
 	return Is_hz_ws(ch) || ch == '\n' || ch == '\r';
 }
 
-int Leading_ones(Byte_t byte)
+size_t Leading_ones(Byte_t byte)
 {
-	int count = 0;
+	size_t count = 0;
 	for (Byte_t mask = (1 << 7); mask; mask >>= 1)
 	{
 		if (!(byte & mask))
@@ -40,67 +40,49 @@ int Leading_ones(Byte_t byte)
 
 
 
-// spans
+// byte_span
 
-#define DECL_SPAN(name, type) \
-typedef struct name##_t \
-{ \
-	type * index; \
-	type * end; \
-} name##_t; \
-\
-name##_t name##_alloc(size_t len) \
-{ \
-	name##_t span; \
-	span.index = (type *)calloc(len, sizeof(type)); \
-	span.end = (span.index) ? span.index + len : NULL; \
-	return span; \
-} \
-\
-size_t name##_len(name##_t span) \
-{ \
-	if (!span.index) \
-		return 0; \
-\
-	long long count = span.end - span.index; \
-	if (count < 0) \
-		return 0; \
-\
-	return (size_t)count; \
-} \
-\
-bool name##_empty(name##_t span) \
-{ \
-	return name##_len(span) == 0; \
-} \
-\
-bool name##_index_valid(name##_t span, size_t index) \
-{ \
-	return index < name##_len(span); \
-}
-
-DECL_SPAN(Bytes, Byte_t);
-DECL_SPAN(Byte_locs, Byte_t *);
-
-DECL_SPAN(Chars, char32_t);
-DECL_SPAN(Char_locs, char32_t *);
-
-char32_t Char_at_index_safe(Chars_t chars, size_t index)
+typedef struct Byte_span_t
 {
-	if (!Chars_index_valid(chars, index))
-		return U'\0';
+	Byte_t * begin;
+	Byte_t * end;
+} Byte_span_t;
 
-	return chars.index[index];
+size_t Byte_span_len(Byte_span_t span)
+{
+	if (!span.begin)
+		return 0;
+
+	long long count = span.end - span.begin;
+	if (count < 0)
+		return 0;
+
+	return (size_t)count;
 }
 
 
 
-// utf8
+// utf8 decode : convert a byte_span into a Ch_loc_ary
 
-bool Try_decode_utf8_ch(
-	Bytes_t bytes,
-	char32_t * ch_out,
-	size_t * len_ch_out)
+typedef struct Ch_len_t // ch + len
+{
+	char32_t ch;
+	size_t len;
+} Ch_len_t;
+
+typedef struct Ch_loc_t // ch + loc
+{
+	char32_t ch;
+	Byte_t * loc;
+} Ch_loc_t;
+
+typedef enum Mch_k // Meta ch
+{
+	Mch_invalid = 0x110000, // 0x10FFFF + 1, signifies an encoding error
+	Mch_end,				// signifies the end of input bytes
+} Mch_k;
+
+Ch_len_t Decode_leading_ch(Byte_span_t span)
 {
 	// Try_decode_utf8 Roughly based on Table 3.1B in unicode Corrigendum #1
 	//  Special care is taken to reject 'overlong encodings'
@@ -130,49 +112,52 @@ bool Try_decode_utf8_ch(
 
 	// Check if we have no bytes at all
 
-	size_t len_bytes = Bytes_len(bytes);
-	if (!len_bytes)
-		return false;
+	size_t span_len = Byte_span_len(span);
+	if (span_len == 0)
+		return {Mch_end, 0};
+
+	// Value we return on error
+
+	Ch_len_t invalid = {Mch_invalid, 1};
 
 	// Check if first byte is a trailing byte (1 leading 1),
 	//  or if too many leading ones.
 
-	int leading_ones = Leading_ones(bytes.index[0]);
-
+	size_t leading_ones = Leading_ones(*span.begin);
 	if (leading_ones == 1)
-		return false;
+		return invalid;
 
 	if (leading_ones > 4)
-		return false;
+		return invalid;
 
 	// Compute len from leading_ones
 
-	size_t len_ch;
+	size_t len;
 	switch (leading_ones)
 	{
-	case 0: len_ch = 1; break;
-	case 2: len_ch = 2; break;
-	case 3: len_ch = 3; break;
-	default: len_ch = 4; break;
+	case 0: len = 1; break;
+	case 2: len = 2; break;
+	case 3: len = 3; break;
+	default: len = 4; break;
 	}
 
 	// Check if we do not have enough bytes
 
-	if (len_ch > len_bytes)
-		return false;
+	if (len > span_len)
+		return invalid;
 
 	// Check if any trailing bytes are invalid
 
-	for (size_t i = 1; i < len_ch; ++i)
+	for (size_t i = 1; i < len; ++i)
 	{
-		if (Leading_ones(bytes.index[i]) != 1)
-			return false;
+		if (Leading_ones(span.begin[i]) != 1)
+			return invalid;
 	}
 
 	// Get the significant bits from the first byte
 
-	char32_t ch = bytes.index[0];
-	switch (len_ch)
+	char32_t ch = *span.begin;
+	switch (len)
 	{
 	case 2: ch &= 0x1F; break;
 	case 3: ch &= 0x0F; break;
@@ -181,204 +166,174 @@ bool Try_decode_utf8_ch(
 
 	// Get bits from the trailing bytes
 
-	for (size_t i = 1; i < len_ch; ++i)
+	for (size_t i = 1; i < len; ++i)
 	{
 		ch <<= 6;
-		ch |= (bytes.index[i] & 0x3F);
+		ch |= (span.begin[i] & 0x3F);
 	}
 
 	// Check for illegal codepoints
 
 	if (ch >= 0xD800 && ch <= 0xDFFF)
-		return false;
+		return invalid;
 
 	if (ch > 0x10FFFF)
-		return false;
+		return invalid;
 
 	// Check for 'overlong encodings'
 
-	if (ch <= 0x7f && len_ch > 1)
-		return false;
+	if (ch <= 0x7f && len > 1)
+		return invalid;
 
-	if (ch <= 0x7ff && len_ch > 2)
-		return false;
+	if (ch <= 0x7ff && len > 2)
+		return invalid;
 
-	if (ch <= 0xffff && len_ch > 3)
-		return false;
+	if (ch <= 0xffff && len > 3)
+		return invalid;
 
-	// We did it, return ch and len
+	// We did it, return ch + len
 
-	*ch_out = ch;
-	*len_ch_out = len_ch;
-	return true;
+	return {ch, len};
 }
 
-void Decode_utf8(
-	Bytes_t bytes,
-	Chars_t * chars_r,
-	Byte_locs_t * byte_locs_r)
+Ch_loc_t * Decode_byte_span(Byte_span_t span)
 {
-	assert(Bytes_len(bytes) <= Chars_len(*chars_r));
-	assert(Bytes_len(bytes) + 1 <= Byte_locs_len(*byte_locs_r));
-
 	// Deal with potential UTF-8 BOM
 
-	if (Bytes_len(bytes) >= 3 &&
-		bytes.index[0] == '\xEF' &&
-		bytes.index[1] == '\xBB' &&
-		bytes.index[2] == '\xBF')
+	size_t span_len = Byte_span_len(span);
+
+	if (span_len >= 3 &&
+		span.begin[0] == '\xEF' &&
+		span.begin[1] == '\xBB' &&
+		span.begin[2] == '\xBF')
 	{
-		bytes.index += 3;
+		span.begin += 3;
+		span_len -= 3;
 	}
 
-	// The start of the first char will be the start of the bytes
+	// Allocate space for ch_locs
+	//  In the worst case, we will have a ch_loc for every byte
+	//  in byte_span. Note that we allocate 1 extra ch_loc, so
+	//  we have room for a trailing Mch_end
 
-	byte_locs_r->index[0] = bytes.index;
-
-	// Chew through the byte span with Try_decode_utf8
-
-	size_t count_chars = 0;
-	while (!Bytes_empty(bytes))
+	Ch_loc_t * ary;
 	{
-		char32_t ch;
-		size_t len_ch;
-		if (Try_decode_utf8_ch(bytes, &ch, &len_ch))
-		{
-			chars_r->index[count_chars] = ch;
-			byte_locs_r->index[count_chars + 1] = bytes.index + len_ch;
-			bytes.index += len_ch;
-		}
-		else
-		{
-			chars_r->index[count_chars] = UINT32_MAX;
-			byte_locs_r->index[count_chars + 1] = bytes.index + 1;
-			++bytes.index;
-		}
-
-		++count_chars;
+		size_t len = span_len + 1;
+		size_t size = sizeof(Ch_loc_t);
+		ary = (Ch_loc_t *)calloc(len, size);
 	}
-	chars_r->end = chars_r->index + count_chars;
-	byte_locs_r->end = byte_locs_r->index + count_chars + 1;
+
+	// Chew through the byte span with Decode_leading_ch,
+	//  until we get to Mch_end.
+
+	Ch_loc_t * it = ary;
+	while (true)
+	{
+		// Decode
+		
+		Ch_len_t ch_len = Decode_leading_ch(span);
+
+		// Add to ary
+
+		*it = {ch_len.ch, span.begin};
+
+		// Check for Mch_end
+
+		if (ch_len.ch == Mch_end)
+			break;
+
+		// Advance
+
+		++it;
+		span.begin += ch_len.len;
+	}
+
+	// Return the ary
+
+	return ary;
 }
 
 
 
-// 'scrub' : replace patterns in chars
+// 'scrub' : replace patterns in ch_loc_ary
 
 typedef struct Scrub_t
 {
-	Chars_t chars;
-	Byte_locs_t byte_locs;
-	
-	char32_t * ch_from;
-	Byte_t ** byte_loc_from;
+	Ch_loc_t * it_from;
+	Ch_loc_t * it_to;
 } Scrub_t;
 
 Scrub_t Start_scrub(
-	Chars_t chars,
-	Byte_locs_t byte_locs)
+	Ch_loc_t * ary)
 {
 	Scrub_t scrub;
-	scrub.chars = chars;
-	scrub.byte_locs = byte_locs;
-
-	scrub.ch_from = chars.index;
-	scrub.byte_loc_from = byte_locs.index;
+	scrub.it_from = ary;
+	scrub.it_to = ary;
 
 	return scrub;
 }
 
 bool Is_scrub_done(Scrub_t scrub)
 {
-	return scrub.ch_from >= scrub.chars.end;
+	return scrub.it_from->ch == Mch_end;
 }
 
-char32_t Scrub_ch(Scrub_t scrub, size_t index)
+char32_t Scrub_peek_ch(Scrub_t scrub, size_t i)
 {
-	Chars_t chars_from;
-	chars_from.index = scrub.ch_from;
-	chars_from.end = scrub.chars.end;
-	return Char_at_index_safe(chars_from, index);
+	return scrub.it_from[i].ch;
 }
 
 void Advance_scrub(
 	Scrub_t * scrub_r,
 	char32_t ch,
-	size_t len_scrub)
+	size_t len)
 {
-	assert(scrub_r->chars.index < scrub_r->chars.end);
-	assert(scrub_r->byte_locs.index < scrub_r->byte_locs.end);
-	
-	assert(scrub_r->ch_from < scrub_r->chars.end);
-	assert(scrub_r->byte_loc_from < scrub_r->byte_locs.end);
+	scrub_r->it_to->ch = ch;
+	scrub_r->it_to->loc = scrub_r->it_from->loc;
 
-	// Set next 'to' char to ch, and copy starting loc.
-
-	scrub_r->chars.index[0] = ch;
-	scrub_r->byte_locs.index[0] = scrub_r->byte_loc_from[0];
-
-	// Inc from/to
-
-	scrub_r->ch_from += len_scrub;
-	scrub_r->byte_loc_from += len_scrub;
-
-	scrub_r->chars.index += 1;
-	scrub_r->byte_locs.index += 1;
+	++scrub_r->it_to;
+	scrub_r->it_from += len;
 }
 
-void End_scrub(
-	Scrub_t scrub, 
-	Chars_t * chars_r,
-	Byte_locs_t * byte_locs_r)
+void End_scrub(Scrub_t scrub)
 {
-	// Move last loc (the end of the last token)
-
-	assert(scrub.byte_locs.index < scrub.byte_locs.end);
-	assert(scrub.byte_loc_from < scrub.byte_locs.end);
-
-	scrub.byte_locs.index[0] = scrub.byte_loc_from[0];
-
-	// Set end ptrs
-
-	chars_r->end = scrub.chars.index;
-	byte_locs_r->end = scrub.byte_locs.index + 1;
+	scrub.it_to->ch = Mch_end;
+	scrub.it_to->loc = scrub.it_from->loc;
 }
 
 void Scrub_carriage_returns(
-	Chars_t * chars_r,
-	Byte_locs_t * byte_locs_r)
+	Ch_loc_t * ary)
 {
-	Scrub_t scrub = Start_scrub(*chars_r, *byte_locs_r);
+	Scrub_t scrub = Start_scrub(ary);
 	while (!Is_scrub_done(scrub))
 	{
-		char32_t ch = Scrub_ch(scrub, 0);
+		char32_t ch = Scrub_peek_ch(scrub, 0);
 		bool is_cr = ch == '\r';
 		if (is_cr)
 			ch = '\n';
 
-		size_t len_scrub = 1;
-		if (is_cr && Scrub_ch(scrub, 1) == '\n')
+		size_t len = 1;
+		if (is_cr && Scrub_peek_ch(scrub, 1) == '\n')
 		{
-			len_scrub = 2;
+			len = 2;
 		}
 
-		Advance_scrub(&scrub, ch, len_scrub);
+		Advance_scrub(&scrub, ch, len);
 	}
-	End_scrub(scrub, chars_r, byte_locs_r);
+	End_scrub(scrub);
 }
 
 void Scrub_trigraphs(
-	Chars_t * chars_r,
-	Byte_locs_t * byte_locs_r)
+	Ch_loc_t * ary)
 {
-	Scrub_t scrub = Start_scrub(*chars_r, *byte_locs_r);
+	Scrub_t scrub = Start_scrub(ary);
 	while (!Is_scrub_done(scrub))
 	{
-		char32_t ch0 = Scrub_ch(scrub, 0);
+		char32_t ch0 = Scrub_peek_ch(scrub, 0);
 
-		if (ch0 == '?' && Scrub_ch(scrub, 1) == '?')
+		if (ch0 == '?' && Scrub_peek_ch(scrub, 1) == '?')
 		{
-			char32_t ch2 = Scrub_ch(scrub, 2);
+			char32_t ch2 = Scrub_peek_ch(scrub, 2);
 
 			char32_t pairs[][2] =
 			{
@@ -414,7 +369,7 @@ void Scrub_trigraphs(
 
 		Advance_scrub(&scrub, ch0, 1);
 	}
-	End_scrub(scrub, chars_r, byte_locs_r);
+	End_scrub(scrub);
 }
 
 void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
@@ -425,12 +380,12 @@ void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
 	while (true)
 	{
 		size_t i = len;
-		if (Scrub_ch(*scrub_r, i) != '\\')
+		if (Scrub_peek_ch(*scrub_r, i) != '\\')
 			break;
 
 		++i;
 
-		while (Is_hz_ws(Scrub_ch(*scrub_r, i)))
+		while (Is_hz_ws(Scrub_peek_ch(*scrub_r, i)))
 		{
 			++i;
 		}
@@ -438,7 +393,7 @@ void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
 		// Do not need to check for \r. since that 
 		//  has already been scrubbed.
 
-		if (Scrub_ch(*scrub_r, i) != '\n')
+		if (Scrub_peek_ch(*scrub_r, i) != '\n')
 			break;
 
 		len = i + 1;
@@ -448,34 +403,33 @@ void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
 
 	if (len == 0)
 	{
-		Advance_scrub(scrub_r, Scrub_ch(*scrub_r, 0), 1);
+		Advance_scrub(scrub_r, Scrub_peek_ch(*scrub_r, 0), 1);
 	}
-	else if (scrub_r->ch_from + len == scrub_r->chars.end)
+	else if (scrub_r->it_from[len].ch == Mch_end)
 	{
 		// Drop trailing escaped line break
 		//  (do not include it in a character)
 		
-		scrub_r->ch_from = scrub_r->chars.end;
+		scrub_r->it_from += len;
 	}
 	else
 	{
 		Advance_scrub(
-			scrub_r, 
-			Scrub_ch(*scrub_r, len), 
+			scrub_r,
+			Scrub_peek_ch(*scrub_r, len),
 			len + 1);
 	}
 }
 
 void Scrub_escaped_line_breaks(
-	Chars_t * chars_r,
-	Byte_locs_t * byte_locs_r)
+	Ch_loc_t * ary)
 {
-	Scrub_t scrub = Start_scrub(*chars_r, *byte_locs_r);
+	Scrub_t scrub = Start_scrub(ary);
 	while (!Is_scrub_done(scrub))
 	{
 		Scrub_leading_escaped_line_breaks(&scrub);
 	}
-	End_scrub(scrub, chars_r, byte_locs_r);
+	End_scrub(scrub);
 }
 
 
@@ -934,35 +888,27 @@ const char * Str_from_tokk(Tokk_t tokk)
 	return str_for_tokk[tokk];
 }
 
-DECL_SPAN(Tokks, Tokk_t);
-
-void Lex_punctuation(
-	Chars_t chars,
-	Tokk_t * tokk_out,
-	char32_t ** ch_after_out)
+typedef struct Tokk_end_t
 {
-	// No chars? no punct
+	Tokk_t tokk;
+	Ch_loc_t * end;
+} Tokk_len_t;
 
-	if (Chars_empty(chars))
-	{
-		*tokk_out = Tokk_unknown;
-		*ch_after_out = NULL;
-
-		return;
-	}
-
+Tokk_end_t Lex_punctuation(
+	Ch_loc_t * ary)
+{
 	// Punctuation sorted by length
+
+	// "::" is included to match clang
+	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
 
 	typedef struct
 	{
 		const char32_t * str;
 		Tokk_t tokk;
-	} Punctuation_t;
+	} Str_tokk_t;
 
-	// "::" is included to match clang
-	// https://github.com/llvm/llvm-project/commit/874217f99b99ab3c9026dc3b7bd84cd2beebde6e
-
-	static Punctuation_t puncts[] =
+	static Str_tokk_t puncts[] =
 	{
 		{U"%:%:", Tokk_hashhash},
 		{U">>=", Tokk_greatergreaterequal},
@@ -1023,25 +969,25 @@ void Lex_punctuation(
 
 	for (int i_punct = 0; i_punct < ARY_LEN(puncts); ++i_punct)
 	{
-		Punctuation_t punct = puncts[i_punct];
+		Str_tokk_t punct = puncts[i_punct];
 		const char32_t * str = punct.str;
 
-		// Empty str in punct? skip it
+		// Empty str in puncts? skip it
 
 		if (str[0] == '\0')
 			continue;
 
-		// Check if chars starts with str
+		// Check if ary starts with str
 
 		bool found_match = false;
 
-		char32_t * index_peek = chars.index;
-		while (index_peek < chars.end)
+		Ch_loc_t * it = ary;
+		while (true)
 		{
-			if (index_peek[0] != str[0])
+			if (it->ch != str[0])
 				break;
 
-			++index_peek;
+			++it;
 			++str;
 
 			if (str[0] == '\0')
@@ -1053,20 +999,15 @@ void Lex_punctuation(
 			}
 		}
 
-		if (found_match)
-		{
-			// Found a match, return len + tokk
+		// Found a match, return tokk + end
 
-			*tokk_out = punct.tokk;
-			*ch_after_out = index_peek;
-			return;
-		}
+		if (found_match)
+			return {punct.tokk, it};
 	}
 
 	// Just return leading char as an unknown token
 
-	*tokk_out = Tokk_unknown;
-	*ch_after_out = chars.index + 1;
+	return {Tokk_unknown, ary + 1};
 }
 
 bool Extends_id(char32_t ch)
@@ -1101,7 +1042,7 @@ bool Extends_id(char32_t ch)
 
 	// Bogus utf8 does not extend ids
 
-	if (ch == UINT32_MAX)
+	if (ch > 0x10ffff)
 		return false;
 
 	// These code points are allowed to extend an id
@@ -1205,10 +1146,10 @@ uint32_t Hex_val_from_ch(char32_t ch)
 		return ch - '0';
 
 	if (ch < 'A')
-		return UINT32_MAX;
+		return Mch_invalid;
 
 	if (ch > 'f')
-		return UINT32_MAX;
+		return Mch_invalid;
 
 	if (ch <= 'F')
 		return ch - 'A' + 10;
@@ -1216,41 +1157,34 @@ uint32_t Hex_val_from_ch(char32_t ch)
 	if (ch >= 'a')
 		return ch - 'a' + 10;
 
-	return UINT32_MAX;
+	return Mch_invalid;
 }
 
-void Lex_ucn(
-	Chars_t chars,
-	char32_t * ch_out,
-	char32_t ** ch_after_out)
+typedef struct Ch_end_t
 {
-	*ch_out = UINT32_MAX;
-	*ch_after_out = NULL;
+	char32_t ch;
+	Ch_loc_t * end;
+} Ch_end_t;
 
-	if (Chars_empty(chars))
-		return;
+Ch_end_t Lex_ucn(
+	Ch_loc_t * it)
+{
+	Ch_end_t invalid = {Mch_invalid, NULL};
 
-	// Check for leading '\\'
+	// Leading '\\'
 
-	if (chars.index[0] != '\\')
-		return;
+	if (it->ch != '\\')
+		return invalid;
 
-	// Advance past '\\'
+	++it;
 
-	++chars.index;
-	if (Chars_empty(chars))
-		return;
+	// U\u
 
-	// Look for 'u' or 'U' after '\\'
-
-	char32_t ch_u = chars.index[0];
-	if (ch_u != 'u' && ch_u != 'U')
-		return;
-
-	// Look for 4 or 8 hex digits, based on u vs U
+	if (it->ch != 'u' && it->ch != 'U')
+		return invalid;
 
 	int digits_need;
-	if (ch_u == 'u')
+	if (it->ch == 'u')
 	{
 		digits_need = 4;
 	}
@@ -1259,114 +1193,97 @@ void Lex_ucn(
 		digits_need = 8;
 	}
 
-	// Advance past u/U
+	++it;
 
-	++chars.index;
-	if (Chars_empty(chars))
-		return;
+	// String of hex digits, possibly between {}
 
-	// Look for correct number of hex digits
-
-	char32_t ch_result = 0;
+	char32_t result = 0;
 	int digits_read = 0;
 	bool delimited = false;
 	bool got_end_delim = false;
 
-	while (!Chars_empty(chars) && ((digits_read < digits_need) || delimited))
+	while (digits_read < digits_need || delimited)
 	{
-		char32_t ch = chars.index[0];
+		// Handle {}
 
-		// Check for '{' (delimited ucns)
-
-		if (!delimited && digits_read == 0 && ch == '{')
+		if (!delimited && digits_read == 0 && it->ch == '{')
 		{
 			delimited = true;
-			++chars.index;
+			++it;
+			
 			continue;
 		}
 
-		// Check for '}' (delimited ucns)
-
-		if (delimited && ch == '}')
+		if (delimited && it->ch == '}')
 		{
 			got_end_delim = true;
-			++chars.index;
+			++it;
+			
 			break;
 		}
 
 		// Check if valid hex digit
 
-		char32_t digit_val = Hex_val_from_ch(ch);
-		if (digit_val == UINT32_MAX)
+		char32_t val = Hex_val_from_ch(it->ch);
+		if (val == Mch_invalid)
 		{
 			if (delimited)
-				return;
+				return invalid;
 
 			break;
 		}
 
-		// Bail out if we are about to overflow
+		// Avoid overflow
 
-		if (ch_result & 0xF000'0000)
-			return;
+		if (result & 0xF000'0000)
+			return invalid;
 
-		// Fold hex digit into cp
+		// Single hex digit
 
-		ch_result <<= 4;
-		ch_result |= digit_val;
-
-		// Keep track of how many digits we have read
+		result <<= 4;
+		result |= val;
 
 		++digits_read;
 
-		// Advance to next digit
-
-		++chars.index;
+		++it;
 	}
 
-	// No digits read?
+	// Error checks
 
 	if (digits_read == 0)
-		return;
-
-	// Read wrong number of digits?
+		return invalid;
 
 	if (!delimited && digits_read != digits_need)
-		return;
+		return invalid;
 
-	// Sanity check that people are not trying to encode
-	//  something particularly weird with a UCN.
-	//  Convert any weird inputs to the error value UINT32_MAX
+	// Note that we still return a valid end ptr if !Is_valid_ucn.
+	//  This lets us tell the difference between a syntactically invalid
+	//  ucn, and a 'semanticaly' invalid one.
 
-	if (!Is_valid_ucn(ch_result))
+	if (!Is_valid_ucn(result))
 	{
-		ch_result = UINT32_MAX;
+		result = Mch_invalid;
 	}
 
-	// Return result
-
-	*ch_out = ch_result;
-	*ch_after_out = chars.index;
+	return {result, it};
 }
 
-char32_t * After_rest_of_id(Chars_t chars)
+Ch_loc_t * After_rest_of_id(Ch_loc_t * it)
 {
-	while (!Chars_empty(chars))
+	while (true)
 	{
-		if (Extends_id(chars.index[0]))
+		if (Extends_id(it->ch))
 		{
-			++chars.index;
+			++it;
 			continue;
 		}
 
-		if (chars.index[0] == '\\')
+		if (it->ch == '\\')
 		{
-			char32_t ch;
-			char32_t * after;
-			Lex_ucn(chars, &ch, &after);
-			if (after && Extends_id(ch))
+			Ch_end_t ucn = Lex_ucn(it);
+			if (ucn.end && Extends_id(ucn.ch))
 			{
-				chars.index = after;
+				it = ucn.end;
 				continue;
 			}
 		}
@@ -1374,10 +1291,10 @@ char32_t * After_rest_of_id(Chars_t chars)
 		break;
 	}
 
-	return chars.index;
+	return it;
 }
 
-char32_t * After_rest_of_ppnum(Chars_t chars)
+Ch_loc_t * After_rest_of_ppnum(Ch_loc_t * it)
 {
 	/* NOTE (matthewd)
 		preprocesor numbers are a bit unintuative,
@@ -1423,31 +1340,25 @@ char32_t * After_rest_of_ppnum(Chars_t chars)
 	// Len_rest_of_pp_num is called after we see ( '.'? [0-9] ), that is, pp_num_start
 	// 'rest_of_pp_num' is equivalent to pp_num_continue*
 
-	while (!Chars_empty(chars))
+	while (true)
 	{
-		char32_t ch = chars.index[0];
-
-		if (ch == '.')
+		if (it->ch == '.')
 		{
-			++chars.index;
+			++it;
 			continue;
 		}
-		else if (ch == 'e' || ch == 'E' || ch == 'p' || ch == 'P')
+		else if (it->ch == 'e' || it->ch == 'E' || it->ch == 'p' || it->ch == 'P')
 		{
-			++chars.index;
+			++it;
 
-			if (!Chars_empty(chars))
+			if (it->ch == '+' || it->ch == '-')
 			{
-				ch = chars.index[0];
-				if (ch == '+' || ch == '-')
-				{
-					++chars.index;
-				}
+				++it;
 			}
 
 			continue;
 		}
-		else if (ch == '$')
+		else if (it->ch == '$')
 		{
 			// Clang does not allow '$' in ppnums, 
 			//  even though the spec would seem to suggest that 
@@ -1455,21 +1366,19 @@ char32_t * After_rest_of_ppnum(Chars_t chars)
 
 			break;
 		}
-		else if (Extends_id(ch))
+		else if (Extends_id(it->ch))
 		{
 			// Everything (else) which extends ids can extend a ppnum
 
-			++chars.index;
+			++it;
 			continue;
 		}
-		else if (ch == '\\')
+		else if (it->ch == '\\')
 		{
-			char32_t ch_ucn;
-			char32_t * after;
-			Lex_ucn(chars, &ch_ucn, &after);
-			if (after && Extends_id(ch_ucn))
+			Ch_end_t ucn = Lex_ucn(it);
+			if (ucn.end && Extends_id(ucn.ch))
 			{
-				chars.index = after;
+				it = ucn.end;
 				continue;
 			}
 			else
@@ -1485,164 +1394,137 @@ char32_t * After_rest_of_ppnum(Chars_t chars)
 		}
 	}
 
-	return chars.index;
+	return it;
 }
 
-char32_t * After_rest_of_line_comment(
-	Chars_t chars)
+Ch_loc_t * After_rest_of_line_comment(Ch_loc_t * it)
 {
-	while (!Chars_empty(chars))
+	while (it->ch != Mch_end)
 	{
-		if (chars.index[0] == '\n')
+		if (it->ch == '\n')
 			break;
 
-		++chars.index;
+		++it;
 	}
 
-	return chars.index;
+	return it;
 }
 
-void Lex_rest_of_block_comment(
-	Chars_t chars,
-	Tokk_t * tokk_out,
-	char32_t ** after_out)
+Tokk_end_t Lex_rest_of_block_comment(Ch_loc_t * it)
 {
 	Tokk_t tokk = Tokk_unknown;
 
-	while (!Chars_empty(chars))
+	while (it->ch != Mch_end)
 	{
-		char32_t ch0 = chars.index[0];
-		++chars.index;
+		char32_t ch = it->ch;
+		++it;
 
-		if (!Chars_empty(chars))
+		if (ch == '*' && it->ch == '/')
 		{
-			char32_t ch1 = chars.index[0];
-			if (ch0 == '*' && ch1 == '/')
-			{
-				tokk = Tokk_comment;
-				++chars.index;
-				break;
-			}
+			tokk = Tokk_comment;
+			++it;
+			break;
 		}
 	}
 
-	*after_out = chars.index;
-	*tokk_out = tokk;
+	return {tokk, it};
 }
 
-void Lex_rest_of_str_lit(
-	bool use_dquote,
-	Chars_t chars,
-	bool * valid_out,
-	char32_t ** after_out)
+Tokk_end_t Lex_rest_of_str_lit(
+	Tokk_t tokk,
+	Ch_loc_t * it)
 {
-	char32_t ch_close = (use_dquote) ? U'"' : U'\'';
-
-	bool closed = false;
-	int len = 0;
-
-	while (!Chars_empty(chars))
+	char32_t ch_close = U'"';
+	switch (tokk)
 	{
-		char32_t ch = chars.index[0];
+	case Tokk_utf16_char_constant:
+	case Tokk_utf32_char_constant:
+	case Tokk_wide_char_constant:
+	case Tokk_char_constant:
+		ch_close = U'\'';
+		break;
+	}
 
-		// String without closing quote (which we support in raw lexing mode..)
+	int len = 0;
+	while (it->ch != Mch_end)
+	{
+		char32_t ch = it->ch;
+
+		// Missing closing quote
 
 		if (ch == '\n')
-			break;
+			return {Tokk_unknown, it};
 
-		// Anything else will be part of the str lit
+		// Include in string
 
-		++chars.index;
+		++it;
 
-		// Closing quote
+		// Check for close quote
 
 		if (ch == ch_close)
 		{
-			closed = true;
-			break;
+			if (ch_close == '\'' && len == 0)
+			{
+				// Zero length char lits are invalid
+
+				return {Tokk_unknown, it};
+			}
+			else
+			{
+				return {tokk, it};
+			}
 		}
 
-		// Found somthing other than open/close quote, inc len
+		// Something other than close quote, include in string body
 
 		++len;
 
 		// Deal with back slash
 
-		if (ch == '\\' && !Chars_empty(chars))
+		if (ch == '\\')
 		{
-			// Check if escaped char is '\"', '\'', or '\\',
-			//  the only escapes we need to handle in raw mode
-
-			ch = chars.index[0];
-			if (ch == ch_close || ch == '\\')
+			if (it->ch == ch_close || it->ch == '\\')
 			{
 				++len;
-				++chars.index;
+				++it;
 			}
 		}
 	}
 
-	// zero length char lits are invalid
+	// Reached end without seeing close quote
 
-	*valid_out = closed && (use_dquote || len > 0);
-	*after_out = chars.index;
+	return {Tokk_unknown, it};
 }
 
-char32_t * After_whitespace(Chars_t chars)
+Ch_loc_t * After_whitespace(Ch_loc_t * it)
 {
-	while (!Chars_empty(chars))
+	while (it->ch != Mch_end)
 	{
-		if (!Is_ws(chars.index[0]))
+		if (!Is_ws(it->ch))
 			break;
 
-		++chars.index;
+		++it;
 	}
 
-	return chars.index;
+	return it;
 }
 
-void Lex_leading_token(
-	Chars_t chars,
-	Tokk_t * tokk_out,
-	char32_t ** after_out)
+Tokk_end_t Lex_leading_token(Ch_loc_t * it)
 {
-	char32_t ch_0 = Char_at_index_safe(chars, 0);
-	char32_t ch_1 = Char_at_index_safe(chars, 1);
-	char32_t ch_2 = Char_at_index_safe(chars, 2);
-
-	// Decide what to do
+	char32_t ch_0 = it->ch;
+	char32_t ch_1 = (ch_0 == Mch_end) ? Mch_end : it[1].ch;
+	char32_t ch_2 = (ch_1 == Mch_end) ? Mch_end : it[2].ch;
 
 	if (ch_0 == 'u' && ch_1 == '8' && ch_2 == '"')
 	{
-		chars.index += 3;
-
-		bool valid;
-		Lex_rest_of_str_lit(
-			true,
-			chars,
-			&valid,
-			after_out);
-
-		*tokk_out = (valid) ? Tokk_utf8_string_literal : Tokk_unknown;
+		it += 3;
+		return Lex_rest_of_str_lit(Tokk_utf8_string_literal, it);
 	}
 	else if ((ch_0 == 'u' || ch_0 == 'U' || ch_0 == 'L') &&
 			 (ch_1 == '"' || ch_1 == '\''))
 	{
-		chars.index += 2;
+		it += 2;
 
-		bool valid;
-		Lex_rest_of_str_lit(
-			ch_1 == '"', 
-			chars, 
-			&valid,
-			after_out);
-
-		if (!valid)
-		{
-			*tokk_out = Tokk_unknown;
-			return;
-		}
-		
 		Tokk_t tokk;
 		switch (ch_0)
 		{
@@ -1656,95 +1538,74 @@ void Lex_leading_token(
 			tokk = (ch_1 == '"') ? Tokk_wide_string_literal : Tokk_wide_char_constant;
 			break;
 		}
-		
-		*tokk_out = tokk;
+
+		return Lex_rest_of_str_lit(tokk, it);
 	}
 	else if (ch_0 == '"' || ch_0 == '\'')
 	{
-		++chars.index;
+		++it;
 
-		bool valid;
-		Lex_rest_of_str_lit(
-			ch_0 == '"', 
-			chars,
-			&valid,
-			after_out);
+		Tokk_t tokk = (ch_0 == '"') ? Tokk_string_literal : Tokk_char_constant;
 
-		if (!valid)
-		{
-			*tokk_out = Tokk_unknown;
-			return;
-		}
-
-		*tokk_out = (ch_0 == '"') ? Tokk_string_literal : Tokk_char_constant;
+		return Lex_rest_of_str_lit(tokk, it);
 	}
 	else if (ch_0 == '/' && ch_1 == '*')
 	{
-		chars.index += 2;
-		Lex_rest_of_block_comment(chars, tokk_out, after_out);
+		it += 2;
+		return Lex_rest_of_block_comment(it);
 	}
 	else if (ch_0 == '/' && ch_1 == '/')
 	{
-		chars.index += 2;
-		*after_out = After_rest_of_line_comment(chars);
-		*tokk_out = Tokk_comment;
+		it += 2;
+		return {Tokk_comment, After_rest_of_line_comment(it)};
 	}
 	else if (ch_0 == '.' && ch_1 >= '0' && ch_1 <= '9')
 	{
-		chars.index += 2;
-		*after_out = After_rest_of_ppnum(chars);
-		*tokk_out = Tokk_numeric_constant;
+		it += 2;
+		return {Tokk_numeric_constant, After_rest_of_ppnum(it)};
 	}
 	else if (Starts_id(ch_0))
 	{
-		++chars.index;
-		*after_out = After_rest_of_id(chars);
-		*tokk_out = Tokk_raw_identifier;
+		++it;
+		return {Tokk_raw_identifier, After_rest_of_id(it)};
 	}
 	else if (ch_0 >= '0' && ch_0 <= '9')
 	{
-		++chars.index;
-		*after_out = After_rest_of_ppnum(chars);
-		*tokk_out = Tokk_numeric_constant;
+		++it;
+		return {Tokk_numeric_constant, After_rest_of_ppnum(it)};
 	}
 	else if (Is_ws(ch_0) || ch_0 == '\0')
 	{
-		++chars.index;
-		*after_out = After_whitespace(chars);
-		*tokk_out = Tokk_unknown;
+		++it;
+		return {Tokk_unknown, After_whitespace(it)};
 	}
 	else if (ch_0 =='\\')
 	{
-		char32_t ch;
-		char32_t * after;
-		Lex_ucn(chars, &ch, &after);
-		if (after)
+		Ch_end_t ucn = Lex_ucn(it);
+		if (ucn.end)
 		{
-			if (Starts_id(ch))
+			if (Starts_id(ucn.ch))
 			{
-				chars.index = after;
-				*after_out = After_rest_of_id(chars);
-				*tokk_out = Tokk_raw_identifier;
+				it = ucn.end;
+				return {Tokk_raw_identifier, After_rest_of_id(it)};
 			}
 			else
 			{
 				// Bogus UCN, return it as an unknown token
 
-				*after_out = after;
-				*tokk_out = Tokk_unknown;
+				return {Tokk_unknown, ucn.end};
 			}
 		}
 		else
 		{
 			// Stray backslash, return as unknown token
-			
-			*after_out = chars.index + 1;
-			*tokk_out = Tokk_unknown;
+
+			return {Tokk_unknown, it + 1};
 		}
 	}
 	else
 	{
-		Lex_punctuation(chars, tokk_out, after_out);
+		return Lex_punctuation(it);
 	}
 }
 
@@ -1893,34 +1754,15 @@ void Advance_line_info(
 	}
 }
 
-void Print_raw_tokens(Bytes_t bytes)
+void Print_raw_tokens(Byte_span_t span)
 {
-	// In the worst case, we will have a codepoint for every byte
-	//  in the original span, so allocate enough space for that.
-
-	//  Note that the locations array is one longer than the character array,
-	//  since we want to store the begining and end of each character.
-	//  for most chars, the end is the same as the beginning of the next one,
-	//  except for the last one, which must have an explicit extra loc to denote its end
-
-	size_t len_bytes = Bytes_len(bytes);
-
-	Chars_t chars = Chars_alloc(len_bytes);
-	Byte_locs_t byte_locs = Byte_locs_alloc(len_bytes + 1);
-
-	if (Chars_empty(chars) || Byte_locs_empty(byte_locs))
-		return;
-
 	// Decode + scrub
 
-	Decode_utf8(bytes, &chars, &byte_locs);
+	Ch_loc_t * ary = Decode_byte_span(span);
 
-	Scrub_carriage_returns(&chars, &byte_locs);
-	Scrub_trigraphs(&chars, &byte_locs);
-	Scrub_escaped_line_breaks(&chars, &byte_locs);
-
-	if (Chars_empty(chars) || Byte_locs_empty(byte_locs))
-		return;
+	Scrub_carriage_returns(ary);
+	Scrub_trigraphs(ary);
+	Scrub_escaped_line_breaks(ary);
 
 	// Keep track of line info
 
@@ -1929,20 +1771,16 @@ void Print_raw_tokens(Bytes_t bytes)
 
 	// Lex!
 
-	char32_t * ch_start = chars.index;
-	while (!Chars_empty(chars))
+	Ch_loc_t * it = ary;
+	while (it->ch != Mch_end)
 	{
-		Tokk_t tokk;
-		char32_t * after;
-		Lex_leading_token(chars, &tokk, &after);
+		Tokk_end_t token = Lex_leading_token(it);
 
-		long long i_ch_begin = chars.index - ch_start;
-		long long i_ch_end = after - ch_start;
+		Byte_t * loc_begin = it->loc;
+		Byte_t * loc_end = token.end->loc;
 
-		Byte_t * loc_begin = byte_locs.index[i_ch_begin];
-		Byte_t * loc_end = byte_locs.index[i_ch_end];
 		Print_token(
-			tokk,
+			token.tokk,
 			loc_begin,
 			loc_end,
 			line,
@@ -1954,7 +1792,7 @@ void Print_raw_tokens(Bytes_t bytes)
 			&line,
 			&col);
 
-		chars.index = after;
+		it = token.end;
 	}
 }
 
@@ -2067,9 +1905,9 @@ int wmain(int argc, wchar_t *argv[])
 
 	// Print tokens
 
-	Bytes_t bytes;
-	bytes.index = file_bytes;
-	bytes.end = file_bytes + file_length;
+	Byte_span_t span;
+	span.begin = file_bytes;
+	span.end = file_bytes + file_length;
 
-	Print_raw_tokens(bytes);
+	Print_raw_tokens(span);
 }
