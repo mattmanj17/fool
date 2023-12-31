@@ -203,9 +203,9 @@ Ch_loc_t * Decode_byte_span(Byte_span_t span)
 	size_t span_len = Byte_span_len(span);
 
 	if (span_len >= 3 &&
-		span.begin[0] == '\xEF' &&
-		span.begin[1] == '\xBB' &&
-		span.begin[2] == '\xBF')
+		span.begin[0] == 0xEF &&
+		span.begin[1] == 0xBB &&
+		span.begin[2] == 0xBF)
 	{
 		span.begin += 3;
 		span_len -= 3;
