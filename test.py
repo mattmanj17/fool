@@ -9,61 +9,50 @@ from threading import Lock
 import tempfile
 
 def main():
+	if not os.path.exists('untracked'):
+		os.mkdir('untracked')
+	
 	build_clang()
 	setup_tests()
 	run_tests()
 
 def build_clang():
 	# build llvm-project/build/Release/bin/clang.exe
-	# BB (matthewd) should re write this without os.chdir, they are confusing
-
-	cwd = os.getcwd()
-
-	if not os.path.exists('untracked'):
-		os.mkdir('untracked')
 
 	if not os.path.exists('untracked/3rd_party'):
 		os.mkdir('untracked/3rd_party')
 	
-	os.chdir('untracked/3rd_party')
-	
-	if os.path.exists('llvm-project'):
-		os.chdir(cwd)
+	if os.path.exists('untracked/3rd_party/llvm-project'):
 		return
 	
-	print('downloading and building clang')
-	
-	print('git clone')
 	subprocess.run([
-		'git', 'clone', 
-		'https://github.com/mattmanj17/llvm-project.git'])
+		'git', 'clone',
+		'https://github.com/mattmanj17/llvm-project.git',
+		'untracked/3rd_party/llvm-project'])
 	
-	os.chdir('llvm-project')
+	subprocess.run([
+		'git', 
+		'-C', 'untracked/3rd_party/llvm-project', 
+		'switch', 
+		'17.0.3-branch'])
 	
-	print('git switch')
-	subprocess.run(['git', 'switch', '17.0.3-branch'])
+	os.mkdir('untracked/3rd_party/llvm-project/build')
 	
-	os.mkdir('build')
-	os.chdir('build')
-	
-	print('cmake')
 	subprocess.run([
 		'cmake', 
 		'-DLLVM_ENABLE_PROJECTS=clang', 
 		'-A', 'x64', 
 		'-Thost=x64', 
-		'..\\llvm'])
+		'-S'
+		'untracked/3rd_party/llvm-project/llvm',
+		'-B',
+		'untracked/3rd_party/llvm-project/build'])
 	
-	os.chdir('..')
-	
-	print('msbuild')
 	subprocess.run([
-		'msbuild', 
-		'-m:4', 
-		'build/tools/clang/tools/driver/clang.vcxproj', 
+		'msbuild',
+		'-m:4',
+		'untracked/3rd_party/llvm-project/build/tools/clang/tools/driver/clang.vcxproj', 
 		'/property:Configuration=Release'])
-
-	os.chdir(cwd)
 
 def setup_tests():
 	# generate test/input
@@ -72,20 +61,15 @@ def setup_tests():
 		os.mkdir('untracked/test')
 
 	if not os.path.exists('untracked/fool_corpus'):
-		download_corpus()
+		subprocess.run([
+			'git', 'clone', 
+			'https://github.com/mattmanj17/fool_corpus.git',
+			'untracked/fool_corpus'])
 
 	if not os.path.exists('untracked/test/input'):
 		setup_test_input()
 
 	ensure_test_output()
-
-def download_corpus():
-	cwd = os.getcwd()
-	os.chdir('untracked')
-	subprocess.run([
-		'git', 'clone', 
-		'https://github.com/mattmanj17/fool_corpus.git'])
-	os.chdir(cwd)
 
 def setup_test_input():
 	os.mkdir('untracked/test/input')
@@ -99,6 +83,7 @@ def copy_raw_corpus():
 	shutil.copytree("untracked/fool_corpus/ctok_raw/","untracked/test/input/fool_corpus/ctok_raw")
 
 def copy_test_files():
+	print("copy other test files")
 	shutil.copytree("test","untracked/test/input/test")
 
 def generate_test_input():
@@ -127,6 +112,8 @@ def generate_test_input():
 		findex += 1
 
 def scrub_test_input():
+	print("scrub")
+
 	# clean up some patterns where we diverge from clang
 	# we still support correctly lexing files that contain these patterns, 
 	#  we just slightly differ in the exact ways we split up tokens compared to clang.
@@ -142,7 +129,7 @@ def scrub_test_input():
 
 def scrub_ws_in_file(src_file):
 	scrub_exe = os.path.abspath("untracked/build/exe/scrub_ws.exe")
-	subprocess.run(f'{scrub_exe} {src_file} {src_file}')
+	subprocess.run(f'{scrub_exe} "{src_file}" "{src_file}"')
 	print(f'scrub_ws {src_file}')
 
 def ensure_test_output():
