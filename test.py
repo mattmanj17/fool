@@ -74,13 +74,14 @@ def setup_tests():
 def setup_test_input():
 	os.mkdir('untracked/test/input')
 	copy_raw_corpus()
-	scrub_test_input()
+	scrub_raw_input()
+	copy_lex_corpus()
 
 def copy_raw_corpus():
-	print("copy_corpus")
+	print("copy_raw_corpus")
 	shutil.copytree("untracked/fool_corpus/ctok_raw/","untracked/test/input/fool_corpus/ctok_raw")
 
-def scrub_test_input():
+def scrub_raw_input():
 	print("scrub")
 
 	# clean up some patterns where we diverge from clang
@@ -88,7 +89,7 @@ def scrub_test_input():
 	#  we just slightly differ in the exact ways we split up tokens compared to clang.
 	#  These are all edge cases involving whitespace, so slight divergance is fine.
 
-	dest_dir = os.path.abspath('untracked/test/input/')
+	dest_dir = os.path.abspath('untracked/test/input/fool_corpus/ctok_raw')
 
 	with concurrent.futures.ThreadPoolExecutor() as executor:
 		for root, _, fnames in os.walk(dest_dir):
@@ -100,6 +101,10 @@ def scrub_ws_in_file(src_file):
 	scrub_exe = os.path.abspath("untracked/build/exe/scrub_ws.exe")
 	subprocess.run(f'{scrub_exe} "{src_file}" "{src_file}"')
 	print(f'scrub_ws {src_file}')
+
+def copy_lex_corpus():
+	print("copy_lex_corpus")
+	shutil.copytree("untracked/fool_corpus/ctok_lex","untracked/test/input/fool_corpus/ctok_lex")
 
 def ensure_test_output():
 	# copy directory structure of test/input to test/output
@@ -120,13 +125,16 @@ def ensure_test_output():
 
 	with concurrent.futures.ThreadPoolExecutor(max_workers=19) as executor: 
 		clang = os.path.abspath("untracked/3rd_party/llvm-project/build/Release/bin/clang.exe")
-		for in_path, out_path in test_cases():
+		for in_path, out_path in raw_test_cases():
 			if not os.path.isfile(out_path):
-				executor.submit(run_clang, clang, in_path, out_path)
+				executor.submit(run_clang, clang, True, in_path, out_path)
+		for in_path, out_path in lex_test_cases():
+			if not os.path.isfile(out_path):
+				executor.submit(run_clang, clang, False, in_path, out_path)
 
-def test_cases():
-	in_dir = os.path.abspath("untracked/test/input")
-	out_dir = os.path.abspath("untracked/test/output")
+def raw_test_cases():
+	in_dir = os.path.abspath("untracked/test/input/fool_corpus/ctok_raw")
+	out_dir = os.path.abspath("untracked/test/output/fool_corpus/ctok_raw")
 	for root, _, files in os.walk(in_dir):
 		for fname in files:
 			in_path = os.path.join(root, fname)
@@ -137,10 +145,24 @@ def test_cases():
 
 			yield (in_path, out_path)
 
-def run_clang(clang_path, in_path, out_path):
+def lex_test_cases():
+	in_dir = os.path.abspath("untracked/test/input/fool_corpus/ctok_lex")
+	out_dir = os.path.abspath("untracked/test/output/fool_corpus/ctok_lex")
+	for root, _, files in os.walk(in_dir):
+		for fname in files:
+			in_path = os.path.join(root, fname)
+			rel_path = os.path.relpath(in_path, in_dir)
+			
+			out_path = os.path.join(out_dir, rel_path)
+			out_path += ".tokens"
+
+			yield (in_path, out_path)
+
+def run_clang(clang_path, raw, in_path, out_path):
 	with open(out_path, "wb") as out_f:
+		cmd = '-dump-raw-tokens' if raw else '-dump-tokens'
 		subprocess.run(
-			f'{clang_path} -cc1 -dump-raw-tokens -std=c11 -x c "{in_path}"', 
+			f'{clang_path} -cc1 {cmd} -std=c11 -x c "{in_path}"', 
 			stderr=out_f)
 	print(f'run_clang {in_path}')
 
@@ -167,7 +189,7 @@ def run_tests():
 
 	with concurrent.futures.ThreadPoolExecutor() as executor:
 		ctok = os.path.abspath("untracked/build/exe/ctok.exe")
-		for in_path, out_path in test_cases():
+		for in_path, out_path in raw_test_cases():
 			if in_path in skips:
 				continue
 			executor.submit(
@@ -177,6 +199,20 @@ def run_tests():
 						out_path,
 						fails,
 						fail_lock)
+			
+		""" # todo run lex tests
+		for in_path, out_path in lex_test_cases():
+			if in_path in skips:
+				continue
+			executor.submit(
+						run_ctok, 
+						ctok, 
+						False,
+						in_path, 
+						out_path,
+						fails,
+						fail_lock)
+		"""
 	
 	print(f'{len(fails)} tests failed')
 	if fails:
