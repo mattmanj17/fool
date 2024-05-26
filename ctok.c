@@ -126,7 +126,7 @@ Ch_len_t Decode_leading_ch(Byte_span_t span)
 
 	size_t span_len = Byte_span_len(span);
 	if (span_len == 0)
-		Make_ch_len(Mch_end, 0);
+		return Make_ch_len(Mch_end, 0);
 
 	// Value we return on error
 

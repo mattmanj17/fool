@@ -2,15 +2,35 @@
 import os
 import subprocess
 import shutil
-import itertools
-from pathlib import Path
 import concurrent.futures
 from threading import Lock
 import tempfile
 
+ignored_by_git_dir = "ignored_by_git"
+
+llvm_git_url = "https://github.com/mattmanj17/llvm-project.git"
+llvm_branch_name = '17.0.3-branch'
+
+llvm_root_dir = f"{ignored_by_git_dir}/llvm-project"
+llvm_build_dir = f"{llvm_root_dir}/build"
+llvm_cmake_root = f'{llvm_root_dir}/llvm'
+llvm_clang_vcxproj = f'{llvm_build_dir}/tools/clang/tools/driver/clang.vcxproj'
+llvm_clang_exe = f"{llvm_build_dir}/Release/bin/clang.exe"
+
+raw_test_files_in = "test_files/raw"
+raw_test_files_scrubbed = f'{ignored_by_git_dir}/scrubbed_raw_test_files'
+raw_test_files_out = f"{ignored_by_git_dir}/test_output/raw"
+
+scrub_ws_path = f"{ignored_by_git_dir}/build/exe/scrub_ws.exe"
+
+no_hashtag_test_files_in = "test_files/no_hashtag"
+no_hashtag_test_files_out = f"{ignored_by_git_dir}/test_output/no_hashtag"
+
+ctok_exe = f"{ignored_by_git_dir}/build/exe/ctok.exe"
+
 def main():
-	if not os.path.exists('untracked'):
-		os.mkdir('untracked')
+	if not os.path.exists(ignored_by_git_dir):
+		os.mkdir(ignored_by_git_dir)
 	
 	build_clang()
 	setup_tests()
@@ -18,78 +38,52 @@ def main():
 
 def build_clang():
 	# build llvm-project/build/Release/bin/clang.exe
-
-	if not os.path.exists('untracked/3rd_party'):
-		os.mkdir('untracked/3rd_party')
 	
-	if os.path.exists('untracked/3rd_party/llvm-project'):
+	if os.path.exists(llvm_root_dir):
 		return
 	
-	subprocess.run([
-		'git', 'clone',
-		'https://github.com/mattmanj17/llvm-project.git',
-		'untracked/3rd_party/llvm-project'])
-	
-	subprocess.run([
-		'git', 
-		'-C', 'untracked/3rd_party/llvm-project', 
-		'switch', 
-		'17.0.3-branch'])
-	
-	os.mkdir('untracked/3rd_party/llvm-project/build')
+	subprocess.run(['git', 'clone', llvm_git_url, llvm_root_dir])
+	subprocess.run(['git', '-C', llvm_root_dir, 'switch', llvm_branch_name])
+	os.mkdir(llvm_build_dir)
 	
 	subprocess.run([
 		'cmake', 
 		'-DLLVM_ENABLE_PROJECTS=clang', 
 		'-A', 'x64', 
 		'-Thost=x64', 
-		'-S'
-		'untracked/3rd_party/llvm-project/llvm',
+		'-S',
+		llvm_cmake_root,
 		'-B',
-		'untracked/3rd_party/llvm-project/build'])
+		llvm_build_dir])
 	
 	subprocess.run([
 		'msbuild',
 		'-m:4',
-		'untracked/3rd_party/llvm-project/build/tools/clang/tools/driver/clang.vcxproj', 
+		llvm_clang_vcxproj, 
 		'/property:Configuration=Release'])
 
 def setup_tests():
 	# generate test/input
 
-	if not os.path.exists('untracked/test'):
-		os.mkdir('untracked/test')
-
-	if not os.path.exists('untracked/fool_corpus'):
-		subprocess.run([
-			'git', 'clone', 
-			'https://github.com/mattmanj17/fool_corpus.git',
-			'untracked/fool_corpus'])
-
-	if not os.path.exists('untracked/test/input'):
-		setup_test_input()
+	if not os.path.exists(raw_test_files_scrubbed):
+		#os.mkdir(raw_test_files_scrubbed)
+		scrub_raw_input()
 
 	ensure_test_output()
 
-def setup_test_input():
-	os.mkdir('untracked/test/input')
-	copy_raw_corpus()
-	scrub_raw_input()
-	copy_lex_corpus()
-
-def copy_raw_corpus():
-	print("copy_raw_corpus")
-	shutil.copytree("untracked/fool_corpus/ctok_raw/","untracked/test/input/fool_corpus/ctok_raw")
-
 def scrub_raw_input():
-	print("scrub")
+	print("scrub_raw_input")
+
+	# make a copy of the raw input
+
+	shutil.copytree(raw_test_files_in, raw_test_files_scrubbed)
 
 	# clean up some patterns where we diverge from clang
 	# we still support correctly lexing files that contain these patterns, 
 	#  we just slightly differ in the exact ways we split up tokens compared to clang.
 	#  These are all edge cases involving whitespace, so slight divergance is fine.
 
-	dest_dir = os.path.abspath('untracked/test/input/fool_corpus/ctok_raw')
+	dest_dir = os.path.abspath(raw_test_files_scrubbed)
 
 	with concurrent.futures.ThreadPoolExecutor() as executor:
 		for root, _, fnames in os.walk(dest_dir):
@@ -98,43 +92,32 @@ def scrub_raw_input():
 				executor.submit(scrub_ws_in_file, src_file)
 
 def scrub_ws_in_file(src_file):
-	scrub_exe = os.path.abspath("untracked/build/exe/scrub_ws.exe")
+	scrub_exe = os.path.abspath(scrub_ws_path)
 	subprocess.run(f'{scrub_exe} "{src_file}" "{src_file}"')
 	print(f'scrub_ws {src_file}')
 
-def copy_lex_corpus():
-	print("copy_lex_corpus")
-	shutil.copytree("untracked/fool_corpus/ctok_lex","untracked/test/input/fool_corpus/ctok_lex")
-
 def ensure_test_output():
-	# copy directory structure of test/input to test/output
-
-	if os.path.isdir('untracked/test/output'):
-		return
-
-	print('mkdir ...')
-	in_dir = os.path.abspath("untracked/test/input")
-	out_dir = os.path.abspath("untracked/test/output")
-	for root, _, _ in os.walk(in_dir):
-		rel_path = os.path.relpath(root, in_dir)
-		out_path = os.path.join(out_dir, rel_path)
-		Path(out_path).mkdir(parents=True, exist_ok=True)
-	
 	# generate test/output
 	# NOTE(matthewd) clang is a little heavy weight, so we limit to 19 workers
 
 	with concurrent.futures.ThreadPoolExecutor(max_workers=19) as executor: 
-		clang = os.path.abspath("untracked/3rd_party/llvm-project/build/Release/bin/clang.exe")
+		clang = os.path.abspath(llvm_clang_exe)
 		for in_path, out_path in raw_test_cases():
 			if not os.path.isfile(out_path):
+				directory = os.path.dirname(out_path)
+				if not os.path.exists(directory):
+					os.makedirs(directory)
 				executor.submit(run_clang, clang, True, in_path, out_path)
-		for in_path, out_path in lex_test_cases():
+		for in_path, out_path in no_hashtag_test_cases():
 			if not os.path.isfile(out_path):
+				directory = os.path.dirname(out_path)
+				if not os.path.exists(directory):
+					os.makedirs(directory)
 				executor.submit(run_clang, clang, False, in_path, out_path)
 
 def raw_test_cases():
-	in_dir = os.path.abspath("untracked/test/input/fool_corpus/ctok_raw")
-	out_dir = os.path.abspath("untracked/test/output/fool_corpus/ctok_raw")
+	in_dir = os.path.abspath(raw_test_files_scrubbed)
+	out_dir = os.path.abspath(raw_test_files_out)
 	for root, _, files in os.walk(in_dir):
 		for fname in files:
 			in_path = os.path.join(root, fname)
@@ -145,9 +128,9 @@ def raw_test_cases():
 
 			yield (in_path, out_path)
 
-def lex_test_cases():
-	in_dir = os.path.abspath("untracked/test/input/fool_corpus/ctok_lex")
-	out_dir = os.path.abspath("untracked/test/output/fool_corpus/ctok_lex")
+def no_hashtag_test_cases():
+	in_dir = os.path.abspath(no_hashtag_test_files_in)
+	out_dir = os.path.abspath(no_hashtag_test_files_out)
 	for root, _, files in os.walk(in_dir):
 		for fname in files:
 			in_path = os.path.join(root, fname)
@@ -170,28 +153,9 @@ def run_tests():
 	fails = []
 	fail_lock = Lock()
 
-	skips = [
-
-		# misc files we don't even care about
-
-		os.path.abspath('untracked/test/input/fool_corpus/ctok_raw/cpython-3.12.0/Lib/test/xmltestdata/c14n-20/README'),
-		os.path.abspath('untracked/test/input/fool_corpus/ctok_raw/cpython-3.12.0/Misc/NEWS.d/next/C API/README.rst'),
-		os.path.abspath('untracked/test/input/fool_corpus/ctok_raw/cpython-3.12.0/Misc/NEWS.d/next/Core and Builtins/README.rst'),
-		os.path.abspath('untracked/test/input/fool_corpus/ctok_raw/obs-studio-30.0.0/plugins/obs-qsv11/QSV11-License-Clarification-Email.txt'),
-		os.path.abspath('untracked/test/input/fool_corpus/ctok_raw/raylib-5.0/examples/README.md'),
-
-		# utf8 BOM. we generate the same tokens, but have different col numbers on the first line (on purpose)
-
-		os.path.abspath('untracked/test/input/fool_corpus/ctok_raw/raylib-5.0/projects/VS2019-Android/raylib_android/raylib_android.NativeActivity/android_native_app_glue.h'),
-		os.path.abspath('untracked/test/input/fool_corpus/ctok_raw/raylib-5.0/projects/VS2019-Android/raylib_android/raylib_android.NativeActivity/android_native_app_glue.c'),
-		os.path.abspath('untracked/test/input/fool_corpus/ctok_raw/raylib-5.0/projects/VS2019-Android/raylib_android/raylib_android.NativeActivity/main.c'),
-	]
-
 	with concurrent.futures.ThreadPoolExecutor() as executor:
-		ctok = os.path.abspath("untracked/build/exe/ctok.exe")
+		ctok = os.path.abspath(ctok_exe)
 		for in_path, out_path in raw_test_cases():
-			if in_path in skips:
-				continue
 			executor.submit(
 						run_ctok, 
 						ctok, 
