@@ -70,11 +70,23 @@ typedef struct Ch_len_t // ch + len
 	size_t len;
 } Ch_len_t;
 
+Ch_len_t Make_ch_len(char32_t ch, size_t len)
+{
+	Ch_len_t result = {ch, len};
+	return result;
+}
+
 typedef struct Ch_loc_t // ch + loc
 {
 	char32_t ch;
 	Byte_t * loc;
 } Ch_loc_t;
+
+Ch_loc_t Make_ch_loc(char32_t ch, Byte_t * loc)
+{
+	Ch_loc_t result = {ch, loc};
+	return result;
+}
 
 typedef enum Mch_k // Meta ch
 {
@@ -114,7 +126,7 @@ Ch_len_t Decode_leading_ch(Byte_span_t span)
 
 	size_t span_len = Byte_span_len(span);
 	if (span_len == 0)
-		return {Mch_end, 0};
+		Make_ch_len(Mch_end, 0);
 
 	// Value we return on error
 
@@ -193,7 +205,7 @@ Ch_len_t Decode_leading_ch(Byte_span_t span)
 
 	// We did it, return ch + len
 
-	return {ch, len};
+	return Make_ch_len(ch, len);
 }
 
 Ch_loc_t * Decode_byte_span(Byte_span_t span)
@@ -235,7 +247,7 @@ Ch_loc_t * Decode_byte_span(Byte_span_t span)
 
 		// Add to ary
 
-		*it = {ch_len.ch, span.begin};
+		*it = Make_ch_loc(ch_len.ch, span.begin);
 
 		// Check for Mch_end
 
@@ -892,7 +904,13 @@ typedef struct Tokk_end_t
 {
 	Tokk_t tokk;
 	Ch_loc_t * end;
-} Tokk_len_t;
+} Tokk_end_t;
+
+Tokk_end_t Make_tokk_end(Tokk_t tokk, Ch_loc_t * end)
+{
+	Tokk_end_t result = {tokk, end};
+	return result;
+}
 
 Tokk_end_t Lex_punctuation(
 	Ch_loc_t * ary)
@@ -1002,12 +1020,12 @@ Tokk_end_t Lex_punctuation(
 		// Found a match, return tokk + end
 
 		if (found_match)
-			return {punct.tokk, it};
+			return Make_tokk_end(punct.tokk, it);
 	}
 
 	// Just return leading char as an unknown token
 
-	return {Tokk_unknown, ary + 1};
+	return Make_tokk_end(Tokk_unknown, ary + 1);
 }
 
 bool Extends_id(char32_t ch)
@@ -1166,6 +1184,12 @@ typedef struct Ch_end_t
 	Ch_loc_t * end;
 } Ch_end_t;
 
+Ch_end_t Make_ch_end(char32_t ch, Ch_loc_t * end)
+{
+	Ch_end_t result = {ch, end};
+	return result;
+}
+
 Ch_end_t Lex_ucn(
 	Ch_loc_t * it)
 {
@@ -1265,7 +1289,7 @@ Ch_end_t Lex_ucn(
 		result = Mch_invalid;
 	}
 
-	return {result, it};
+	return Make_ch_end(result, it);
 }
 
 Ch_loc_t * After_rest_of_id(Ch_loc_t * it)
@@ -1427,7 +1451,7 @@ Tokk_end_t Lex_rest_of_block_comment(Ch_loc_t * it)
 		}
 	}
 
-	return {tokk, it};
+	return Make_tokk_end(tokk, it);
 }
 
 Tokk_end_t Lex_rest_of_str_lit(
@@ -1453,7 +1477,7 @@ Tokk_end_t Lex_rest_of_str_lit(
 		// Missing closing quote
 
 		if (ch == '\n')
-			return {Tokk_unknown, it};
+			return Make_tokk_end(Tokk_unknown, it);
 
 		// Include in string
 
@@ -1467,11 +1491,11 @@ Tokk_end_t Lex_rest_of_str_lit(
 			{
 				// Zero length char lits are invalid
 
-				return {Tokk_unknown, it};
+				return Make_tokk_end(Tokk_unknown, it);
 			}
 			else
 			{
-				return {tokk, it};
+				return Make_tokk_end(tokk, it);
 			}
 		}
 
@@ -1493,7 +1517,7 @@ Tokk_end_t Lex_rest_of_str_lit(
 
 	// Reached end without seeing close quote
 
-	return {Tokk_unknown, it};
+	return Make_tokk_end(Tokk_unknown, it);
 }
 
 Ch_loc_t * After_whitespace(Ch_loc_t * it)
@@ -1557,27 +1581,27 @@ Tokk_end_t Lex_leading_token(Ch_loc_t * it)
 	else if (ch_0 == '/' && ch_1 == '/')
 	{
 		it += 2;
-		return {Tokk_comment, After_rest_of_line_comment(it)};
+		return Make_tokk_end(Tokk_comment, After_rest_of_line_comment(it));
 	}
 	else if (ch_0 == '.' && ch_1 >= '0' && ch_1 <= '9')
 	{
 		it += 2;
-		return {Tokk_numeric_constant, After_rest_of_ppnum(it)};
+		return Make_tokk_end(Tokk_numeric_constant, After_rest_of_ppnum(it));
 	}
 	else if (Starts_id(ch_0))
 	{
 		++it;
-		return {Tokk_raw_identifier, After_rest_of_id(it)};
+		return Make_tokk_end(Tokk_raw_identifier, After_rest_of_id(it));
 	}
 	else if (ch_0 >= '0' && ch_0 <= '9')
 	{
 		++it;
-		return {Tokk_numeric_constant, After_rest_of_ppnum(it)};
+		return Make_tokk_end(Tokk_numeric_constant, After_rest_of_ppnum(it));
 	}
 	else if (Is_ws(ch_0) || ch_0 == '\0')
 	{
 		++it;
-		return {Tokk_unknown, After_whitespace(it)};
+		return Make_tokk_end(Tokk_unknown, After_whitespace(it));
 	}
 	else if (ch_0 =='\\')
 	{
@@ -1587,20 +1611,20 @@ Tokk_end_t Lex_leading_token(Ch_loc_t * it)
 			if (Starts_id(ucn.ch))
 			{
 				it = ucn.end;
-				return {Tokk_raw_identifier, After_rest_of_id(it)};
+				return Make_tokk_end(Tokk_raw_identifier, After_rest_of_id(it));
 			}
 			else
 			{
 				// Bogus UCN, return it as an unknown token
 
-				return {Tokk_unknown, ucn.end};
+				return Make_tokk_end(Tokk_unknown, ucn.end);
 			}
 		}
 		else
 		{
 			// Stray backslash, return as unknown token
 
-			return {Tokk_unknown, it + 1};
+			return Make_tokk_end(Tokk_unknown, it + 1);
 		}
 	}
 	else
