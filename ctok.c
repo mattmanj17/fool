@@ -10,6 +10,8 @@
 
 // Some basic stuff
 
+// NOTE ary_len macro taken from https://stackoverflow.com/a/4415646/23084123
+
 #define ARY_LEN(x) ((sizeof(x)/sizeof(0[(x)])) / ((size_t)(!(sizeof(x) % sizeof(0[(x)])))))
 
 typedef unsigned char Byte_t;
@@ -96,7 +98,7 @@ typedef enum Mch_k // Meta ch
 
 Ch_len_t Decode_leading_ch(Byte_span_t span)
 {
-	// Try_decode_utf8 Roughly based on Table 3.1B in unicode Corrigendum #1
+	// Decode_leading_ch Roughly based on Table 3.1B in unicode Corrigendum #1
 	//  Special care is taken to reject 'overlong encodings'
 	//  that is, using more bytes than necessary/allowed for a given code point
 
@@ -229,34 +231,39 @@ Ch_loc_t * Decode_byte_span(Byte_span_t span)
 	//  we have room for a trailing Mch_end
 
 	Ch_loc_t * ary;
+	size_t ary_len = span_len + 1;
 	{
-		size_t len = span_len + 1;
 		size_t size = sizeof(Ch_loc_t);
-		ary = (Ch_loc_t *)calloc(len, size);
+		ary = (Ch_loc_t *)calloc(ary_len, size);
 	}
 
 	// Chew through the byte span with Decode_leading_ch,
 	//  until we get to Mch_end.
 
-	Ch_loc_t * it = ary;
+	size_t i_ch = 0;
 	while (true)
 	{
+		assert(i_ch < ary_len);
+
 		// Decode
 		
 		Ch_len_t ch_len = Decode_leading_ch(span);
 
 		// Add to ary
 
-		*it = Make_ch_loc(ch_len.ch, span.begin);
+		ary[i_ch] = Make_ch_loc(ch_len.ch, span.begin);
 
 		// Check for Mch_end
+
+		// NOTE we are letting Mch_invalid through here on purpose,
+		//  so it can be handled by calling code
 
 		if (ch_len.ch == Mch_end)
 			break;
 
 		// Advance
 
-		++it;
+		++i_ch;
 		span.begin += ch_len.len;
 	}
 
@@ -421,6 +428,8 @@ void Scrub_leading_escaped_line_breaks(Scrub_t * scrub_r)
 	{
 		// Drop trailing escaped line break
 		//  (do not include it in a character)
+
+		// BUG this is too clever
 		
 		scrub_r->it_from += len;
 	}
@@ -913,7 +922,7 @@ Tokk_end_t Make_tokk_end(Tokk_t tokk, Ch_loc_t * end)
 }
 
 Tokk_end_t Lex_punctuation(
-	Ch_loc_t * ary)
+	Ch_loc_t * it)
 {
 	// Punctuation sorted by length
 
@@ -999,13 +1008,13 @@ Tokk_end_t Lex_punctuation(
 
 		bool found_match = false;
 
-		Ch_loc_t * it = ary;
+		Ch_loc_t * it_check = it;
 		while (true)
 		{
-			if (it->ch != str[0])
+			if (it_check->ch != str[0])
 				break;
 
-			++it;
+			++it_check;
 			++str;
 
 			if (str[0] == '\0')
@@ -1020,12 +1029,12 @@ Tokk_end_t Lex_punctuation(
 		// Found a match, return tokk + end
 
 		if (found_match)
-			return Make_tokk_end(punct.tokk, it);
+			return Make_tokk_end(punct.tokk, it_check);
 	}
 
 	// Just return leading char as an unknown token
 
-	return Make_tokk_end(Tokk_unknown, ary + 1);
+	return Make_tokk_end(Tokk_unknown, it + 1);
 }
 
 bool Extends_id(char32_t ch)
@@ -1064,6 +1073,10 @@ bool Extends_id(char32_t ch)
 		return false;
 
 	// These code points are allowed to extend an id
+
+	// BUG should document where the heck these came from clearly.
+	//  tldr I stared at the clang source code to figure these out,
+	//  (but it would be nice to site the offcial standard here)
 
 	static const char32_t yes[][2] =
 	{
@@ -1124,6 +1137,8 @@ bool Starts_id(char32_t ch)
 
 	// These codepoints are not allowed as the start of an id
 
+	// BUG same comment as the 'yes' ary in Extends_id
+
 	static const char32_t no[][2] =
 	{
 		{ 0x0300, 0x036F },
@@ -1149,6 +1164,8 @@ bool Is_valid_ucn(char32_t ch)
 	//  short identifier is less than 00A0, nor one in the range 
 	//  D800 through DFFF inclusive.
 
+	// BUG cite location in standard this working appears
+
 	if (ch < 0xA0)
 		return false;
 
@@ -1163,16 +1180,10 @@ uint32_t Hex_val_from_ch(char32_t ch)
 	if (ch >= '0' && ch <= '9')
 		return ch - '0';
 
-	if (ch < 'A')
-		return Mch_invalid;
-
-	if (ch > 'f')
-		return Mch_invalid;
-
-	if (ch <= 'F')
+	if (ch >= 'A' && ch <= 'F')
 		return ch - 'A' + 10;
 
-	if (ch >= 'a')
+	if (ch >= 'a' && ch <= 'f')
 		return ch - 'a' + 10;
 
 	return Mch_invalid;
@@ -1304,6 +1315,8 @@ Ch_loc_t * After_rest_of_id(Ch_loc_t * it)
 
 		if (it->ch == '\\')
 		{
+			// Yes, the standard says you can have ucn's in identifers :/ ...
+
 			Ch_end_t ucn = Lex_ucn(it);
 			if (ucn.end && Extends_id(ucn.ch))
 			{
@@ -1321,7 +1334,7 @@ Ch_loc_t * After_rest_of_id(Ch_loc_t * it)
 Ch_loc_t * After_rest_of_ppnum(Ch_loc_t * it)
 {
 	/* NOTE (matthewd)
-		preprocesor numbers are a bit unintuative,
+		preprocesor numbers are a bit unintuitive,
 		since they can match things that are not valid tokens
 		in later translation phases.
 
@@ -1386,7 +1399,7 @@ Ch_loc_t * After_rest_of_ppnum(Ch_loc_t * it)
 		{
 			// Clang does not allow '$' in ppnums, 
 			//  even though the spec would seem to suggest that 
-			//  implimentation defined id chars should be included in PP nums...
+			//  implementation defined id chars should be included in PP nums...
 
 			break;
 		}
@@ -1503,15 +1516,15 @@ Tokk_end_t Lex_rest_of_str_lit(
 
 		++len;
 
-		// Deal with back slash
+		// Deal with back slash (skip past next char, whatever it is)
 
-		if (ch == '\\')
+		// NOTE that we do not have to think about backslash escaped newlines here,
+		//  we already scrubbed them away
+
+		if (ch == '\\' && it->ch != Mch_end)
 		{
-			if (it->ch == ch_close || it->ch == '\\')
-			{
-				++len;
-				++it;
-			}
+			++len;
+			++it;
 		}
 	}
 
@@ -1603,7 +1616,7 @@ Tokk_end_t Lex_leading_token(Ch_loc_t * it)
 		++it;
 		return Make_tokk_end(Tokk_unknown, After_whitespace(it));
 	}
-	else if (ch_0 =='\\')
+	else if (ch_0 == '\\')
 	{
 		Ch_end_t ucn = Lex_ucn(it);
 		if (ucn.end)
@@ -1615,7 +1628,7 @@ Tokk_end_t Lex_leading_token(Ch_loc_t * it)
 			}
 			else
 			{
-				// Bogus UCN, return it as an unknown token
+				// UCN that does not start an ID, return it as an unknown token
 
 				return Make_tokk_end(Tokk_unknown, ucn.end);
 			}
@@ -1684,15 +1697,20 @@ void Print_byte_escaped(Byte_t byte)
 	
 	default:
 		{
-	    	Byte_t high_nibble = (Byte_t)((byte >> 4) & 0xF);
-	    	Byte_t low_nibble = (Byte_t)(byte & 0xF);
-	    	
-			char high_nibble_char = high_nibble < 10 ? '0' + high_nibble : 'A' + (high_nibble - 10);
-	    	char low_nibble_char = low_nibble < 10 ? '0' + low_nibble : 'A' + (low_nibble - 10);
-	    	
+			Byte_t high_nibble = (Byte_t)((byte >> 4) & 0xF);
+			Byte_t low_nibble = (Byte_t)(byte & 0xF);
+
+			char high_nibble_char = (high_nibble < 10) ?
+										'0' + high_nibble :
+										'A' + (high_nibble - 10);
+
+			char low_nibble_char = (low_nibble < 10) ?
+										'0' + low_nibble :
+										'A' + (low_nibble - 10);
+
 			printf("\\x");
-	    	printf("%c", high_nibble_char);
-	    	printf("%c", low_nibble_char);
+			printf("%c", high_nibble_char);
+			printf("%c", low_nibble_char);
 		}
 		break;
 	}
